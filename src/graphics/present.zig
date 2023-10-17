@@ -1,6 +1,7 @@
-const std      = @import("std");
-const f_input  = @import("input.zig");
-const c        = @cImport({
+const std         = @import("std");
+const f_input     = @import("input.zig");
+const f_renderer  = @import("renderer.zig");
+const c           = @cImport({
    @cInclude("vulkan/vulkan.h");
    @cInclude("GLFW/glfw3.h");
 });
@@ -208,6 +209,10 @@ pub const Window = struct {
 
    pub fn getInput(self : * const @This()) * const f_input.InputState {
       return &self._input;
+   }
+
+   pub fn createRenderer(self : * const @This(), create_options : f_renderer.Renderer.CreateOptions) f_renderer.Renderer.CreateError!f_renderer.Renderer {
+      return f_renderer.Renderer.create(self, create_options);
    }
 };
 

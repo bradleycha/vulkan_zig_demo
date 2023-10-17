@@ -5,6 +5,7 @@ const resources   = @import("resources");
 const MainError = error {
    CompositorConnectFailure,
    WindowCreateFailure,
+   RendererCreateFailure,
 };
 
 pub fn main() MainError!void {
@@ -19,7 +20,10 @@ pub fn main() MainError!void {
    }) catch return error.WindowCreateFailure;
    defer window.destroy();
 
-   // TODO: Create vulkan renderer and attach it to the window
+   var renderer = window.createRenderer(.{
+
+   }) catch return error.RendererCreateFailure;
+   defer renderer.destroy();
 
    while (window.shouldClose() == false) {
       window.pollEvents() catch |err| {
