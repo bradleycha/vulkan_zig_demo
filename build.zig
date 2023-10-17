@@ -52,6 +52,7 @@ pub fn build(b : * std.Build) void {
    exe_main.addModule(MODULE_NAME_ZEST, module_zest);
    exe_main.addModule(MODULE_NAME_GRAPHICS, module_graphics);
    exe_main.addModule(MODULE_NAME_RESOURCES, module_resources);
+   exe_main.strip = opt_optimize_mode != .Debug;
 
    b.installArtifact(exe_main);
 
