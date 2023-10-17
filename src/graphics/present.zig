@@ -30,12 +30,13 @@ pub const Compositor = struct {
       return;
    }
 
-   pub fn createWindow(self : * const @This(), create_options : Window.CreateOptions) Window.CreateError!Window {
-      return Window.create(self, create_options);
+   pub fn createWindow(self : * const @This(), allocator : std.mem.Allocator, create_options : Window.CreateOptions) Window.CreateError!Window {
+      return Window.create(self, allocator, create_options);
    }
 };
 
 pub const Window = struct {
+   _allocator     : std.mem.Allocator,
    _glfw_window   : * c.GLFWwindow,
    _input         : f_input.InputState,
 
@@ -57,6 +58,7 @@ pub const Window = struct {
    };
 
    pub const CreateError = error {
+      OutOfMemory,
       WindowDimensionsOutOfBounds,
       NoFullscreenMonitorAvailable,
       GraphicsApiUnavailable,
@@ -68,7 +70,7 @@ pub const Window = struct {
       PlatformError,
    };
 
-   pub fn create(compositor : * const Compositor, create_options : CreateOptions) CreateError!@This() {
+   pub fn create(compositor : * const Compositor, allocator : std.mem.Allocator, create_options : CreateOptions) CreateError!@This() {
       _ = compositor;
 
       if (create_options.resolution.width > std.math.maxInt(c_int)) {
@@ -120,6 +122,7 @@ pub const Window = struct {
       const input = f_input.InputState.create();
 
       return @This(){
+         ._allocator    = allocator,
          ._glfw_window  = glfw_window,
          ._input        = input,
       };
@@ -211,8 +214,8 @@ pub const Window = struct {
       return &self._input;
    }
 
-   pub fn createRenderer(self : * const @This(), create_options : f_renderer.Renderer.CreateOptions) f_renderer.Renderer.CreateError!f_renderer.Renderer {
-      return f_renderer.Renderer.create(self, create_options);
+   pub fn createRenderer(self : * const @This(), allocator : std.mem.Allocator, create_options : f_renderer.Renderer.CreateOptions) f_renderer.Renderer.CreateError!f_renderer.Renderer {
+      return f_renderer.Renderer.create(self, allocator, create_options);
    }
 };
 

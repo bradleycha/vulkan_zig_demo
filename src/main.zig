@@ -9,10 +9,12 @@ const MainError = error {
 };
 
 pub fn main() MainError!void {
+   const allocator = std.heap.page_allocator;
+
    const compositor = graphics.present.Compositor.connect_default() catch return error.CompositorConnectFailure;
    defer compositor.disconnect();
 
-   var window = compositor.createWindow(.{
+   var window = compositor.createWindow(allocator, .{
       .title         = "Learn Vulkan with Zig!",
       .resolution    = .{.width = 1280, .height = 720},
       .display_mode  = .Windowed,
@@ -20,7 +22,7 @@ pub fn main() MainError!void {
    }) catch return error.WindowCreateFailure;
    defer window.destroy();
 
-   var renderer = window.createRenderer(.{
+   var renderer = window.createRenderer(allocator, .{
 
    }) catch return error.RendererCreateFailure;
    defer renderer.destroy();

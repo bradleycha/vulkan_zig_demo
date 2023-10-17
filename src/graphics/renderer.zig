@@ -11,11 +11,12 @@ pub const Renderer = struct {
    };
    
    pub const CreateError = error {
-
+      OutOfMemory,
    };
 
-   pub fn create(window : * const f_present.Window, create_options : CreateOptions) CreateError!@This() {
+   pub fn create(window : * const f_present.Window, allocator : std.mem.Allocator, create_options : CreateOptions) CreateError!@This() {
       _ = window;
+      _ = allocator;
       _ = create_options;
       unreachable;
    }
