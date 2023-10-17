@@ -41,6 +41,8 @@ pub const Renderer = struct {
          vulkan_instance.vk_instance,
       ) catch (return error.VulkanPhysicalDevicePickFailure) orelse return error.NoVulkanPhysicalDeviceAvailable;
 
+      zest.dbg.log.info("using device \"{s}\" for vulkan rendering", .{&vulkan_physical_device.vk_physical_device_properties.deviceName});
+
       _ = window;
 
       return @This(){
@@ -354,7 +356,14 @@ const VulkanDebugMessenger = struct {
 };
 
 const VulkanPhysicalDevice = struct {
-   vk_physical_device   : c.VkPhysicalDevice,
+   vk_physical_device            : c.VkPhysicalDevice,
+   vk_physical_device_properties : c.VkPhysicalDeviceProperties,
+   vk_physical_device_features   : c.VkPhysicalDeviceFeatures,
+   queue_family_indices          : QueueFamilyIndices,
+
+   pub const QueueFamilyIndices = struct {
+      graphics : u32,
+   };
 
    pub const PickError = error {
       OutOfMemory,
@@ -394,7 +403,6 @@ const VulkanPhysicalDevice = struct {
 
       for (vk_physical_devices.items) |vk_physical_device| {
          const physical_device_new = try _parsePhysicalDevice(
-            vk_instance,
             vk_physical_device,
          ) orelse continue;
 
@@ -403,8 +411,8 @@ const VulkanPhysicalDevice = struct {
             continue;
          }
 
-         const score_old = (physical_device_chosen orelse unreachable)._assignScore(vk_instance);
-         const score_new = physical_device_new._assignScore(vk_instance);
+         const score_old = (physical_device_chosen orelse unreachable)._assignScore();
+         const score_new = physical_device_new._assignScore();
 
          if (score_new > score_old) {
             physical_device_chosen = physical_device_new;
@@ -414,16 +422,58 @@ const VulkanPhysicalDevice = struct {
       return physical_device_chosen;
    }
 
-   fn _parsePhysicalDevice(vk_instance : c.VkInstance, vk_physical_device : c.VkPhysicalDevice) PickError!?@This() {
-      _ = vk_instance;
-      _ = vk_physical_device;
-      unreachable;
+   fn _parsePhysicalDevice(vk_physical_device : c.VkPhysicalDevice) PickError!?@This() {
+      var vk_physical_device_properties : c.VkPhysicalDeviceProperties = undefined;
+      c.vkGetPhysicalDeviceProperties(vk_physical_device, &vk_physical_device_properties);
+
+      var vk_physical_device_features : c.VkPhysicalDeviceFeatures = undefined;
+      c.vkGetPhysicalDeviceFeatures(vk_physical_device, &vk_physical_device_features);
+
+      const queue_family_indices = try _findQueueFamilyIndices(vk_physical_device) orelse return null;
+
+      return @This(){
+         .vk_physical_device              = vk_physical_device,
+         .vk_physical_device_properties   = vk_physical_device_properties,
+         .vk_physical_device_features     = vk_physical_device_features,
+         .queue_family_indices            = queue_family_indices,
+      };   
    }
 
-   fn _assignScore(self : * const @This(), vk_instance : c.VkInstance) u32 {
-      _ = self;
-      _ = vk_instance;
-      unreachable;
+   fn _findQueueFamilyIndices(vk_physical_device : c.VkPhysicalDevice) PickError!?QueueFamilyIndices {
+      const temp_allocator = VULKAN_TEMP_HEAP.allocator();
+
+      var vk_queue_families_count : u32 = undefined;
+      c.vkGetPhysicalDeviceQueueFamilyProperties(vk_physical_device, &vk_queue_families_count, null);
+
+      var vk_queue_families = std.ArrayList(c.VkQueueFamilyProperties).init(temp_allocator);
+      defer vk_queue_families.deinit();
+      try vk_queue_families.resize(@as(usize, vk_queue_families_count));
+      c.vkGetPhysicalDeviceQueueFamilyProperties(vk_physical_device, &vk_queue_families_count, vk_queue_families.items.ptr);
+
+      var queue_family_index_graphics : ? u32 = null;
+
+      for (vk_queue_families.items, 0..vk_queue_families_count) |vk_queue_family, i| {
+         if (vk_queue_family.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
+            queue_family_index_graphics = @intCast(i);
+         }
+      }
+
+      const queue_family_indices = QueueFamilyIndices{
+         .graphics   = queue_family_index_graphics orelse return null,
+      };
+
+      return queue_family_indices;
+   }
+
+   fn _assignScore(self : * const @This()) u32 {
+      var score : u32 = 0;
+
+      // For now we simply want to prefer discrete GPUs.
+      if (self.vk_physical_device_properties.deviceType == c.VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+         score += 1000;
+      }
+
+      return score;
    }
 };
 
