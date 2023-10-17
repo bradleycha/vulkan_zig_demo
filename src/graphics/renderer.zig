@@ -49,7 +49,8 @@ pub const Renderer = struct {
 };
 
 const VulkanInstance = struct {
-   vk_instance : c.VkInstance,
+   vk_instance             : c.VkInstance,
+   vulkan_debug_messenger  : ? VulkanDebugMessenger,
 
    pub const CreateOptions = struct {
       application_name     : [*:0] const u8,
@@ -65,6 +66,7 @@ const VulkanInstance = struct {
       MissingRequiredValidationLayers,
       MissingRequiredExtensions,
       IncompatibleDriver,
+      DebugMessengerCreateFailure,
    };
 
    pub fn create(create_options : CreateOptions) CreateError!@This() {
@@ -168,6 +170,13 @@ const VulkanInstance = struct {
          return error.MissingRequiredExtensions;
       }
 
+      const vk_info_create_debug_messenger = blk: {
+         switch (create_options.debugging) {
+            true  => break :blk &VulkanDebugMessenger.CREATE_INFO,
+            false => break :blk null,
+         }
+      };
+
       const vk_info_application = c.VkApplicationInfo{
          .sType               = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
          .pNext               = null,
@@ -180,7 +189,7 @@ const VulkanInstance = struct {
 
       const vk_info_create_instance = c.VkInstanceCreateInfo{
          .sType                     = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-         .pNext                     = null,
+         .pNext                     = vk_info_create_debug_messenger,
          .flags                     = 0x00000000 | c.VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
          .pApplicationInfo          = &vk_info_application,
          .enabledLayerCount         = @intCast(enabled_layers.items.len),
@@ -188,8 +197,6 @@ const VulkanInstance = struct {
          .enabledExtensionCount     = @intCast(enabled_extensions.items.len),
          .ppEnabledExtensionNames   = enabled_extensions.items.ptr,
       };
-
-      // TODO: Debug messenger
 
       var vk_instance : c.VkInstance = undefined;
       vk_result = c.vkCreateInstance(&vk_info_create_instance, null, &vk_instance);
@@ -203,12 +210,137 @@ const VulkanInstance = struct {
          c.VK_ERROR_INCOMPATIBLE_DRIVER   => return error.IncompatibleDriver,
          else                             => unreachable,
       }
+      errdefer c.vkDestroyInstance(vk_instance, null);
 
-      return @This(){.vk_instance = vk_instance};
+      const vulkan_debug_messenger = blk: {
+         switch (create_options.debugging) {
+            true  => break :blk VulkanDebugMessenger.create(vk_instance) catch return error.DebugMessengerCreateFailure,
+            false => break :blk null,
+         }
+      };
+      errdefer if (vulkan_debug_messenger) |debug_messenger| {
+         debug_messenger.destroy(vk_instance);
+      };
+
+      return @This(){
+         .vk_instance            = vk_instance,
+         .vulkan_debug_messenger = vulkan_debug_messenger,
+      };
    }
 
    pub fn destroy(self : @This()) void {
+      if (self.vulkan_debug_messenger) |vulkan_debug_messenger| {
+         vulkan_debug_messenger.destroy(self.vk_instance);
+      }
+
       c.vkDestroyInstance(self.vk_instance, null);
+      return;
+   }
+};
+
+const VulkanDebugMessenger = struct {
+   vk_debug_messenger   : c.VkDebugUtilsMessengerEXT,
+
+   pub const CREATE_INFO = c.VkDebugUtilsMessengerCreateInfoEXT{
+      .sType            = c.VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+      .pNext            = null,
+      .flags            = 0x00000000,
+      .messageSeverity  = c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+      .messageType      = c.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+      .pfnUserCallback  = _vkDebugMessengerCallback,
+      .pUserData        = null,
+   };
+
+   fn _vkDebugMessengerCallback(
+      p_message_severity   : c.VkDebugUtilsMessageSeverityFlagBitsEXT,
+      p_message_type       : c.VkDebugUtilsMessageTypeFlagsEXT,
+      p_callback_data      : ? * const c.VkDebugUtilsMessengerCallbackDataEXT,
+      p_user_data          : ? * anyopaque,
+   ) callconv(.C) c.VkBool32 {
+      const message_severity  = p_message_severity;
+      const message_type      = p_message_type;
+      const callback_data     = p_callback_data orelse unreachable;
+      _ = p_user_data;
+
+      const message  = callback_data.pMessage orelse unreachable;
+      const format   = "vulkan {s} : {s}";
+      const prefix   = blk: {
+         switch (message_type) {
+            c.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT      => break :blk "general",
+            c.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT   => break :blk "validation",
+            c.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT  => break :blk "performance",
+            else                                               => unreachable,
+         }
+      };
+
+      switch (message_severity) {
+         c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT  => {
+            zest.dbg.log.info(format, .{prefix, message});
+         },
+         c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT     => {
+            zest.dbg.log.info(format, .{prefix, message});
+         },
+         c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT  => {
+            zest.dbg.log.warn(format, .{prefix, message});
+         },
+         c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT    => {
+            zest.dbg.log.err(format, .{prefix, message});
+         },
+         else => unreachable,
+      }
+
+      return c.VK_FALSE;
+   }
+
+   const _VulkanExtensions = struct {
+      var vkCreateDebugUtilsMessengerEXT  : c.PFN_vkCreateDebugUtilsMessengerEXT    = null;
+      var vkDestroyDebugUtilsMessengerEXT : c.PFN_vkDestroyDebugUtilsMessengerEXT   = null;
+   };
+
+   pub const CreateError = error {
+      OutOfMemory,
+      MissingRequiredExtensions,
+   };
+
+   pub fn create(vk_instance : c.VkInstance) CreateError!@This() {
+      var vk_result : c.VkResult = undefined;
+
+      if (_VulkanExtensions.vkCreateDebugUtilsMessengerEXT == null) {
+         const ptr : c.PFN_vkCreateDebugUtilsMessengerEXT = @ptrCast(@alignCast(c.vkGetInstanceProcAddr(vk_instance, "vkCreateDebugUtilsMessengerEXT")));
+         if (ptr == null) {
+            return error.MissingRequiredExtensions;
+         }
+
+         _VulkanExtensions.vkCreateDebugUtilsMessengerEXT = ptr;
+      }
+      if (_VulkanExtensions.vkDestroyDebugUtilsMessengerEXT == null) {
+         const ptr : c.PFN_vkDestroyDebugUtilsMessengerEXT = @ptrCast(@alignCast(c.vkGetInstanceProcAddr(vk_instance, "vkDestroyDebugUtilsMessengerEXT")));
+         if (ptr == null) {
+            return error.MissingRequiredExtensions;
+         }
+
+         _VulkanExtensions.vkDestroyDebugUtilsMessengerEXT = ptr;
+      }
+
+      const pfn_create  = _VulkanExtensions.vkCreateDebugUtilsMessengerEXT orelse unreachable;
+      const pfn_destroy = _VulkanExtensions.vkDestroyDebugUtilsMessengerEXT orelse unreachable;
+
+      var vk_debug_messenger : c.VkDebugUtilsMessengerEXT = undefined;
+      vk_result = pfn_create(vk_instance, &CREATE_INFO, null, &vk_debug_messenger);
+      switch (vk_result) {
+         c.VK_SUCCESS                  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY => return error.OutOfMemory,
+         else                          => unreachable,
+      }
+      errdefer pfn_destroy(vk_instance, vk_debug_messenger, null);
+
+      return @This(){.vk_debug_messenger = vk_debug_messenger};
+   }
+
+   pub fn destroy(self : @This(), vk_instance : c.VkInstance) void {
+      const pfn_destroy = _VulkanExtensions.vkDestroyDebugUtilsMessengerEXT orelse unreachable;
+
+      pfn_destroy(vk_instance, self.vk_debug_messenger, null);
       return;
    }
 };
