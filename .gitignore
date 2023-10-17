@@ -1,0 +1,4 @@
+# Zig build runner output
+zig-cache
+zig-out
+
