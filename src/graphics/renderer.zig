@@ -10,8 +10,9 @@ const c           = @cImport({
 const VULKAN_TEMP_HEAP = zest.mem.SingleScopeHeap(8 * 1024 * 1024);
 
 pub const Renderer = struct {
-   _allocator        : std.mem.Allocator,
-   _vulkan_instance  : VulkanInstance,
+   _allocator              : std.mem.Allocator,
+   _vulkan_instance        : VulkanInstance,
+   _vulkan_physical_device : VulkanPhysicalDevice,
 
    pub const CreateOptions = struct {
       debugging   : bool,
@@ -22,6 +23,8 @@ pub const Renderer = struct {
    pub const CreateError = error {
       OutOfMemory,
       VulkanInstanceCreateFailure,
+      VulkanPhysicalDevicePickFailure,
+      NoVulkanPhysicalDeviceAvailable,
    };
 
    pub fn create(window : * const f_present.Window, allocator : std.mem.Allocator, create_options : CreateOptions) CreateError!@This() {
@@ -34,11 +37,16 @@ pub const Renderer = struct {
       }) catch return error.VulkanInstanceCreateFailure;
       errdefer vulkan_instance.destroy();
 
+      const vulkan_physical_device = VulkanPhysicalDevice.pickMostSuitable(
+         vulkan_instance.vk_instance,
+      ) catch (return error.VulkanPhysicalDevicePickFailure) orelse return error.NoVulkanPhysicalDeviceAvailable;
+
       _ = window;
 
       return @This(){
-         ._allocator       = allocator,
-         ._vulkan_instance = vulkan_instance,
+         ._allocator                = allocator,
+         ._vulkan_instance          = vulkan_instance,
+         ._vulkan_physical_device   = vulkan_physical_device,
       };
    }
 
@@ -342,6 +350,80 @@ const VulkanDebugMessenger = struct {
 
       pfn_destroy(vk_instance, self.vk_debug_messenger, null);
       return;
+   }
+};
+
+const VulkanPhysicalDevice = struct {
+   vk_physical_device   : c.VkPhysicalDevice,
+
+   pub const PickError = error {
+      OutOfMemory,
+      UnknownError,
+   };
+
+   pub fn pickMostSuitable(vk_instance : c.VkInstance) PickError!?@This() {
+      var vk_result : c.VkResult = undefined;
+
+      const temp_allocator = VULKAN_TEMP_HEAP.allocator();
+
+      var vk_physical_devices_count : u32 = undefined;
+      vk_result = c.vkEnumeratePhysicalDevices(vk_instance, &vk_physical_devices_count, null);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_INCOMPLETE                  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_INITIALIZATION_FAILED => return error.UnknownError,
+         else                             => unreachable,
+      }
+
+      var vk_physical_devices = std.ArrayList(c.VkPhysicalDevice).init(temp_allocator);
+      defer vk_physical_devices.deinit();
+      try vk_physical_devices.resize(@as(usize, vk_physical_devices_count));
+      vk_result = c.vkEnumeratePhysicalDevices(vk_instance, &vk_physical_devices_count, vk_physical_devices.items.ptr);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_INCOMPLETE                  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_INITIALIZATION_FAILED => return error.UnknownError,
+         else                             => unreachable,
+      }
+
+      var physical_device_chosen : ? @This() = null;
+
+      for (vk_physical_devices.items) |vk_physical_device| {
+         const physical_device_new = try _parsePhysicalDevice(
+            vk_instance,
+            vk_physical_device,
+         ) orelse continue;
+
+         if (physical_device_chosen == null) {
+            physical_device_chosen = physical_device_new;
+            continue;
+         }
+
+         const score_old = (physical_device_chosen orelse unreachable)._assignScore(vk_instance);
+         const score_new = physical_device_new._assignScore(vk_instance);
+
+         if (score_new > score_old) {
+            physical_device_chosen = physical_device_new;
+         }
+      }
+
+      return physical_device_chosen;
+   }
+
+   fn _parsePhysicalDevice(vk_instance : c.VkInstance, vk_physical_device : c.VkPhysicalDevice) PickError!?@This() {
+      _ = vk_instance;
+      _ = vk_physical_device;
+      unreachable;
+   }
+
+   fn _assignScore(self : * const @This(), vk_instance : c.VkInstance) u32 {
+      _ = self;
+      _ = vk_instance;
+      unreachable;
    }
 };
 
