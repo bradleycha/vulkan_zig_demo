@@ -13,6 +13,7 @@ pub const Renderer = struct {
    _allocator              : std.mem.Allocator,
    _vulkan_instance        : VulkanInstance,
    _vulkan_physical_device : VulkanPhysicalDevice,
+   _vulkan_device          : VulkanDevice,
 
    pub const CreateOptions = struct {
       debugging   : bool,
@@ -43,16 +44,21 @@ pub const Renderer = struct {
 
       zest.dbg.log.info("using device \"{s}\" for vulkan rendering", .{&vulkan_physical_device.vk_physical_device_properties.deviceName});
 
+      const vulkan_device = VulkanDevice.create(&vulkan_physical_device) catch return error.VulkanDeviceCreateFailure;
+      errdefer vulkan_device.destroy();
+
       _ = window;
 
       return @This(){
          ._allocator                = allocator,
          ._vulkan_instance          = vulkan_instance,
          ._vulkan_physical_device   = vulkan_physical_device,
+         ._vulkan_device            = vulkan_device,
       };
    }
 
    pub fn destroy(self : @This()) void {
+      self._vulkan_device.destroy();
       self._vulkan_instance.destroy();
       return;
    }
@@ -474,6 +480,24 @@ const VulkanPhysicalDevice = struct {
       }
 
       return score;
+   }
+};
+
+const VulkanDevice = struct {
+   vk_device   : c.VkDevice,
+
+   pub const CreateError = error {
+      
+   };
+
+   pub fn create(vulkan_physical_device : * const VulkanPhysicalDevice) CreateError!@This() {
+      _ = vulkan_physical_device;
+      unreachable;
+   }
+
+   pub fn destroy(self : @This()) void {
+      _ = self;
+      unreachable;
    }
 };
 
