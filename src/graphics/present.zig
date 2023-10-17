@@ -174,6 +174,13 @@ pub const Window = struct {
       return c.glfwCreateWindowSurface(instance, self._glfw_window, allocator, surface);
    }
 
+   pub fn requiredVulkanExtensions() [] [*:0] const u8 {
+      var count : u32 = undefined;
+      const ptr : [*c] [*:0] const u8 = @ptrCast(c.glfwGetRequiredInstanceExtensions(&count));
+
+      return ptr[0..count];
+   }
+
    pub fn pollEvents(self : * @This()) EventPollError!void {
       c.glfwPollEvents();
       switch (c.glfwGetError(null)) {
