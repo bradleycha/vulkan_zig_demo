@@ -67,7 +67,11 @@ pub const Renderer = struct {
       errdefer vulkan_device.destroy();
 
       const vulkan_swapchain = VulkanSwapchain.create(
-         vulkan_device.vk_device, vulkan_surface.vk_surface, &vulkan_physical_device.queue_family_indices, vulkan_swapchain_configuration,
+         allocator,
+         vulkan_device.vk_device,
+         vulkan_surface.vk_surface,
+         &vulkan_physical_device.queue_family_indices,
+         vulkan_swapchain_configuration,
       ) catch return error.VulkanSwapchainCreateFailure;
       errdefer vulkan_swapchain.destroy();
 
@@ -1012,7 +1016,10 @@ const VulkanSwapchainConfiguration = struct {
 };
 
 const VulkanSwapchain = struct {
+   _allocator     : std.mem.Allocator,
    vk_swapchain   : c.VkSwapchainKHR,
+   images         : [] c.VkImage,
+   image_views    : [] c.VkImageView,
 
    pub const CreateError = error {
       OutOfMemory,
@@ -1028,9 +1035,12 @@ const VulkanSwapchain = struct {
       queue_family_indices       : ? [*] const u32,
    };
 
-   pub fn create(vk_device : c.VkDevice, vk_surface : c.VkSurfaceKHR, queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!@This() {
+   pub fn create(allocator : std.mem.Allocator, vk_device : c.VkDevice, vk_surface : c.VkSurfaceKHR, queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!@This() {
       var self = @This(){
+         ._allocator    = allocator,
          .vk_swapchain  = @ptrCast(@alignCast(c.VK_NULL_HANDLE)),
+         .images        = try allocator.alloc(c.VkImage, 0),
+         .image_views   = try allocator.alloc(c.VkImageView, 0),
       };
 
       try self.recreate(vk_device, vk_surface, queue_family_indices, swapchain_configuration);
@@ -1087,7 +1097,49 @@ const VulkanSwapchain = struct {
       }
       errdefer c.vkDestroySwapchainKHR(vk_device, vk_swapchain, null);
 
+      var vk_images_count : u32 = undefined;
+      vk_result = c.vkGetSwapchainImagesKHR(vk_device, vk_swapchain, &vk_images_count, null);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_INCOMPLETE                  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+
+      var vk_images = try self._allocator.alloc(c.VkImage, @as(usize, vk_images_count));
+      errdefer self._allocator.free(vk_images);
+      vk_result = c.vkGetSwapchainImagesKHR(vk_device, vk_swapchain, &vk_images_count, vk_images.ptr);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_INCOMPLETE                  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+
+      var vk_image_views = try self._allocator.alloc(c.VkImageView, @as(usize, vk_images_count));
+      errdefer self._allocator.free(vk_image_views);
+      for (vk_images, vk_image_views, 0..vk_images_count) |image, *image_view, i| {
+         // In the case of error in the loop, we clean up all previously image views.
+         errdefer for (vk_image_views[0..i]) |previous_image_view| {
+            c.vkDestroyImageView(vk_device, previous_image_view, null);
+         };
+
+         image_view.* = try _createImageView(vk_device, image, swapchain_configuration);
+      }
+      errdefer for (vk_image_views) |image_view| {
+         c.vkDestroyImageView(vk_device, image_view, null);
+      };
+
+      for (self.image_views) |old_image_view| {
+         c.vkDestroyImageView(vk_device, old_image_view, null);
+      }
+      self._allocator.free(self.image_views);
+      self._allocator.free(self.images);
       self.vk_swapchain = vk_swapchain;
+      self.images       = vk_images;
+      self.image_views  = vk_image_views;
       return;
    }
 
@@ -1120,7 +1172,55 @@ const VulkanSwapchain = struct {
       unreachable;
    }
 
+   fn _createImageView(vk_device : c.VkDevice, vk_image : c.VkImage, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!c.VkImageView {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_component_mapping = c.VkComponentMapping{
+         .r = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+         .g = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+         .b = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+         .a = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+      };
+
+      const vk_subresource_range = c.VkImageSubresourceRange{
+         .aspectMask       = c.VK_IMAGE_ASPECT_COLOR_BIT,
+         .baseMipLevel     = 0,
+         .levelCount       = 1,
+         .baseArrayLayer   = 0,
+         .layerCount       = 1,
+      };
+
+      const vk_info_create_image_view = c.VkImageViewCreateInfo{
+         .sType            = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+         .pNext            = null,
+         .flags            = 0x00000000,
+         .image            = vk_image,
+         .viewType         = c.VK_IMAGE_VIEW_TYPE_2D,
+         .format           = swapchain_configuration.pixel_format.format,
+         .components       = vk_component_mapping,
+         .subresourceRange = vk_subresource_range,
+      };
+
+      var vk_image_view : c.VkImageView = undefined;
+      vk_result = c.vkCreateImageView(vk_device, &vk_info_create_image_view, null, &vk_image_view);
+      switch (vk_result) {
+         c.VK_SUCCESS                                    => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY                   => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY                 => return error.OutOfMemory,
+         c.VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR   => return error.UnknownError,
+         else                                            => unreachable,
+      }
+      errdefer c.vkDestroyImageView(vk_device, vk_image_view, null);
+
+      return vk_image_view;
+   }
+
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      for (self.image_views) |image_view| {
+         c.vkDestroyImageView(vk_device, image_view, null);
+      }
+
+      self._allocator.free(self.images);
       c.vkDestroySwapchainKHR(vk_device, self.vk_swapchain, null);
       return;
    }
