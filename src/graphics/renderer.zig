@@ -42,8 +42,12 @@ pub const Renderer = struct {
       ) catch return error.VulkanWindowSurfaceCreateFailure;
       errdefer vulkan_surface.destroy(vulkan_instance.vk_instance);
 
+      const VULKAN_REQUIRED_DEVICE_EXTENSIONS = [_] [*:0] const u8 {
+         c.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+      };
+
       const vulkan_physical_device = VulkanPhysicalDevice.pickMostSuitable(
-         vulkan_instance.vk_instance, vulkan_surface.vk_surface,
+         vulkan_instance.vk_instance, vulkan_surface.vk_surface, &VULKAN_REQUIRED_DEVICE_EXTENSIONS,
       ) catch (return error.VulkanPhysicalDevicePickFailure) orelse return error.NoVulkanPhysicalDeviceAvailable;
 
       zest.dbg.log.info("using device \"{s}\" for vulkan rendering", .{&vulkan_physical_device.vk_physical_device_properties.deviceName});
@@ -164,7 +168,7 @@ const VulkanInstance = struct {
             }
          }
          if (layer_found == false) {
-            zest.dbg.log.err("missing required vulkan validation layer \"{s}\"", .{enabled_layer_name});
+            zest.dbg.log.err("missing required vulkan instance validation layer \"{s}\"", .{enabled_layer_name});
             enabled_layers_found = false;
          }
       }
@@ -182,7 +186,7 @@ const VulkanInstance = struct {
             }
          }
          if (extension_found == false) {
-            zest.dbg.log.err("missing required vulkan extension \"{s}\"", .{enabled_extension_name});
+            zest.dbg.log.err("missing required vulkan instance extension \"{s}\"", .{enabled_extension_name});
             enabled_extensions_found = false;
          }
       }
@@ -369,6 +373,8 @@ const VulkanPhysicalDevice = struct {
    vk_physical_device            : c.VkPhysicalDevice,
    vk_physical_device_properties : c.VkPhysicalDeviceProperties,
    vk_physical_device_features   : c.VkPhysicalDeviceFeatures,
+   vk_required_extensions_ptr    : [*] const [*:0] const u8,
+   vk_required_extensions_count  : u32,
    queue_family_indices          : QueueFamilyIndices,
 
    pub const QueueFamilyIndices = struct {
@@ -382,7 +388,7 @@ const VulkanPhysicalDevice = struct {
       SurfaceLost,
    };
 
-   pub fn pickMostSuitable(vk_instance : c.VkInstance, vk_surface : c.VkSurfaceKHR) PickError!?@This() {
+   pub fn pickMostSuitable(vk_instance : c.VkInstance, vk_surface : c.VkSurfaceKHR, vk_required_extensions : [] const [*:0] const u8) PickError!?@This() {
       var vk_result : c.VkResult = undefined;
 
       const temp_allocator = VULKAN_TEMP_HEAP.allocator();
@@ -417,6 +423,7 @@ const VulkanPhysicalDevice = struct {
          const physical_device_new = try _parsePhysicalDevice(
             vk_physical_device,
             vk_surface,
+            vk_required_extensions,
          ) orelse continue;
 
          if (physical_device_chosen == null) {
@@ -435,12 +442,16 @@ const VulkanPhysicalDevice = struct {
       return physical_device_chosen;
    }
 
-   fn _parsePhysicalDevice(vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR) PickError!?@This() {
+   fn _parsePhysicalDevice(vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR, vk_required_extensions : [] const [*:0] const u8) PickError!?@This() {
       var vk_physical_device_properties : c.VkPhysicalDeviceProperties = undefined;
       c.vkGetPhysicalDeviceProperties(vk_physical_device, &vk_physical_device_properties);
 
       var vk_physical_device_features : c.VkPhysicalDeviceFeatures = undefined;
       c.vkGetPhysicalDeviceFeatures(vk_physical_device, &vk_physical_device_features);
+      
+      if (try _deviceSupportsExtensions(vk_physical_device, vk_required_extensions) == false) {
+         return null;
+      }
 
       const queue_family_indices = try _findQueueFamilyIndices(vk_physical_device, vk_surface) orelse return null;
 
@@ -448,8 +459,57 @@ const VulkanPhysicalDevice = struct {
          .vk_physical_device              = vk_physical_device,
          .vk_physical_device_properties   = vk_physical_device_properties,
          .vk_physical_device_features     = vk_physical_device_features,
+         .vk_required_extensions_ptr      = vk_required_extensions.ptr,
+         .vk_required_extensions_count    = @intCast(vk_required_extensions.len),
          .queue_family_indices            = queue_family_indices,
       };   
+   }
+
+   fn _deviceSupportsExtensions(vk_physical_device : c.VkPhysicalDevice, vk_required_extensions : [] const [*:0] const u8) PickError!bool {
+      var vk_result : c.VkResult = undefined;
+
+      const temp_allocator = VULKAN_TEMP_HEAP.allocator();
+
+      var vk_available_extensions_count : u32 = undefined;
+      vk_result = c.vkEnumerateDeviceExtensionProperties(vk_physical_device, null, &vk_available_extensions_count, null);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_INCOMPLETE                  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_LAYER_NOT_PRESENT     => unreachable,
+         else                             => unreachable,
+      }
+
+      var vk_available_extensions = std.ArrayList(c.VkExtensionProperties).init(temp_allocator);
+      defer vk_available_extensions.deinit();
+      try vk_available_extensions.resize(@as(usize, vk_available_extensions_count));
+      vk_result = c.vkEnumerateDeviceExtensionProperties(vk_physical_device, null, &vk_available_extensions_count, vk_available_extensions.items.ptr);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_INCOMPLETE                  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_LAYER_NOT_PRESENT     => unreachable,
+         else                             => unreachable,
+      }
+
+      var required_extensions_found = true;
+      for (vk_required_extensions) |required_extension_name| {
+         var extension_found = false;
+         for (vk_available_extensions.items) |available_extension| {
+            if (c.strcmp(&available_extension.extensionName, required_extension_name) == 0) {
+               extension_found = true;
+               break;
+            }
+         }
+         if (extension_found == false) {
+            zest.dbg.log.err("missing required vulkan device extension \"{s}\"", .{required_extension_name});
+            required_extensions_found  = false;
+         }
+      }
+
+      return required_extensions_found;
    }
 
    fn _findQueueFamilyIndices(vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR) PickError!?QueueFamilyIndices {
@@ -542,9 +602,6 @@ const VulkanDevice = struct {
 
       const temp_allocator = VULKAN_TEMP_HEAP.allocator();
 
-      var vk_enabled_extensions = std.ArrayList([*:0] const u8).init(temp_allocator);
-      defer vk_enabled_extensions.deinit();
-
       var vk_available_extensions_count : u32 = undefined;
       vk_result = c.vkEnumerateDeviceExtensionProperties(vulkan_physical_device.vk_physical_device, null, &vk_available_extensions_count, null);
       switch (vk_result) {
@@ -567,24 +624,6 @@ const VulkanDevice = struct {
          c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
          c.VK_ERROR_LAYER_NOT_PRESENT     => unreachable,
          else                             => unreachable,
-      }
-
-      var enabled_extensions_found = true;
-      for (vk_enabled_extensions.items) |enabled_extension_name| {
-         var extension_found = false;
-         for (vk_available_extensions.items) |available_extension| {
-            if (c.strcmp(&available_extension.extensionName, enabled_extension_name) == 0) {
-               extension_found = true;
-               break;
-            }
-         }
-         if (extension_found == false) {
-            zest.dbg.log.err("missing required vulkan device extension \"{s}\"", .{enabled_extension_name});
-            enabled_extensions_found = false;
-         }
-      }
-      if (enabled_extensions_found == false) {
-         return error.MissingRequiredExtensions;
       }
 
       const vk_physical_device_features = c.VkPhysicalDeviceFeatures{
@@ -693,8 +732,8 @@ const VulkanDevice = struct {
          .pQueueCreateInfos         = vk_infos_create_queue.ptr,
          .enabledLayerCount         = 0,
          .ppEnabledLayerNames       = null,
-         .enabledExtensionCount     = @intCast(vk_enabled_extensions.items.len),
-         .ppEnabledExtensionNames   = vk_enabled_extensions.items.ptr,
+         .enabledExtensionCount     = vulkan_physical_device.vk_required_extensions_count,
+         .ppEnabledExtensionNames   = vulkan_physical_device.vk_required_extensions_ptr,
          .pEnabledFeatures          = &vk_physical_device_features,
       };
 
@@ -705,7 +744,7 @@ const VulkanDevice = struct {
          c.VK_ERROR_OUT_OF_HOST_MEMORY       => return error.OutOfMemory,
          c.VK_ERROR_OUT_OF_DEVICE_MEMORY     => return error.OutOfMemory,
          c.VK_ERROR_INITIALIZATION_FAILED    => return error.UnknownError,
-         c.VK_ERROR_EXTENSION_NOT_PRESENT    => unreachable,   // checked above
+         c.VK_ERROR_EXTENSION_NOT_PRESENT    => unreachable,   // checked as part of VulkanPhysicalDevice.pickMostSuitable()
          c.VK_ERROR_FEATURE_NOT_PRESENT      => return error.MissingRequiredFeatures,
          c.VK_ERROR_TOO_MANY_OBJECTS         => return error.OutOfMemory,
          c.VK_ERROR_DEVICE_LOST              => return error.DeviceLost,
