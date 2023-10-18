@@ -52,7 +52,7 @@ pub const Renderer = struct {
 
       zest.dbg.log.info("using device \"{s}\" for vulkan rendering", .{&vulkan_physical_device.vk_physical_device_properties.deviceName});
 
-      const vulkan_device = VulkanDevice.create(&vulkan_physical_device) catch return error.VulkanDeviceCreateFailure;
+      const vulkan_device = VulkanDevice.create(&vulkan_physical_device, &VULKAN_REQUIRED_DEVICE_EXTENSIONS) catch return error.VulkanDeviceCreateFailure;
       errdefer vulkan_device.destroy();
 
       return @This(){
@@ -373,8 +373,6 @@ const VulkanPhysicalDevice = struct {
    vk_physical_device            : c.VkPhysicalDevice,
    vk_physical_device_properties : c.VkPhysicalDeviceProperties,
    vk_physical_device_features   : c.VkPhysicalDeviceFeatures,
-   vk_required_extensions_ptr    : [*] const [*:0] const u8,
-   vk_required_extensions_count  : u32,
    queue_family_indices          : QueueFamilyIndices,
 
    pub const QueueFamilyIndices = struct {
@@ -463,8 +461,6 @@ const VulkanPhysicalDevice = struct {
          .vk_physical_device              = vk_physical_device,
          .vk_physical_device_properties   = vk_physical_device_properties,
          .vk_physical_device_features     = vk_physical_device_features,
-         .vk_required_extensions_ptr      = vk_required_extensions.ptr,
-         .vk_required_extensions_count    = @intCast(vk_required_extensions.len),
          .queue_family_indices            = queue_family_indices,
       };   
    }
@@ -508,7 +504,7 @@ const VulkanPhysicalDevice = struct {
             }
          }
          if (extension_found == false) {
-            zest.dbg.log.err("missing required vulkan device extension \"{s}\"", .{required_extension_name});
+            zest.dbg.log.info("missing required vulkan device extension \"{s}\"", .{required_extension_name});
             required_extensions_found  = false;
          }
       }
@@ -601,7 +597,7 @@ const VulkanDevice = struct {
       DeviceLost,
    };
 
-   pub fn create(vulkan_physical_device : * const VulkanPhysicalDevice) CreateError!@This() {
+   pub fn create(vulkan_physical_device : * const VulkanPhysicalDevice, vk_enabled_extensions : [] const [*:0] const u8) CreateError!@This() {
       var vk_result : c.VkResult = undefined;
 
       const temp_allocator = VULKAN_TEMP_HEAP.allocator();
@@ -736,8 +732,8 @@ const VulkanDevice = struct {
          .pQueueCreateInfos         = vk_infos_create_queue.ptr,
          .enabledLayerCount         = 0,
          .ppEnabledLayerNames       = null,
-         .enabledExtensionCount     = vulkan_physical_device.vk_required_extensions_count,
-         .ppEnabledExtensionNames   = vulkan_physical_device.vk_required_extensions_ptr,
+         .enabledExtensionCount     = @intCast(vk_enabled_extensions.len),
+         .ppEnabledExtensionNames   = vk_enabled_extensions.ptr,
          .pEnabledFeatures          = &vk_physical_device_features,
       };
 
@@ -748,7 +744,7 @@ const VulkanDevice = struct {
          c.VK_ERROR_OUT_OF_HOST_MEMORY       => return error.OutOfMemory,
          c.VK_ERROR_OUT_OF_DEVICE_MEMORY     => return error.OutOfMemory,
          c.VK_ERROR_INITIALIZATION_FAILED    => return error.UnknownError,
-         c.VK_ERROR_EXTENSION_NOT_PRESENT    => unreachable,   // checked as part of VulkanPhysicalDevice.pickMostSuitable()
+         c.VK_ERROR_EXTENSION_NOT_PRESENT    => return error.MissingRequiredExtensions,
          c.VK_ERROR_FEATURE_NOT_PRESENT      => return error.MissingRequiredFeatures,
          c.VK_ERROR_TOO_MANY_OBJECTS         => return error.OutOfMemory,
          c.VK_ERROR_DEVICE_LOST              => return error.DeviceLost,
