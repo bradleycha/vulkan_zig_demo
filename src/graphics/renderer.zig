@@ -613,16 +613,122 @@ const VulkanPhysicalDevice = struct {
    }
 
    fn _chooseSwapchainPixelFormat(vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR) PickError!?c.VkSurfaceFormatKHR {
-      _ = vk_physical_device;
-      _ = vk_surface;
-      unreachable;
+      var vk_result : c.VkResult = undefined;
+
+      const temp_allocator = VULKAN_TEMP_HEAP.allocator();
+
+      var vk_surface_formats_count : u32 = undefined;
+      vk_result = c.vkGetPhysicalDeviceSurfaceFormatsKHR(vk_physical_device, vk_surface, &vk_surface_formats_count, null);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_INCOMPLETE                  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_SURFACE_LOST_KHR      => return error.SurfaceLost,
+         else                             => unreachable,
+      }
+
+      var vk_surface_formats = std.ArrayList(c.VkSurfaceFormatKHR).init(temp_allocator);
+      defer vk_surface_formats.deinit();
+      try vk_surface_formats.resize(@as(usize, vk_surface_formats_count));
+      vk_result = c.vkGetPhysicalDeviceSurfaceFormatsKHR(vk_physical_device, vk_surface, &vk_surface_formats_count, vk_surface_formats.items.ptr);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_INCOMPLETE                  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_SURFACE_LOST_KHR      => return error.SurfaceLost,
+         else                             => unreachable,
+      }
+
+      if (vk_surface_formats.items.len == 0) {
+         return null;
+      }
+
+      var chosen_format       = vk_surface_formats.items[0];
+      var chosen_format_score = _assignPixelFormatScore(chosen_format);
+
+      for (vk_surface_formats.items[1..]) |current_format| {
+         const current_format_score = _assignPixelFormatScore(current_format);
+         
+         if (current_format_score > chosen_format_score) {
+            chosen_format = current_format;
+         }
+      }
+
+      return chosen_format;
+   }
+
+   fn _assignPixelFormatScore(pixel_format : c.VkSurfaceFormatKHR) u32 {
+      // This can be expanded in the future, but for now we only
+      // have a preference for RGBA8888 / SRGB Nonlinear format.
+
+      const score_format : u32 = blk: {
+         switch (pixel_format.format) {
+            c.VK_FORMAT_B8G8R8A8_SRGB  => break :blk 1,
+            else                       => break :blk 0,
+         }
+      };
+
+      const score_colorspace : u32 = blk: {
+         switch (pixel_format.colorSpace) {
+            c.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR => break :blk 1,
+            else                                => break :blk 0,
+         }
+      };
+
+      return score_format + score_colorspace;
    }
 
    fn _chooseSwapchainPresentMode(vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR, refresh_mode : Renderer.RefreshMode) PickError!?c.VkPresentModeKHR {
-      _ = vk_physical_device;
-      _ = vk_surface;
-      _ = refresh_mode;
-      unreachable;
+      var vk_result : c.VkResult = undefined;
+
+      const temp_allocator = VULKAN_TEMP_HEAP.allocator();
+
+      var vk_present_modes_count : u32 = undefined;
+      vk_result = c.vkGetPhysicalDeviceSurfacePresentModesKHR(vk_physical_device, vk_surface, &vk_present_modes_count, null);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_INCOMPLETE                  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_SURFACE_LOST_KHR      => return error.SurfaceLost,
+         else                             => unreachable,
+      }
+
+      var vk_present_modes = std.ArrayList(c.VkPresentModeKHR).init(temp_allocator);
+      defer vk_present_modes.deinit();
+      try vk_present_modes.resize(@as(usize, vk_present_modes_count));
+      vk_result = c.vkGetPhysicalDeviceSurfacePresentModesKHR(vk_physical_device, vk_surface, &vk_present_modes_count, vk_present_modes.items.ptr);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_INCOMPLETE                  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_SURFACE_LOST_KHR      => return error.SurfaceLost,
+         else                             => unreachable,
+      }
+
+      const desired_present_mode = blk: {
+         switch (refresh_mode) {
+            .SingleBuffered   => break :blk c.VK_PRESENT_MODE_IMMEDIATE_KHR,
+            .DoubleBuffered   => break :blk c.VK_PRESENT_MODE_FIFO_KHR,
+            .TripleBuffered   => break :blk c.VK_PRESENT_MODE_MAILBOX_KHR,
+         }
+      };
+
+      var desired_present_mode_found = false;
+      for (vk_present_modes.items) |vk_present_mode| {
+         if (vk_present_mode == desired_present_mode) {
+            desired_present_mode_found = true;
+            break;
+         }
+      }
+      if (desired_present_mode_found == false) {
+         return null;
+      }
+
+      return @intCast(desired_present_mode);
    }
 
    fn _assignScore(self : * const @This()) u32 {
