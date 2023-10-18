@@ -67,7 +67,7 @@ pub const Renderer = struct {
       errdefer vulkan_device.destroy();
 
       const vulkan_swapchain = VulkanSwapchain.create(
-         vulkan_device.vk_device, vulkan_surface.vk_surface, vulkan_swapchain_configuration,
+         vulkan_device.vk_device, vulkan_surface.vk_surface, &vulkan_physical_device.queue_family_indices, vulkan_swapchain_configuration,
       ) catch return error.VulkanSwapchainCreateFailure;
       errdefer vulkan_swapchain.destroy();
 
@@ -1016,19 +1016,113 @@ const VulkanSwapchain = struct {
 
    pub const CreateError = error {
       OutOfMemory,
+      DeviceLost,
+      SurfaceLost,
+      WindowInUse,
+      UnknownError,
    };
 
-   pub fn create(vk_device : c.VkDevice, vk_surface : c.VkSurfaceKHR, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!@This() {
-      _ = vk_device;
-      _ = vk_surface;
-      _ = swapchain_configuration;
+   const _QueueFamilyInfo = struct {
+      image_sharing_mode         : c.VkSharingMode,
+      queue_family_index_count   : u32,
+      queue_family_indices       : ? [*] const u32,
+   };
+
+   pub fn create(vk_device : c.VkDevice, vk_surface : c.VkSurfaceKHR, queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!@This() {
+      var self = @This(){
+         .vk_swapchain  = @ptrCast(@alignCast(c.VK_NULL_HANDLE)),
+      };
+
+      try self.recreate(vk_device, vk_surface, queue_family_indices, swapchain_configuration);
+
+      return self;
+   }
+
+   pub fn recreate(self : * @This(), vk_device : c.VkDevice, vk_surface : c.VkSurfaceKHR, queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!void {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_image_count = _chooseImageCount(swapchain_configuration.capabilities);
+
+      const QUEUE_FAMILY_INDICES_LENGTH : u32 = @intCast(@typeInfo(VulkanPhysicalDevice.QueueFamilyIndices).Struct.fields.len);
+      const vk_queue_family_array = [QUEUE_FAMILY_INDICES_LENGTH] u32 {
+         queue_family_indices.graphics,
+         queue_family_indices.presentation,
+      };
+
+      const vk_queue_family_info = _createQueueFamilyInfo(queue_family_indices, QUEUE_FAMILY_INDICES_LENGTH, &vk_queue_family_array);
+
+      const vk_info_create_swapchain = c.VkSwapchainCreateInfoKHR{
+         .sType                  = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+         .pNext                  = null,
+         .flags                  = 0x00000000,
+         .surface                = vk_surface,
+         .minImageCount          = vk_image_count,
+         .imageFormat            = swapchain_configuration.pixel_format.format,
+         .imageColorSpace        = swapchain_configuration.pixel_format.colorSpace,
+         .imageExtent            = swapchain_configuration.extent,
+         .imageArrayLayers       = 1,
+         .imageUsage             = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+         .imageSharingMode       = vk_queue_family_info.image_sharing_mode,
+         .queueFamilyIndexCount  = vk_queue_family_info.queue_family_index_count,
+         .pQueueFamilyIndices    = vk_queue_family_info.queue_family_indices,
+         .preTransform           = swapchain_configuration.capabilities.currentTransform,
+         .compositeAlpha         = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+         .presentMode            = swapchain_configuration.present_mode,
+         .clipped                = c.VK_TRUE,
+         .oldSwapchain           = self.vk_swapchain,
+      };
+
+      var vk_swapchain : c.VkSwapchainKHR = undefined;
+      vk_result = c.vkCreateSwapchainKHR(vk_device, &vk_info_create_swapchain, null, &vk_swapchain);
+      switch (vk_result) {
+         c.VK_SUCCESS                           => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY          => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY        => return error.OutOfMemory,
+         c.VK_ERROR_DEVICE_LOST                 => return error.DeviceLost,
+         c.VK_ERROR_SURFACE_LOST_KHR            => return error.SurfaceLost,
+         c.VK_ERROR_NATIVE_WINDOW_IN_USE_KHR    => return error.WindowInUse,
+         c.VK_ERROR_INITIALIZATION_FAILED       => return error.UnknownError,
+         c.VK_ERROR_COMPRESSION_EXHAUSTED_EXT   => return error.OutOfMemory,
+         else                                   => unreachable,
+      }
+      errdefer c.vkDestroySwapchainKHR(vk_device, vk_swapchain, null);
+
+      self.vk_swapchain = vk_swapchain;
+      return;
+   }
+
+   fn _chooseImageCount(vk_swapchain_capabilities : c.VkSurfaceCapabilitiesKHR) u32 {
+      const count_min = vk_swapchain_capabilities.minImageCount;
+      const count_max = vk_swapchain_capabilities.maxImageCount;
+
+      switch (count_max == 0 or count_min < count_max) {
+         true  => return count_min + 1,
+         false => return count_min,
+      }
+
+      unreachable;
+   }
+
+   fn _createQueueFamilyInfo(queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, queue_family_array_count : u32, queue_family_array_ptr : [*] const u32) _QueueFamilyInfo {
+      switch (queue_family_indices.graphics != queue_family_indices.presentation) {
+         true  => return .{
+            .image_sharing_mode        = c.VK_SHARING_MODE_CONCURRENT,
+            .queue_family_index_count  = queue_family_array_count,
+            .queue_family_indices      = queue_family_array_ptr,
+         },
+         false => return .{
+            .image_sharing_mode        = c.VK_SHARING_MODE_EXCLUSIVE,
+            .queue_family_index_count  = 0,
+            .queue_family_indices      = null,
+         },
+      }
+
       unreachable;
    }
 
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
-      _ = self;
-      _ = vk_device;
-      unreachable;
+      c.vkDestroySwapchainKHR(vk_device, self.vk_swapchain, null);
+      return;
    }
 };
 
