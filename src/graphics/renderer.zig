@@ -450,10 +450,14 @@ const VulkanPhysicalDevice = struct {
       c.vkGetPhysicalDeviceFeatures(vk_physical_device, &vk_physical_device_features);
       
       if (try _deviceSupportsExtensions(vk_physical_device, vk_required_extensions) == false) {
+         zest.dbg.log.info("device \"{s}\" does not support required extensions, choosing new device", .{vk_physical_device_properties.deviceName});
          return null;
       }
 
-      const queue_family_indices = try _findQueueFamilyIndices(vk_physical_device, vk_surface) orelse return null;
+      const queue_family_indices = try _findQueueFamilyIndices(vk_physical_device, vk_surface) orelse {
+         zest.dbg.log.info("device \"{s}\" does not support required queue families, choosing new device", .{vk_physical_device_properties.deviceName});
+         return null;
+      };
 
       return @This(){
          .vk_physical_device              = vk_physical_device,
