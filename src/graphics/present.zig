@@ -171,6 +171,19 @@ pub const Window = struct {
       return c.glfwCreateWindowSurface(instance, self._glfw_window, allocator, surface);
    }
 
+   pub fn getVulkanFramebufferExtent(
+      self  : * const @This(),
+   ) c.VkExtent2D {
+      var width   : c_int = undefined;
+      var height  : c_int = undefined;
+      c.glfwGetFramebufferSize(self._glfw_window, &width, &height);
+
+      return c.VkExtent2D{
+         .width   = @intCast(width),
+         .height  = @intCast(height),
+      };
+   }
+
    pub fn requiredVulkanExtensions() [] [*:0] const u8 {
       var count : u32 = undefined;
       const ptr : [*c] [*:0] const u8 = @ptrCast(c.glfwGetRequiredInstanceExtensions(&count));
