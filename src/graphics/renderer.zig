@@ -26,6 +26,7 @@ pub const Renderer = struct {
       VulkanInstanceCreateFailure,
       VulkanPhysicalDevicePickFailure,
       NoVulkanPhysicalDeviceAvailable,
+      VulkanDeviceCreateFailure,
    };
 
    pub fn create(window : * const f_present.Window, allocator : std.mem.Allocator, create_options : CreateOptions) CreateError!@This() {
@@ -485,19 +486,189 @@ const VulkanPhysicalDevice = struct {
 
 const VulkanDevice = struct {
    vk_device   : c.VkDevice,
+   queues      : Queues,
+
+   pub const Queues = struct {
+      graphics : c.VkQueue,
+   };
 
    pub const CreateError = error {
-      
+      OutOfMemory,
+      UnknownError,
+      MissingRequiredExtensions,
+      MissingRequiredFeatures,
+      DeviceLost,
    };
 
    pub fn create(vulkan_physical_device : * const VulkanPhysicalDevice) CreateError!@This() {
-      _ = vulkan_physical_device;
-      unreachable;
+      var vk_result : c.VkResult = undefined;
+
+      const temp_allocator = VULKAN_TEMP_HEAP.allocator();
+
+      var vk_enabled_extensions = std.ArrayList([*:0] const u8).init(temp_allocator);
+      defer vk_enabled_extensions.deinit();
+
+      var vk_available_extensions_count : u32 = undefined;
+      vk_result = c.vkEnumerateDeviceExtensionProperties(vulkan_physical_device.vk_physical_device, null, &vk_available_extensions_count, null);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_INCOMPLETE                  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_LAYER_NOT_PRESENT     => unreachable,
+         else                             => unreachable,
+      }
+
+      var vk_available_extensions = std.ArrayList(c.VkExtensionProperties).init(temp_allocator);
+      defer vk_available_extensions.deinit();
+      try vk_available_extensions.resize(@as(usize, vk_available_extensions_count));
+      vk_result = c.vkEnumerateDeviceExtensionProperties(vulkan_physical_device.vk_physical_device, null, &vk_available_extensions_count, vk_available_extensions.items.ptr);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_INCOMPLETE                  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_LAYER_NOT_PRESENT     => unreachable,
+         else                             => unreachable,
+      }
+
+      var enabled_extensions_found = true;
+      for (vk_enabled_extensions.items) |enabled_extension_name| {
+         var extension_found = false;
+         for (vk_available_extensions.items) |available_extension| {
+            if (c.strcmp(&available_extension.extensionName, enabled_extension_name) == 0) {
+               extension_found = true;
+               break;
+            }
+         }
+         if (extension_found == false) {
+            zest.dbg.log.err("missing required vulkan device extension \"{s}\"", .{enabled_extension_name});
+            enabled_extensions_found = false;
+         }
+      }
+      if (enabled_extensions_found == false) {
+         return error.MissingRequiredExtensions;
+      }
+
+      const vk_physical_device_features = c.VkPhysicalDeviceFeatures{
+         .robustBufferAccess                       = c.VK_FALSE,
+         .fullDrawIndexUint32                      = c.VK_FALSE,
+         .imageCubeArray                           = c.VK_FALSE,
+         .independentBlend                         = c.VK_FALSE,
+         .geometryShader                           = c.VK_FALSE,
+         .tessellationShader                       = c.VK_FALSE,
+         .sampleRateShading                        = c.VK_FALSE,
+         .dualSrcBlend                             = c.VK_FALSE,
+         .logicOp                                  = c.VK_FALSE,
+         .multiDrawIndirect                        = c.VK_FALSE,
+         .drawIndirectFirstInstance                = c.VK_FALSE,
+         .depthClamp                               = c.VK_FALSE,
+         .depthBiasClamp                           = c.VK_FALSE,
+         .fillModeNonSolid                         = c.VK_FALSE,
+         .depthBounds                              = c.VK_FALSE,
+         .wideLines                                = c.VK_FALSE,
+         .largePoints                              = c.VK_FALSE,
+         .alphaToOne                               = c.VK_FALSE,
+         .multiViewport                            = c.VK_FALSE,
+         .samplerAnisotropy                        = c.VK_FALSE,
+         .textureCompressionETC2                   = c.VK_FALSE,
+         .textureCompressionASTC_LDR               = c.VK_FALSE,
+         .textureCompressionBC                     = c.VK_FALSE,
+         .occlusionQueryPrecise                    = c.VK_FALSE,
+         .pipelineStatisticsQuery                  = c.VK_FALSE,
+         .vertexPipelineStoresAndAtomics           = c.VK_FALSE,
+         .fragmentStoresAndAtomics                 = c.VK_FALSE,
+         .shaderTessellationAndGeometryPointSize   = c.VK_FALSE,
+         .shaderImageGatherExtended                = c.VK_FALSE,
+         .shaderStorageImageExtendedFormats        = c.VK_FALSE,
+         .shaderStorageImageMultisample            = c.VK_FALSE,
+         .shaderStorageImageReadWithoutFormat      = c.VK_FALSE,
+         .shaderStorageImageWriteWithoutFormat     = c.VK_FALSE,
+         .shaderUniformBufferArrayDynamicIndexing  = c.VK_FALSE,
+         .shaderSampledImageArrayDynamicIndexing   = c.VK_FALSE,
+         .shaderStorageBufferArrayDynamicIndexing  = c.VK_FALSE,
+         .shaderStorageImageArrayDynamicIndexing   = c.VK_FALSE,
+         .shaderClipDistance                       = c.VK_FALSE,
+         .shaderCullDistance                       = c.VK_FALSE,
+         .shaderFloat64                            = c.VK_FALSE,
+         .shaderInt64                              = c.VK_FALSE,
+         .shaderInt16                              = c.VK_FALSE,
+         .shaderResourceResidency                  = c.VK_FALSE,
+         .shaderResourceMinLod                     = c.VK_FALSE,
+         .sparseBinding                            = c.VK_FALSE,
+         .sparseResidencyBuffer                    = c.VK_FALSE,
+         .sparseResidencyImage2D                   = c.VK_FALSE,
+         .sparseResidencyImage3D                   = c.VK_FALSE,
+         .sparseResidency2Samples                  = c.VK_FALSE,
+         .sparseResidency4Samples                  = c.VK_FALSE,
+         .sparseResidency8Samples                  = c.VK_FALSE,
+         .sparseResidency16Samples                 = c.VK_FALSE,
+         .sparseResidencyAliased                   = c.VK_FALSE,
+         .variableMultisampleRate                  = c.VK_FALSE,
+         .inheritedQueries                         = c.VK_FALSE,
+      };
+
+      const EXPECTED_QUEUE_FAMILY_COUNT = @typeInfo(VulkanPhysicalDevice.QueueFamilyIndices).Struct.fields.len;
+
+      const vk_queue_priority = [EXPECTED_QUEUE_FAMILY_COUNT] f32 {1.0};
+
+      const QUEUE_INDEX_GRAPHICS = 0;
+
+      const vk_infos_create_queue = [EXPECTED_QUEUE_FAMILY_COUNT] c.VkDeviceQueueCreateInfo {
+         .{
+            .sType            = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .pNext            = null,
+            .flags            = 0x00000000,
+            .queueFamilyIndex = vulkan_physical_device.queue_family_indices.graphics,
+            .queueCount       = 1,
+            .pQueuePriorities = &vk_queue_priority,
+         },
+      };
+
+      const vk_info_create_device = c.VkDeviceCreateInfo{
+         .sType                     = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+         .pNext                     = null,
+         .flags                     = 0x00000000,
+         .queueCreateInfoCount      = @intCast(vk_infos_create_queue.len),
+         .pQueueCreateInfos         = &vk_infos_create_queue,
+         .enabledLayerCount         = 0,
+         .ppEnabledLayerNames       = null,
+         .enabledExtensionCount     = @intCast(vk_enabled_extensions.items.len),
+         .ppEnabledExtensionNames   = vk_enabled_extensions.items.ptr,
+         .pEnabledFeatures          = &vk_physical_device_features,
+      };
+
+      var vk_device : c.VkDevice = undefined;
+      vk_result = c.vkCreateDevice(vulkan_physical_device.vk_physical_device, &vk_info_create_device, null, &vk_device);
+      switch (vk_result) {
+         c.VK_SUCCESS                        => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY       => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY     => return error.OutOfMemory,
+         c.VK_ERROR_INITIALIZATION_FAILED    => return error.UnknownError,
+         c.VK_ERROR_EXTENSION_NOT_PRESENT    => unreachable,   // checked above
+         c.VK_ERROR_FEATURE_NOT_PRESENT      => return error.MissingRequiredFeatures,
+         c.VK_ERROR_TOO_MANY_OBJECTS         => return error.OutOfMemory,
+         c.VK_ERROR_DEVICE_LOST              => return error.DeviceLost,
+         else                                => unreachable,
+      }
+      errdefer c.vkDestroyDevice(vk_device, null);
+
+      var vk_queue_graphics : c.VkQueue = undefined;
+      c.vkGetDeviceQueue(vk_device, vulkan_physical_device.queue_family_indices.graphics, QUEUE_INDEX_GRAPHICS, &vk_queue_graphics);
+
+      const queues = Queues{
+         .graphics   = vk_queue_graphics,
+      };
+
+      return @This(){
+         .vk_device  = vk_device,
+         .queues     = queues,
+      };
    }
 
    pub fn destroy(self : @This()) void {
-      _ = self;
-      unreachable;
+      c.vkDestroyDevice(self.vk_device, null);
+      return;
    }
 };
 
