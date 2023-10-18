@@ -861,13 +861,7 @@ const VulkanSwapchainConfiguration = struct {
       const pixel_format   = try _chooseSwapchainPixelFormat(vk_physical_device, vk_surface) orelse return null;
       const present_mode   = try _chooseSwapchainPresentMode(vk_physical_device, vk_surface, refresh_mode) orelse return null;
 
-      const extent = blk: {
-         const vk_extent = vk_surface_capabilities.currentExtent;
-         switch (vk_extent.width == std.math.maxInt(u32) or vk_extent.height == std.math.maxInt(u32)) {
-            true  => break :blk window.getVulkanFramebufferExtent(),
-            false => break :blk vk_extent,
-         }
-      };
+      const extent = _chooseSwapchainExtent(vk_surface_capabilities, window);
 
       return @This(){
          .capabilities  = vk_surface_capabilities,
@@ -994,6 +988,26 @@ const VulkanSwapchainConfiguration = struct {
       }
 
       return @intCast(desired_present_mode);
+   }
+
+   fn _chooseSwapchainExtent(vk_surface_capabilities : c.VkSurfaceCapabilitiesKHR, window : * const f_present.Window) c.VkExtent2D {
+      const vk_extent = vk_surface_capabilities.currentExtent;
+
+      if (vk_extent.width != std.math.maxInt(u32) and vk_extent.height != std.math.maxInt(u32)) {
+         return vk_extent;
+      }
+
+      const vk_extent_min = vk_surface_capabilities.minImageExtent;
+      const vk_extent_max = vk_surface_capabilities.maxImageExtent;
+
+      const window_extent = window.getVulkanFramebufferExtent();
+
+      const clamped_extent = c.VkExtent2D{
+         .width   = std.math.clamp(window_extent.width, vk_extent_min.width, vk_extent_max.width),
+         .height  = std.math.clamp(window_extent.height, vk_extent_min.height, vk_extent_max.height),
+      };
+
+      return clamped_extent;
    }
 };
 
