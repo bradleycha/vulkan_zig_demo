@@ -1,17 +1,14 @@
 const std         = @import("std");
 const zest        = @import("zig-essential-tools");
 const f_present   = @import("present.zig");
-const c           = @cImport({
-   @cInclude("string.h");
-   @cInclude("vulkan/vulkan.h");
-   @cInclude("GLFW/glfw3.h");
-});
+const c           = @import("cimports.zig");
 
 const VULKAN_TEMP_HEAP = zest.mem.SingleScopeHeap(8 * 1024 * 1024);
 
 pub const Renderer = struct {
    _allocator              : std.mem.Allocator,
    _vulkan_instance        : VulkanInstance,
+   _vulkan_surface         : VulkanSurface,
    _vulkan_physical_device : VulkanPhysicalDevice,
    _vulkan_device          : VulkanDevice,
 
@@ -24,6 +21,7 @@ pub const Renderer = struct {
    pub const CreateError = error {
       OutOfMemory,
       VulkanInstanceCreateFailure,
+      VulkanWindowSurfaceCreateFailure,
       VulkanPhysicalDevicePickFailure,
       NoVulkanPhysicalDeviceAvailable,
       VulkanDeviceCreateFailure,
@@ -39,8 +37,13 @@ pub const Renderer = struct {
       }) catch return error.VulkanInstanceCreateFailure;
       errdefer vulkan_instance.destroy();
 
+      const vulkan_surface = VulkanSurface.create(
+         vulkan_instance.vk_instance, window,
+      ) catch return error.VulkanWindowSurfaceCreateFailure;
+      errdefer vulkan_surface.destroy(vulkan_instance.vk_instance);
+
       const vulkan_physical_device = VulkanPhysicalDevice.pickMostSuitable(
-         vulkan_instance.vk_instance,
+         vulkan_instance.vk_instance, vulkan_surface.vk_surface,
       ) catch (return error.VulkanPhysicalDevicePickFailure) orelse return error.NoVulkanPhysicalDeviceAvailable;
 
       zest.dbg.log.info("using device \"{s}\" for vulkan rendering", .{&vulkan_physical_device.vk_physical_device_properties.deviceName});
@@ -48,11 +51,10 @@ pub const Renderer = struct {
       const vulkan_device = VulkanDevice.create(&vulkan_physical_device) catch return error.VulkanDeviceCreateFailure;
       errdefer vulkan_device.destroy();
 
-      _ = window;
-
       return @This(){
          ._allocator                = allocator,
          ._vulkan_instance          = vulkan_instance,
+         ._vulkan_surface           = vulkan_surface,
          ._vulkan_physical_device   = vulkan_physical_device,
          ._vulkan_device            = vulkan_device,
       };
@@ -60,6 +62,7 @@ pub const Renderer = struct {
 
    pub fn destroy(self : @This()) void {
       self._vulkan_device.destroy();
+      self._vulkan_surface.destroy(self._vulkan_instance.vk_instance);
       self._vulkan_instance.destroy();
       return;
    }
@@ -369,15 +372,17 @@ const VulkanPhysicalDevice = struct {
    queue_family_indices          : QueueFamilyIndices,
 
    pub const QueueFamilyIndices = struct {
-      graphics : u32,
+      graphics       : u32,
+      presentation   : u32,
    };
 
    pub const PickError = error {
       OutOfMemory,
       UnknownError,
+      SurfaceLost,
    };
 
-   pub fn pickMostSuitable(vk_instance : c.VkInstance) PickError!?@This() {
+   pub fn pickMostSuitable(vk_instance : c.VkInstance, vk_surface : c.VkSurfaceKHR) PickError!?@This() {
       var vk_result : c.VkResult = undefined;
 
       const temp_allocator = VULKAN_TEMP_HEAP.allocator();
@@ -411,6 +416,7 @@ const VulkanPhysicalDevice = struct {
       for (vk_physical_devices.items) |vk_physical_device| {
          const physical_device_new = try _parsePhysicalDevice(
             vk_physical_device,
+            vk_surface,
          ) orelse continue;
 
          if (physical_device_chosen == null) {
@@ -429,14 +435,14 @@ const VulkanPhysicalDevice = struct {
       return physical_device_chosen;
    }
 
-   fn _parsePhysicalDevice(vk_physical_device : c.VkPhysicalDevice) PickError!?@This() {
+   fn _parsePhysicalDevice(vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR) PickError!?@This() {
       var vk_physical_device_properties : c.VkPhysicalDeviceProperties = undefined;
       c.vkGetPhysicalDeviceProperties(vk_physical_device, &vk_physical_device_properties);
 
       var vk_physical_device_features : c.VkPhysicalDeviceFeatures = undefined;
       c.vkGetPhysicalDeviceFeatures(vk_physical_device, &vk_physical_device_features);
 
-      const queue_family_indices = try _findQueueFamilyIndices(vk_physical_device) orelse return null;
+      const queue_family_indices = try _findQueueFamilyIndices(vk_physical_device, vk_surface) orelse return null;
 
       return @This(){
          .vk_physical_device              = vk_physical_device,
@@ -446,7 +452,9 @@ const VulkanPhysicalDevice = struct {
       };   
    }
 
-   fn _findQueueFamilyIndices(vk_physical_device : c.VkPhysicalDevice) PickError!?QueueFamilyIndices {
+   fn _findQueueFamilyIndices(vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR) PickError!?QueueFamilyIndices {
+      var vk_result : c.VkResult = undefined;
+
       const temp_allocator = VULKAN_TEMP_HEAP.allocator();
 
       var vk_queue_families_count : u32 = undefined;
@@ -457,16 +465,44 @@ const VulkanPhysicalDevice = struct {
       try vk_queue_families.resize(@as(usize, vk_queue_families_count));
       c.vkGetPhysicalDeviceQueueFamilyProperties(vk_physical_device, &vk_queue_families_count, vk_queue_families.items.ptr);
 
-      var queue_family_index_graphics : ? u32 = null;
+      var queue_family_index_graphics     : ? u32 = null;
+      var queue_family_index_presentation : ? u32 = null;
 
       for (vk_queue_families.items, 0..vk_queue_families_count) |vk_queue_family, i| {
+         var vk_index : u32 = @intCast(i);
+
+         var vk_queue_supports_presentation : c.VkBool32 = undefined;
+         vk_result = c.vkGetPhysicalDeviceSurfaceSupportKHR(vk_physical_device, vk_index, vk_surface, &vk_queue_supports_presentation);
+         switch (vk_result) {
+            c.VK_SUCCESS                     => {},
+            c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+            c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+            c.VK_ERROR_SURFACE_LOST_KHR      => return error.SurfaceLost,
+            else                             => unreachable,
+         }
+
+         var queue_graphics      = false;
+         var queue_presentation  = false;
+
          if (vk_queue_family.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
-            queue_family_index_graphics = @intCast(i);
+            queue_graphics = true;
+         }
+
+         if (vk_queue_supports_presentation != c.VK_FALSE) {
+            queue_presentation = true;
+         }
+
+         if (queue_graphics == true) {
+            queue_family_index_graphics = vk_index;
+         }
+         if (queue_presentation == true) {
+            queue_family_index_presentation = vk_index;
          }
       }
 
       const queue_family_indices = QueueFamilyIndices{
-         .graphics   = queue_family_index_graphics orelse return null,
+         .graphics      = queue_family_index_graphics orelse return null,
+         .presentation  = queue_family_index_presentation orelse return null,
       };
 
       return queue_family_indices;
@@ -489,7 +525,8 @@ const VulkanDevice = struct {
    queues      : Queues,
 
    pub const Queues = struct {
-      graphics : c.VkQueue,
+      graphics       : c.VkQueue,
+      presentation   : c.VkQueue,
    };
 
    pub const CreateError = error {
@@ -608,29 +645,52 @@ const VulkanDevice = struct {
          .inheritedQueries                         = c.VK_FALSE,
       };
 
-      const EXPECTED_QUEUE_FAMILY_COUNT = @typeInfo(VulkanPhysicalDevice.QueueFamilyIndices).Struct.fields.len;
+      const MAX_QUEUE_FAMILIES = @typeInfo(VulkanPhysicalDevice.QueueFamilyIndices).Struct.fields.len;
 
-      const vk_queue_priority = [EXPECTED_QUEUE_FAMILY_COUNT] f32 {1.0};
+      // We need this mess because we need to ensure all queues have a unique queue family index.
+      // Effectively we implement a set data structure ourselves for efficiency.
+      var vk_infos_create_queue_array : [MAX_QUEUE_FAMILIES] c.VkDeviceQueueCreateInfo = undefined;
+      var vk_queue_family_indices_unique_array : [MAX_QUEUE_FAMILIES] u32 = undefined;
+      var vk_queue_family_indices_unique_count : usize = 0;
 
-      const QUEUE_INDEX_GRAPHICS = 0;
+      inline for (@typeInfo(VulkanPhysicalDevice.QueueFamilyIndices).Struct.fields) |queue_family_struct_field| {
+         const new_queue_family_index = @field(vulkan_physical_device.queue_family_indices, queue_family_struct_field.name);
 
-      const vk_infos_create_queue = [EXPECTED_QUEUE_FAMILY_COUNT] c.VkDeviceQueueCreateInfo {
-         .{
-            .sType            = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .pNext            = null,
-            .flags            = 0x00000000,
-            .queueFamilyIndex = vulkan_physical_device.queue_family_indices.graphics,
-            .queueCount       = 1,
-            .pQueuePriorities = &vk_queue_priority,
-         },
-      };
+         var is_unique = true;
+         for (vk_queue_family_indices_unique_array[0..vk_queue_family_indices_unique_count]) |existing_queue_family_index| {
+            if (new_queue_family_index == existing_queue_family_index) {
+               is_unique = false;
+               break;
+            }
+         }
+         if (is_unique == true) {
+            vk_queue_family_indices_unique_array[vk_queue_family_indices_unique_count] = new_queue_family_index;
+            vk_queue_family_indices_unique_count += 1;
+         }
+      }
+
+      var vk_infos_create_queue = vk_infos_create_queue_array[0..vk_queue_family_indices_unique_count];
+      var vk_queue_family_indices_unique = vk_queue_family_indices_unique_array[0..vk_queue_family_indices_unique_count];
+
+      const vk_queue_priority : f32 = 1.0;
+
+      for (vk_infos_create_queue, vk_queue_family_indices_unique) |*vk_info_create_queue, queue_family_index| {
+         vk_info_create_queue.* = .{
+            .sType               = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .pNext               = null,
+            .flags               = 0x00000000,
+            .queueFamilyIndex    = queue_family_index,
+            .queueCount          = 1,
+            .pQueuePriorities    = &vk_queue_priority,
+         };
+      }
 
       const vk_info_create_device = c.VkDeviceCreateInfo{
          .sType                     = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
          .pNext                     = null,
          .flags                     = 0x00000000,
          .queueCreateInfoCount      = @intCast(vk_infos_create_queue.len),
-         .pQueueCreateInfos         = &vk_infos_create_queue,
+         .pQueueCreateInfos         = vk_infos_create_queue.ptr,
          .enabledLayerCount         = 0,
          .ppEnabledLayerNames       = null,
          .enabledExtensionCount     = @intCast(vk_enabled_extensions.items.len),
@@ -654,10 +714,14 @@ const VulkanDevice = struct {
       errdefer c.vkDestroyDevice(vk_device, null);
 
       var vk_queue_graphics : c.VkQueue = undefined;
-      c.vkGetDeviceQueue(vk_device, vulkan_physical_device.queue_family_indices.graphics, QUEUE_INDEX_GRAPHICS, &vk_queue_graphics);
+      c.vkGetDeviceQueue(vk_device, vulkan_physical_device.queue_family_indices.graphics, 0, &vk_queue_graphics);
+
+      var vk_queue_presentation : c.VkQueue = undefined;
+      c.vkGetDeviceQueue(vk_device, vulkan_physical_device.queue_family_indices.presentation, 0, &vk_queue_presentation);
 
       const queues = Queues{
-         .graphics   = vk_queue_graphics,
+         .graphics      = vk_queue_graphics,
+         .presentation  = vk_queue_presentation,
       };
 
       return @This(){
@@ -668,6 +732,36 @@ const VulkanDevice = struct {
 
    pub fn destroy(self : @This()) void {
       c.vkDestroyDevice(self.vk_device, null);
+      return;
+   }
+};
+
+const VulkanSurface = struct {
+   vk_surface  : c.VkSurfaceKHR,
+
+   pub const CreateError = error {
+      OutOfMemory,
+      UnknownError,
+   };
+
+   pub fn create(vk_instance : c.VkInstance, window : * const f_present.Window) CreateError!@This() {
+      var vk_result : c.VkResult = undefined;
+
+      var vk_surface : c.VkSurfaceKHR = undefined;
+      vk_result = window.createVulkanSurface(vk_instance, null, &vk_surface);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => return error.UnknownError,
+      }
+      errdefer c.vkDestroySurfaceKHR(vk_instance, vk_surface, null);
+
+      return @This(){.vk_surface = vk_surface};
+   }
+
+   pub fn destroy(self : @This(), vk_instance : c.VkInstance) void {
+      c.vkDestroySurfaceKHR(vk_instance, self.vk_surface, null);
       return;
    }
 };

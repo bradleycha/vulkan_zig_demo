@@ -1,10 +1,7 @@
 const std         = @import("std");
 const f_input     = @import("input.zig");
 const f_renderer  = @import("renderer.zig");
-const c           = @cImport({
-   @cInclude("vulkan/vulkan.h");
-   @cInclude("GLFW/glfw3.h");
-});
+const c           = @import("cimports.zig");
 
 pub const Compositor = struct {
    pub const ConnectError = error {
@@ -168,7 +165,7 @@ pub const Window = struct {
    pub fn createVulkanSurface(
       self        : * const @This(),
       instance    : c.VkInstance,
-      allocator   : * const c.VkAllocationCallbacks,
+      allocator   : ? * const c.VkAllocationCallbacks,
       surface     : * c.VkSurfaceKHR,
    ) c.VkResult {
       return c.glfwCreateWindowSurface(instance, self._glfw_window, allocator, surface);
