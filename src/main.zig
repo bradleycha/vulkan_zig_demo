@@ -30,9 +30,10 @@ pub fn main() MainError!void {
 
    zest.dbg.log.info("creating vulkan renderer", .{});
    var renderer = window.createRenderer(allocator, .{
-      .debugging  = zest.dbg.enable,
-      .name       = PROGRAM_SEXY_NAME,
-      .version    = 0x00000000,
+      .debugging     = zest.dbg.enable,
+      .name          = PROGRAM_SEXY_NAME,
+      .version       = 0x00000000,
+      .refresh_mode  = .TripleBuffered,
    }) catch return error.RendererCreateFailure;
    defer renderer.destroy();
 

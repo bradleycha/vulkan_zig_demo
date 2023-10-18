@@ -13,9 +13,16 @@ pub const Renderer = struct {
    _vulkan_device          : VulkanDevice,
 
    pub const CreateOptions = struct {
-      debugging   : bool,
-      name        : [*:0] const u8,
-      version     : u32,
+      debugging      : bool,
+      name           : [*:0] const u8,
+      version        : u32,
+      refresh_mode   : RefreshMode,
+   };
+
+   pub const RefreshMode = enum {
+      SingleBuffered,
+      DoubleBuffered,
+      TripleBuffered,
    };
    
    pub const CreateError = error {
@@ -47,7 +54,7 @@ pub const Renderer = struct {
       };
 
       const vulkan_physical_device = VulkanPhysicalDevice.pickMostSuitable(
-         vulkan_instance.vk_instance, vulkan_surface.vk_surface, &VULKAN_REQUIRED_DEVICE_EXTENSIONS,
+         vulkan_instance.vk_instance, vulkan_surface.vk_surface, &VULKAN_REQUIRED_DEVICE_EXTENSIONS, create_options.refresh_mode,
       ) catch (return error.VulkanPhysicalDevicePickFailure) orelse return error.NoVulkanPhysicalDeviceAvailable;
 
       zest.dbg.log.info("using device \"{s}\" for vulkan rendering", .{&vulkan_physical_device.vk_physical_device_properties.deviceName});
@@ -374,10 +381,17 @@ const VulkanPhysicalDevice = struct {
    vk_physical_device_properties : c.VkPhysicalDeviceProperties,
    vk_physical_device_features   : c.VkPhysicalDeviceFeatures,
    queue_family_indices          : QueueFamilyIndices,
+   swapchain_configuration       : SwapchainConfiguration,
 
    pub const QueueFamilyIndices = struct {
       graphics       : u32,
       presentation   : u32,
+   };
+
+   pub const SwapchainConfiguration = struct {
+      capabilities   : c.VkSurfaceCapabilitiesKHR,
+      pixel_format   : c.VkSurfaceFormatKHR,
+      present_mode   : c.VkPresentModeKHR,
    };
 
    pub const PickError = error {
@@ -386,7 +400,7 @@ const VulkanPhysicalDevice = struct {
       SurfaceLost,
    };
 
-   pub fn pickMostSuitable(vk_instance : c.VkInstance, vk_surface : c.VkSurfaceKHR, vk_required_extensions : [] const [*:0] const u8) PickError!?@This() {
+   pub fn pickMostSuitable(vk_instance : c.VkInstance, vk_surface : c.VkSurfaceKHR, vk_required_extensions : [] const [*:0] const u8, refresh_mode : Renderer.RefreshMode) PickError!?@This() {
       var vk_result : c.VkResult = undefined;
 
       const temp_allocator = VULKAN_TEMP_HEAP.allocator();
@@ -422,6 +436,7 @@ const VulkanPhysicalDevice = struct {
             vk_physical_device,
             vk_surface,
             vk_required_extensions,
+            refresh_mode,
          ) orelse continue;
 
          if (physical_device_chosen == null) {
@@ -440,7 +455,7 @@ const VulkanPhysicalDevice = struct {
       return physical_device_chosen;
    }
 
-   fn _parsePhysicalDevice(vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR, vk_required_extensions : [] const [*:0] const u8) PickError!?@This() {
+   fn _parsePhysicalDevice(vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR, vk_required_extensions : [] const [*:0] const u8, refresh_mode : Renderer.RefreshMode) PickError!?@This() {
       var vk_physical_device_properties : c.VkPhysicalDeviceProperties = undefined;
       c.vkGetPhysicalDeviceProperties(vk_physical_device, &vk_physical_device_properties);
 
@@ -457,11 +472,17 @@ const VulkanPhysicalDevice = struct {
          return null;
       };
 
+      const swapchain_configuration = try _chooseSwapchainConfiguration(vk_physical_device, vk_surface, refresh_mode) orelse {
+         zest.dbg.log.info("device \"{s}\" does not support required swapchain configuration, choosing new device", .{vk_physical_device_properties.deviceName});
+         return null;
+      };
+
       return @This(){
          .vk_physical_device              = vk_physical_device,
          .vk_physical_device_properties   = vk_physical_device_properties,
          .vk_physical_device_features     = vk_physical_device_features,
          .queue_family_indices            = queue_family_indices,
+         .swapchain_configuration         = swapchain_configuration,
       };   
    }
 
@@ -566,6 +587,42 @@ const VulkanPhysicalDevice = struct {
       };
 
       return queue_family_indices;
+   }
+
+   fn _chooseSwapchainConfiguration(vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR, refresh_mode : Renderer.RefreshMode) PickError!?SwapchainConfiguration {
+      var vk_result : c.VkResult = undefined;
+
+      var vk_surface_capabilities : c.VkSurfaceCapabilitiesKHR = undefined;
+      vk_result = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_physical_device, vk_surface, &vk_surface_capabilities);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_SURFACE_LOST_KHR      => return error.SurfaceLost,
+         else                             => unreachable,
+      }
+
+      const pixel_format   = try _chooseSwapchainPixelFormat(vk_physical_device, vk_surface) orelse return null;
+      const present_mode   = try _chooseSwapchainPresentMode(vk_physical_device, vk_surface, refresh_mode) orelse return null;
+
+      return SwapchainConfiguration{
+         .capabilities  = vk_surface_capabilities,
+         .pixel_format  = pixel_format,
+         .present_mode  = present_mode,
+      };
+   }
+
+   fn _chooseSwapchainPixelFormat(vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR) PickError!?c.VkSurfaceFormatKHR {
+      _ = vk_physical_device;
+      _ = vk_surface;
+      unreachable;
+   }
+
+   fn _chooseSwapchainPresentMode(vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR, refresh_mode : Renderer.RefreshMode) PickError!?c.VkPresentModeKHR {
+      _ = vk_physical_device;
+      _ = vk_surface;
+      _ = refresh_mode;
+      unreachable;
    }
 
    fn _assignScore(self : * const @This()) u32 {
