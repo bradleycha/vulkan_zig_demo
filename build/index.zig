@@ -215,7 +215,7 @@ pub const ShaderModuleStep = struct {
       var shader_reader_buffer = std.io.BufferedReader(BUFFERED_IO_SIZE, std.fs.File.Reader){.unbuffered_reader = shader_file.reader()};
       var shader_reader        = shader_reader_buffer.reader();
 
-      try output_writer.print("pub const {s} = [_] u8 {{", .{shader.identifier});
+      try output_writer.print("pub const {s} align(@alignOf(u32)) = [_] u8 {{", .{shader.identifier});
 
       while (shader_reader.readByte()) |byte| {
          try output_writer.print("{},", .{byte});

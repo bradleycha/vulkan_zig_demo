@@ -19,8 +19,8 @@ pub const Renderer = struct {
       name                 : [*:0] const u8,
       version              : u32,
       refresh_mode         : RefreshMode,
-      shader_spv_vertex    : [] const u8,
-      shader_spv_fragment  : [] const u8,
+      shader_spv_vertex    : [] align(@alignOf(u32)) const u8,
+      shader_spv_fragment  : [] align(@alignOf(u32)) const u8,
    };
 
    pub const RefreshMode = enum {
@@ -77,12 +77,12 @@ pub const Renderer = struct {
          &vulkan_physical_device.queue_family_indices,
          vulkan_swapchain_configuration,
       ) catch return error.VulkanSwapchainCreateFailure;
-      errdefer vulkan_swapchain.destroy();
+      errdefer vulkan_swapchain.destroy(vulkan_device.vk_device);
 
       const vulkan_graphics_pipeline = VulkanGraphicsPipeline.create(vulkan_device.vk_device, .{
          .spv_vertex    = create_options.shader_spv_vertex,
          .spv_fragment  = create_options.shader_spv_fragment,
-      }) catch return error.VulkanGraphicsPipelineCreateError;
+      }) catch return error.VulkanGraphicsPipelineCreateFailure;
       errdefer vulkan_graphics_pipeline.destroy(vulkan_device.vk_device);
 
       return @This(){
@@ -1240,18 +1240,74 @@ const VulkanSwapchain = struct {
 
 const VulkanGraphicsPipeline = struct {
    pub const CreateOptions = struct {
-      spv_vertex     : [] const u8,
-      spv_fragment   : [] const u8,
+      spv_vertex     : [] align(@alignOf(u32)) const u8,
+      spv_fragment   : [] align(@alignOf(u32)) const u8,
    };
 
    pub const CreateError = error {
-
+      OutOfMemory,
+      InvalidShader,
    };
 
    pub fn create(vk_device : c.VkDevice, create_options : CreateOptions) CreateError!@This() {
-      _ = vk_device;
-      _ = create_options;
+      var vk_result : c.VkResult = undefined;
+
+      const vk_shader_module_vertex    = try _createShaderModule(vk_device, create_options.spv_vertex);
+      defer c.vkDestroyShaderModule(vk_device, vk_shader_module_vertex, null);
+
+      const vk_shader_module_fragment  = try _createShaderModule(vk_device, create_options.spv_fragment);
+      defer c.vkDestroyShaderModule(vk_device, vk_shader_module_fragment, null);
+
+      const vk_shader_stages = [_] c.VkPipelineShaderStageCreateInfo {
+         .{
+            .sType               = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .pNext               = null,
+            .flags               = 0x00000000,
+            .stage               = c.VK_SHADER_STAGE_VERTEX_BIT,
+            .module              = vk_shader_module_vertex,
+            .pName               = "main",
+            .pSpecializationInfo = null,
+         },
+         .{
+            .sType               = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .pNext               = null,
+            .flags               = 0x00000000,
+            .stage               = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module              = vk_shader_module_fragment,
+            .pName               = "main",
+            .pSpecializationInfo = null,
+         },
+      };
+
+      // TODO: Fixed function pipeline and pipeline creation
+      _ = vk_shader_stages;
+      _ = vk_result;
       unreachable;
+   }
+
+   fn _createShaderModule(vk_device : c.VkDevice, bytecode : [] align(@alignOf(u32)) const u8) CreateError!c.VkShaderModule {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_info_create_shader_module = c.VkShaderModuleCreateInfo{
+         .sType      = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+         .pNext      = null,
+         .flags      = 0x00000000,
+         .codeSize   = @intCast(bytecode.len),
+         .pCode      = @ptrCast(bytecode.ptr),
+      };
+
+      var vk_shader_module : c.VkShaderModule = undefined;
+      vk_result = c.vkCreateShaderModule(vk_device, &vk_info_create_shader_module, null, &vk_shader_module);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_INVALID_SHADER_NV     => return error.InvalidShader,
+         else                             => unreachable,
+      }
+      errdefer c.vkDestroyShaderModule(vk_device, vk_shader_module, null);
+
+      return vk_shader_module;
    }
 
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
