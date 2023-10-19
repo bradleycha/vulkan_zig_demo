@@ -1,6 +1,7 @@
-const std = @import("std");
+const std   = @import("std");
+const bd    = @import("build/index.zig");
 
-pub fn build(b : * std.Build) void {
+pub fn build(b : * std.Build) anyerror!void {
    const opt_target_platform  = b.standardTargetOptions(.{});
    const opt_optimize_mode    = b.standardOptimizeOption(.{});
 
@@ -44,6 +45,21 @@ pub fn build(b : * std.Build) void {
       .root_source_file = .{.path = "src/main.zig"},
       .target           = opt_target_platform,
       .optimize         = opt_optimize_mode,
+   });
+
+   // TODO: Use build runner and makeFn to do this better
+   // Above will allow us to use caching, parallelism, temp directory, etc.
+   try bd.ShaderCompile.add(b, exe_main, .{
+      .input_path    = "src/shaders/vertex.glsl",
+      .output_path   = "res/shaders/vertex.spv",
+      .stage         = .vertex,
+      .optimize      = opt_optimize_mode,
+   });
+   try bd.ShaderCompile.add(b, exe_main, .{
+      .input_path    = "src/shaders/fragment.glsl",
+      .output_path   = "res/shaders/fragment.spv",
+      .stage         = .fragment,
+      .optimize      = opt_optimize_mode,
    });
 
    exe_main.linkLibC();

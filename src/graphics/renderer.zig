@@ -6,18 +6,21 @@ const c           = @import("cimports.zig");
 const VULKAN_TEMP_HEAP = zest.mem.SingleScopeHeap(8 * 1024 * 1024);
 
 pub const Renderer = struct {
-   _allocator              : std.mem.Allocator,
-   _vulkan_instance        : VulkanInstance,
-   _vulkan_surface         : VulkanSurface,
-   _vulkan_physical_device : VulkanPhysicalDevice,
-   _vulkan_device          : VulkanDevice,
-   _vulkan_swapchain       : VulkanSwapchain,
+   _allocator                 : std.mem.Allocator,
+   _vulkan_instance           : VulkanInstance,
+   _vulkan_surface            : VulkanSurface,
+   _vulkan_physical_device    : VulkanPhysicalDevice,
+   _vulkan_device             : VulkanDevice,
+   _vulkan_swapchain          : VulkanSwapchain,
+   _vulkan_graphics_pipeline  : VulkanGraphicsPipeline,
 
    pub const CreateOptions = struct {
-      debugging      : bool,
-      name           : [*:0] const u8,
-      version        : u32,
-      refresh_mode   : RefreshMode,
+      debugging            : bool,
+      name                 : [*:0] const u8,
+      version              : u32,
+      refresh_mode         : RefreshMode,
+      shader_spv_vertex    : [] const u8,
+      shader_spv_fragment  : [] const u8,
    };
 
    pub const RefreshMode = enum {
@@ -34,6 +37,7 @@ pub const Renderer = struct {
       NoVulkanPhysicalDeviceAvailable,
       VulkanDeviceCreateFailure,
       VulkanSwapchainCreateFailure,
+      VulkanGraphicsPipelineCreateFailure,
    };
 
    pub fn create(window : * const f_present.Window, allocator : std.mem.Allocator, create_options : CreateOptions) CreateError!@This() {
@@ -75,6 +79,12 @@ pub const Renderer = struct {
       ) catch return error.VulkanSwapchainCreateFailure;
       errdefer vulkan_swapchain.destroy();
 
+      const vulkan_graphics_pipeline = VulkanGraphicsPipeline.create(vulkan_device.vk_device, .{
+         .spv_vertex    = create_options.shader_spv_vertex,
+         .spv_fragment  = create_options.shader_spv_fragment,
+      }) catch return error.VulkanGraphicsPipelineCreateError;
+      errdefer vulkan_graphics_pipeline.destroy(vulkan_device.vk_device);
+
       return @This(){
          ._allocator                = allocator,
          ._vulkan_instance          = vulkan_instance,
@@ -82,10 +92,12 @@ pub const Renderer = struct {
          ._vulkan_physical_device   = vulkan_physical_device,
          ._vulkan_device            = vulkan_device,
          ._vulkan_swapchain         = vulkan_swapchain,
+         ._vulkan_graphics_pipeline = vulkan_graphics_pipeline,
       };
    }
 
    pub fn destroy(self : @This()) void {
+      self._vulkan_graphics_pipeline.destroy(self._vulkan_device.vk_device);
       self._vulkan_swapchain.destroy(self._vulkan_device.vk_device);
       self._vulkan_device.destroy();
       self._vulkan_surface.destroy(self._vulkan_instance.vk_instance);
@@ -1223,6 +1235,29 @@ const VulkanSwapchain = struct {
       self._allocator.free(self.images);
       c.vkDestroySwapchainKHR(vk_device, self.vk_swapchain, null);
       return;
+   }
+};
+
+const VulkanGraphicsPipeline = struct {
+   pub const CreateOptions = struct {
+      spv_vertex     : [] const u8,
+      spv_fragment   : [] const u8,
+   };
+
+   pub const CreateError = error {
+
+   };
+
+   pub fn create(vk_device : c.VkDevice, create_options : CreateOptions) CreateError!@This() {
+      _ = vk_device;
+      _ = create_options;
+      unreachable;
+   }
+
+   pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      _ = self;
+      _ = vk_device;
+      unreachable;
    }
 };
 
