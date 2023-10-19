@@ -1,11 +1,34 @@
 const std   = @import("std");
 const bd    = @import("build/index.zig");
 
-pub fn build(b : * std.Build) anyerror!void {
+pub fn build(b : * std.Build) void {
    const opt_target_platform  = b.standardTargetOptions(.{});
    const opt_optimize_mode    = b.standardOptimizeOption(.{});
 
+   const shader_vertex = bd.ShaderCompileStep.create(b, .{
+      .input_file = .{.path = "src/shaders/vertex.glsl"},
+      .stage      = .vertex,
+      .optimize   = opt_optimize_mode,
+   });
+
+   const shader_fragment = bd.ShaderCompileStep.create(b, .{
+      .input_file = .{.path = "src/shaders/fragment.glsl"},
+      .stage      = .fragment,
+      .optimize   = opt_optimize_mode,
+   });
+
+   var step_module_shaders = bd.ShaderModuleStep.create(b);
+   step_module_shaders.addShader(.{
+      .spv_file   = shader_vertex.getOutput(),
+      .identifier = "shader_vertex",
+   });
+   step_module_shaders.addShader(.{
+      .spv_file   = shader_fragment.getOutput(),
+      .identifier = "shader_fragment",
+   });
+
    const MODULE_NAME_ZEST        = "zig-essential-tools";
+   const MODULE_NAME_SHADERS     = "shaders";
    const MODULE_NAME_GRAPHICS    = "graphics";
    const MODULE_NAME_RESOURCES   = "resources";
 
@@ -26,6 +49,8 @@ pub fn build(b : * std.Build) anyerror!void {
       }),
    });
 
+   const module_shaders = step_module_shaders.createModule();
+
    const module_resources = b.addModule(MODULE_NAME_RESOURCES, .{
       .source_file = .{.path = "res/index.zig"},
       .dependencies  = &([_] std.Build.ModuleDependency {
@@ -34,32 +59,21 @@ pub fn build(b : * std.Build) anyerror!void {
             .module  = module_zest,
          },
          .{
+            .name    = MODULE_NAME_SHADERS,
+            .module  = module_shaders,
+         },
+         .{
             .name    = MODULE_NAME_GRAPHICS,
             .module  = module_graphics,
          },
       }),
    });
 
-   const exe_main = b.addExecutable(.{
+   var exe_main = b.addExecutable(.{
       .name             = "learn_vulkan_zig",
       .root_source_file = .{.path = "src/main.zig"},
       .target           = opt_target_platform,
       .optimize         = opt_optimize_mode,
-   });
-
-   // TODO: Use build runner and makeFn to do this better
-   // Above will allow us to use caching, parallelism, temp directory, etc.
-   try bd.ShaderCompile.add(b, exe_main, .{
-      .input_path    = "src/shaders/vertex.glsl",
-      .output_path   = "res/shaders/vertex.spv",
-      .stage         = .vertex,
-      .optimize      = opt_optimize_mode,
-   });
-   try bd.ShaderCompile.add(b, exe_main, .{
-      .input_path    = "src/shaders/fragment.glsl",
-      .output_path   = "res/shaders/fragment.spv",
-      .stage         = .fragment,
-      .optimize      = opt_optimize_mode,
    });
 
    exe_main.linkLibC();

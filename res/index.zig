@@ -1,6 +1,7 @@
 const std      = @import("std");
+const shaders  = @import("shaders");
 const graphics = @import("graphics");
 
-pub const SHADER_SPV_VERTEX   = @embedFile("shaders/vertex.spv");
-pub const SHADER_SPV_FRAGMENT = @embedFile("shaders/fragment.spv");
+pub const SHADER_SPV_VERTEX   = &shaders.shader_vertex;
+pub const SHADER_SPV_FRAGMENT = &shaders.shader_fragment;
 
