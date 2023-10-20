@@ -13,6 +13,7 @@ pub const Renderer = struct {
    _vulkan_device             : VulkanDevice,
    _vulkan_swapchain          : VulkanSwapchain,
    _vulkan_graphics_pipeline  : VulkanGraphicsPipeline,
+   _vulkan_framebuffers       : VulkanFramebuffers,
 
    pub const CreateOptions = struct {
       debugging            : bool,
@@ -38,6 +39,7 @@ pub const Renderer = struct {
       VulkanDeviceCreateFailure,
       VulkanSwapchainCreateFailure,
       VulkanGraphicsPipelineCreateFailure,
+      VulkanFramebuffersCreateFailure,
    };
 
    pub fn create(window : * const f_present.Window, allocator : std.mem.Allocator, create_options : CreateOptions) CreateError!@This() {
@@ -85,6 +87,15 @@ pub const Renderer = struct {
       }) catch return error.VulkanGraphicsPipelineCreateFailure;
       errdefer vulkan_graphics_pipeline.destroy(vulkan_device.vk_device);
 
+      const vulkan_framebuffers = VulkanFramebuffers.create(
+         allocator,
+         vulkan_device.vk_device,
+         &vulkan_swapchain,
+         &vulkan_graphics_pipeline,
+         &vulkan_physical_device.initial_swapchain_configuration,
+      ) catch return error.VulkanFramebuffersCreateFailure;
+      errdefer vulkan_framebuffers.deinit();
+
       return @This(){
          ._allocator                = allocator,
          ._vulkan_instance          = vulkan_instance,
@@ -93,10 +104,12 @@ pub const Renderer = struct {
          ._vulkan_device            = vulkan_device,
          ._vulkan_swapchain         = vulkan_swapchain,
          ._vulkan_graphics_pipeline = vulkan_graphics_pipeline,
+         ._vulkan_framebuffers      = vulkan_framebuffers,
       };
    }
 
    pub fn destroy(self : @This()) void {
+      self._vulkan_framebuffers.destroy(self._vulkan_device.vk_device);
       self._vulkan_graphics_pipeline.destroy(self._vulkan_device.vk_device);
       self._vulkan_swapchain.destroy(self._vulkan_device.vk_device);
       self._vulkan_device.destroy();
@@ -1527,6 +1540,77 @@ const VulkanGraphicsPipeline = struct {
       c.vkDestroyPipeline(vk_device, self.vk_pipeline, null);
       c.vkDestroyPipelineLayout(vk_device, self.vk_pipeline_layout, null);
       c.vkDestroyRenderPass(vk_device, self.vk_render_pass, null);
+      return;
+   }
+};
+
+pub const VulkanFramebuffers = struct {
+   _allocator        : std.mem.Allocator,
+   vk_framebuffers   : [] c.VkFramebuffer,
+
+   pub const CreateError = error {
+      OutOfMemory,
+   };
+
+   pub fn create(allocator : std.mem.Allocator, vk_device : c.VkDevice, vulkan_swapchain : * const VulkanSwapchain, vulkan_graphics_pipeline : * const VulkanGraphicsPipeline, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!@This() {
+      const vk_framebuffers = try allocator.alloc(c.VkFramebuffer, vulkan_swapchain.image_views.len);
+      errdefer allocator.free(vk_framebuffers);
+
+      for (vk_framebuffers, vulkan_swapchain.image_views, 0..vk_framebuffers.len) |*vk_framebuffer_dest, *vk_image_view, i| {
+         errdefer for (vk_framebuffers[0..i]) |vk_framebuffer_prev| {
+            c.vkDestroyFramebuffer(vk_device, vk_framebuffer_prev, null);
+         };
+
+         const vk_framebuffer = try _createFramebuffer(vk_device, vk_image_view, vulkan_graphics_pipeline, swapchain_configuration);
+         errdefer c.vkDestroyFramebuffer(vk_device, vk_framebuffer, null);
+
+         vk_framebuffer_dest.* = vk_framebuffer;
+      }
+      errdefer for (vk_framebuffers) |vk_framebuffer| {
+         c.vkDestroyFramebuffer(vk_device, vk_framebuffer, null);
+      };
+
+      return @This(){
+         ._allocator       = allocator,
+         .vk_framebuffers  = vk_framebuffers,
+      };
+   }
+
+   fn _createFramebuffer(vk_device : c.VkDevice, vk_image_view : * const c.VkImageView, vulkan_graphics_pipeline : * const VulkanGraphicsPipeline, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!c.VkFramebuffer {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_info_create_framebuffer = c.VkFramebufferCreateInfo{
+         .sType            = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+         .pNext            = null,
+         .flags            = 0x00000000,
+         .renderPass       = vulkan_graphics_pipeline.vk_render_pass,
+         .attachmentCount  = 1,
+         .pAttachments     = vk_image_view,
+         .width            = swapchain_configuration.extent.width,
+         .height           = swapchain_configuration.extent.height,
+         .layers           = 1,
+      };
+
+      var vk_framebuffer : c.VkFramebuffer = undefined;
+      vk_result = c.vkCreateFramebuffer(vk_device, &vk_info_create_framebuffer, null, &vk_framebuffer);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+      errdefer c.vkDestroyFramebuffer(vk_device, vk_framebuffer, null);
+
+      return vk_framebuffer;
+   }
+
+   pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      for (self.vk_framebuffers) |vk_framebuffer| {
+         c.vkDestroyFramebuffer(vk_device, vk_framebuffer, null);
+      }
+
+      self._allocator.free(self.vk_framebuffers);
+
       return;
    }
 };
