@@ -11,6 +11,7 @@ pub const Renderer = struct {
    _vulkan_surface                  : VulkanSurface,
    _vulkan_physical_device          : VulkanPhysicalDevice,
    _vulkan_device                   : VulkanDevice,
+   _vulkan_swapchain_configuration  : VulkanSwapchainConfiguration,
    _vulkan_swapchain                : VulkanSwapchain,
    _vulkan_graphics_pipeline        : VulkanGraphicsPipeline,
    _vulkan_framebuffers             : VulkanFramebuffers,
@@ -71,7 +72,7 @@ pub const Renderer = struct {
 
       zest.dbg.log.info("using device \"{s}\" for vulkan rendering", .{&vulkan_physical_device.vk_physical_device_properties.deviceName});
 
-      const vulkan_swapchain_configuration = &vulkan_physical_device.initial_swapchain_configuration;
+      const vulkan_swapchain_configuration = vulkan_physical_device.initial_swapchain_configuration;
 
       const vulkan_device = VulkanDevice.create(&vulkan_physical_device, &VULKAN_REQUIRED_DEVICE_EXTENSIONS) catch return error.VulkanDeviceCreateFailure;
       errdefer vulkan_device.destroy();
@@ -81,11 +82,11 @@ pub const Renderer = struct {
          vulkan_device.vk_device,
          vulkan_surface.vk_surface,
          &vulkan_physical_device.queue_family_indices,
-         vulkan_swapchain_configuration,
+         &vulkan_swapchain_configuration,
       ) catch return error.VulkanSwapchainCreateFailure;
       errdefer vulkan_swapchain.destroy(vulkan_device.vk_device);
 
-      const vulkan_graphics_pipeline = VulkanGraphicsPipeline.create(vulkan_device.vk_device, &vulkan_physical_device.initial_swapchain_configuration, .{
+      const vulkan_graphics_pipeline = VulkanGraphicsPipeline.create(vulkan_device.vk_device, &vulkan_swapchain_configuration, .{
          .spv_vertex    = create_options.shader_spv_vertex,
          .spv_fragment  = create_options.shader_spv_fragment,
       }) catch return error.VulkanGraphicsPipelineCreateFailure;
@@ -96,7 +97,7 @@ pub const Renderer = struct {
          vulkan_device.vk_device,
          &vulkan_swapchain,
          &vulkan_graphics_pipeline,
-         &vulkan_physical_device.initial_swapchain_configuration,
+         &vulkan_swapchain_configuration,
       ) catch return error.VulkanFramebuffersCreateFailure;
       errdefer vulkan_framebuffers.destroy(vulkan_device.vk_device);
 
@@ -115,6 +116,7 @@ pub const Renderer = struct {
          ._vulkan_surface                 = vulkan_surface,
          ._vulkan_physical_device         = vulkan_physical_device,
          ._vulkan_device                  = vulkan_device,
+         ._vulkan_swapchain_configuration = vulkan_swapchain_configuration,
          ._vulkan_swapchain               = vulkan_swapchain,
          ._vulkan_graphics_pipeline       = vulkan_graphics_pipeline,
          ._vulkan_framebuffers            = vulkan_framebuffers,
@@ -131,6 +133,15 @@ pub const Renderer = struct {
       self._vulkan_device.destroy();
       self._vulkan_surface.destroy(self._vulkan_instance.vk_instance);
       self._vulkan_instance.destroy();
+      return;
+   }
+
+   pub const RenderError = error {
+
+   };
+
+   pub fn renderFrame(self : * @This()) RenderError!void {
+      _ = self;
       return;
    }
 };

@@ -52,7 +52,9 @@ pub fn main() MainError!void {
          window.setShouldClose(true);
       }
 
-      // TODO: Buffer swapping, rendering, etc.
+      renderer.renderFrame() catch |err| {
+         std.log.warn("failed to render frame: {}", .{err});
+      };
    }
 
    return;
