@@ -6,14 +6,16 @@ const c           = @import("cimports.zig");
 const VULKAN_TEMP_HEAP = zest.mem.SingleScopeHeap(8 * 1024 * 1024);
 
 pub const Renderer = struct {
-   _allocator                 : std.mem.Allocator,
-   _vulkan_instance           : VulkanInstance,
-   _vulkan_surface            : VulkanSurface,
-   _vulkan_physical_device    : VulkanPhysicalDevice,
-   _vulkan_device             : VulkanDevice,
-   _vulkan_swapchain          : VulkanSwapchain,
-   _vulkan_graphics_pipeline  : VulkanGraphicsPipeline,
-   _vulkan_framebuffers       : VulkanFramebuffers,
+   _allocator                       : std.mem.Allocator,
+   _vulkan_instance                 : VulkanInstance,
+   _vulkan_surface                  : VulkanSurface,
+   _vulkan_physical_device          : VulkanPhysicalDevice,
+   _vulkan_device                   : VulkanDevice,
+   _vulkan_swapchain                : VulkanSwapchain,
+   _vulkan_graphics_pipeline        : VulkanGraphicsPipeline,
+   _vulkan_framebuffers             : VulkanFramebuffers,
+   _vulkan_graphics_command_pool    : VulkanGraphicsCommandPool,
+   _vulkan_graphics_command_buffer  : VulkanGraphicsCommandBuffer,
 
    pub const CreateOptions = struct {
       debugging            : bool,
@@ -40,6 +42,8 @@ pub const Renderer = struct {
       VulkanSwapchainCreateFailure,
       VulkanGraphicsPipelineCreateFailure,
       VulkanFramebuffersCreateFailure,
+      VulkanGraphicsCommandPoolCreateFailure,
+      VulkanGraphicsCommandBufferCreateFailure,
    };
 
    pub fn create(window : * const f_present.Window, allocator : std.mem.Allocator, create_options : CreateOptions) CreateError!@This() {
@@ -94,21 +98,33 @@ pub const Renderer = struct {
          &vulkan_graphics_pipeline,
          &vulkan_physical_device.initial_swapchain_configuration,
       ) catch return error.VulkanFramebuffersCreateFailure;
-      errdefer vulkan_framebuffers.deinit();
+      errdefer vulkan_framebuffers.destroy(vulkan_device.vk_device);
+
+      const vulkan_graphics_command_pool = VulkanGraphicsCommandPool.create(
+         vulkan_device.vk_device, vulkan_physical_device.queue_family_indices.graphics,
+      ) catch return error.VulkanGraphicsCommandPoolCreateFailure;
+      errdefer vulkan_graphics_command_pool.destroy(vulkan_device.vk_device);
+
+      const vulkan_graphics_command_buffer = VulkanGraphicsCommandBuffer.create(
+         vulkan_device.vk_device, vulkan_graphics_command_pool.vk_command_pool,
+      ) catch return error.VulkanGraphicsCommandBufferCreateFailure;
 
       return @This(){
-         ._allocator                = allocator,
-         ._vulkan_instance          = vulkan_instance,
-         ._vulkan_surface           = vulkan_surface,
-         ._vulkan_physical_device   = vulkan_physical_device,
-         ._vulkan_device            = vulkan_device,
-         ._vulkan_swapchain         = vulkan_swapchain,
-         ._vulkan_graphics_pipeline = vulkan_graphics_pipeline,
-         ._vulkan_framebuffers      = vulkan_framebuffers,
+         ._allocator                      = allocator,
+         ._vulkan_instance                = vulkan_instance,
+         ._vulkan_surface                 = vulkan_surface,
+         ._vulkan_physical_device         = vulkan_physical_device,
+         ._vulkan_device                  = vulkan_device,
+         ._vulkan_swapchain               = vulkan_swapchain,
+         ._vulkan_graphics_pipeline       = vulkan_graphics_pipeline,
+         ._vulkan_framebuffers            = vulkan_framebuffers,
+         ._vulkan_graphics_command_pool   = vulkan_graphics_command_pool,
+         ._vulkan_graphics_command_buffer = vulkan_graphics_command_buffer,
       };
    }
 
    pub fn destroy(self : @This()) void {
+      self._vulkan_graphics_command_pool.destroy(self._vulkan_device.vk_device);
       self._vulkan_framebuffers.destroy(self._vulkan_device.vk_device);
       self._vulkan_graphics_pipeline.destroy(self._vulkan_device.vk_device);
       self._vulkan_swapchain.destroy(self._vulkan_device.vk_device);
@@ -1544,7 +1560,7 @@ const VulkanGraphicsPipeline = struct {
    }
 };
 
-pub const VulkanFramebuffers = struct {
+const VulkanFramebuffers = struct {
    _allocator        : std.mem.Allocator,
    vk_framebuffers   : [] c.VkFramebuffer,
 
@@ -1612,6 +1628,77 @@ pub const VulkanFramebuffers = struct {
       self._allocator.free(self.vk_framebuffers);
 
       return;
+   }
+};
+
+const VulkanGraphicsCommandPool = struct {
+   vk_command_pool   : c.VkCommandPool,
+
+   pub const CreateError = error {
+      OutOfMemory,
+   };
+
+   pub fn create(vk_device : c.VkDevice, queue_family_index : u32) CreateError!@This() {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_info_create_command_pool = c.VkCommandPoolCreateInfo{
+         .sType            = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+         .pNext            = null,
+         .flags            = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+         .queueFamilyIndex = queue_family_index,
+      };
+
+      var vk_command_pool : c.VkCommandPool = undefined;
+      vk_result = c.vkCreateCommandPool(vk_device, &vk_info_create_command_pool, null, &vk_command_pool);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+      errdefer c.vkDestroyCommandPool(vk_device, vk_command_pool, null);
+
+      return @This(){
+         .vk_command_pool  = vk_command_pool,
+      };
+   }
+
+   pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      c.vkDestroyCommandPool(vk_device, self.vk_command_pool, null);
+      return;
+   }
+};
+
+const VulkanGraphicsCommandBuffer = struct {
+   vk_command_buffer : c.VkCommandBuffer,
+
+   pub const CreateError = error {
+      OutOfMemory,
+   };
+
+   pub fn create(vk_device : c.VkDevice, vk_command_pool : c.VkCommandPool) CreateError!@This() {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_info_allocate_command_buffer = c.VkCommandBufferAllocateInfo{
+         .sType               = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+         .pNext               = null,
+         .commandPool         = vk_command_pool,
+         .level               = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+         .commandBufferCount  = 1,
+      };
+
+      var vk_command_buffer : c.VkCommandBuffer = undefined;
+      vk_result = c.vkAllocateCommandBuffers(vk_device, &vk_info_allocate_command_buffer, &vk_command_buffer);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+
+      return @This(){
+         .vk_command_buffer   = vk_command_buffer,
+      };
    }
 };
 
