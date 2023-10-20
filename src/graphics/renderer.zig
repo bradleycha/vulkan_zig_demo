@@ -6,17 +6,20 @@ const c           = @import("cimports.zig");
 const VULKAN_TEMP_HEAP = zest.mem.SingleScopeHeap(8 * 1024 * 1024);
 
 pub const Renderer = struct {
-   _allocator                       : std.mem.Allocator,
-   _vulkan_instance                 : VulkanInstance,
-   _vulkan_surface                  : VulkanSurface,
-   _vulkan_physical_device          : VulkanPhysicalDevice,
-   _vulkan_device                   : VulkanDevice,
-   _vulkan_swapchain_configuration  : VulkanSwapchainConfiguration,
-   _vulkan_swapchain                : VulkanSwapchain,
-   _vulkan_graphics_pipeline        : VulkanGraphicsPipeline,
-   _vulkan_framebuffers             : VulkanFramebuffers,
-   _vulkan_graphics_command_pool    : VulkanGraphicsCommandPool,
-   _vulkan_graphics_command_buffer  : VulkanGraphicsCommandBuffer,
+   _allocator                          : std.mem.Allocator,
+   _vulkan_instance                    : VulkanInstance,
+   _vulkan_surface                     : VulkanSurface,
+   _vulkan_physical_device             : VulkanPhysicalDevice,
+   _vulkan_device                      : VulkanDevice,
+   _vulkan_swapchain_configuration     : VulkanSwapchainConfiguration,
+   _vulkan_swapchain                   : VulkanSwapchain,
+   _vulkan_graphics_pipeline           : VulkanGraphicsPipeline,
+   _vulkan_framebuffers                : VulkanFramebuffers,
+   _vulkan_graphics_command_pool       : VulkanGraphicsCommandPool,
+   _vulkan_graphics_command_buffer     : VulkanGraphicsCommandBuffer,
+   _vulkan_semaphore_image_available   : VulkanSemaphore,
+   _vulkan_semaphore_render_finished   : VulkanSemaphore,
+   _vulkan_fence_in_flight             : VulkanFence,
 
    pub const CreateOptions = struct {
       debugging            : bool,
@@ -45,6 +48,9 @@ pub const Renderer = struct {
       VulkanFramebuffersCreateFailure,
       VulkanGraphicsCommandPoolCreateFailure,
       VulkanGraphicsCommandBufferCreateFailure,
+      VulkanSemaphoreImageAvailableCreateFailure,
+      VulkanSemaphoreRenderFinishedCreateFailure,
+      VulkanFenceInFlightCreateFailure,
    };
 
    pub fn create(window : * const f_present.Window, allocator : std.mem.Allocator, create_options : CreateOptions) CreateError!@This() {
@@ -110,22 +116,37 @@ pub const Renderer = struct {
          vulkan_device.vk_device, vulkan_graphics_command_pool.vk_command_pool,
       ) catch return error.VulkanGraphicsCommandBufferCreateFailure;
 
+      const vulkan_semaphore_image_available = VulkanSemaphore.create(vulkan_device.vk_device) catch return error.VulkanSemaphoreImageAvailableCreateFailure;
+      errdefer vulkan_semaphore_image_available.destroy(vulkan_device.vk_device);
+
+      const vulkan_semaphore_render_finished = VulkanSemaphore.create(vulkan_device.vk_device) catch return error.VulkanSemaphoreRenderFinishedCreateFailure;
+      errdefer vulkan_semaphore_render_finished.destroy(vulkan_device.vk_device);
+
+      const vulkan_fence_in_flight = VulkanFence.create(vulkan_device.vk_device) catch return error.VulkanFenceInFlightCreateFailure;
+      errdefer vulkan_fence_in_flight.destroy(vulkan_device.vk_device);
+
       return @This(){
-         ._allocator                      = allocator,
-         ._vulkan_instance                = vulkan_instance,
-         ._vulkan_surface                 = vulkan_surface,
-         ._vulkan_physical_device         = vulkan_physical_device,
-         ._vulkan_device                  = vulkan_device,
-         ._vulkan_swapchain_configuration = vulkan_swapchain_configuration,
-         ._vulkan_swapchain               = vulkan_swapchain,
-         ._vulkan_graphics_pipeline       = vulkan_graphics_pipeline,
-         ._vulkan_framebuffers            = vulkan_framebuffers,
-         ._vulkan_graphics_command_pool   = vulkan_graphics_command_pool,
-         ._vulkan_graphics_command_buffer = vulkan_graphics_command_buffer,
+         ._allocator                         = allocator,
+         ._vulkan_instance                   = vulkan_instance,
+         ._vulkan_surface                    = vulkan_surface,
+         ._vulkan_physical_device            = vulkan_physical_device,
+         ._vulkan_device                     = vulkan_device,
+         ._vulkan_swapchain_configuration    = vulkan_swapchain_configuration,
+         ._vulkan_swapchain                  = vulkan_swapchain,
+         ._vulkan_graphics_pipeline          = vulkan_graphics_pipeline,
+         ._vulkan_framebuffers               = vulkan_framebuffers,
+         ._vulkan_graphics_command_pool      = vulkan_graphics_command_pool,
+         ._vulkan_graphics_command_buffer    = vulkan_graphics_command_buffer,
+         ._vulkan_semaphore_image_available  = vulkan_semaphore_image_available,
+         ._vulkan_semaphore_render_finished  = vulkan_semaphore_render_finished,
+         ._vulkan_fence_in_flight            = vulkan_fence_in_flight,
       };
    }
 
    pub fn destroy(self : @This()) void {
+      self._vulkan_fence_in_flight.destroy(self._vulkan_device.vk_device);
+      self._vulkan_semaphore_render_finished.destroy(self._vulkan_device.vk_device);
+      self._vulkan_semaphore_image_available.destroy(self._vulkan_device.vk_device);
       self._vulkan_graphics_command_pool.destroy(self._vulkan_device.vk_device);
       self._vulkan_framebuffers.destroy(self._vulkan_device.vk_device);
       self._vulkan_graphics_pipeline.destroy(self._vulkan_device.vk_device);
@@ -1788,6 +1809,80 @@ const VulkanGraphicsCommandBuffer = struct {
          else                             => return error.UnknownError,
       }
 
+      return;
+   }
+};
+
+const VulkanSemaphore = struct {
+   vk_semaphore   : c.VkSemaphore,
+
+   pub const CreateError = error {
+      OutOfMemory,
+   };
+
+   pub fn create(vk_device : c.VkDevice) CreateError!@This() {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_info_create_semaphore = c.VkSemaphoreCreateInfo{
+         .sType   = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+         .pNext   = null,
+         .flags   = 0x00000000,
+      };
+
+      var vk_semaphore : c.VkSemaphore = undefined;
+      vk_result = c.vkCreateSemaphore(vk_device, &vk_info_create_semaphore, null, &vk_semaphore);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+      errdefer c.vkDestroySemaphore(vk_device, vk_semaphore, null);
+
+      return @This(){
+         .vk_semaphore  = vk_semaphore,
+      };
+   }
+
+   pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      c.vkDestroySemaphore(vk_device, self.vk_semaphore, null);
+      return;
+   }
+};
+
+const VulkanFence = struct {
+   vk_fence : c.VkFence,
+
+   pub const CreateError = error {
+      OutOfMemory,
+   };
+
+   pub fn create(vk_device : c.VkDevice) CreateError!@This() {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_info_create_fence = c.VkFenceCreateInfo{
+         .sType   = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+         .pNext   = null,
+         .flags   = 0x00000000,
+      };
+
+      var vk_fence : c.VkFence = undefined;
+      vk_result = c.vkCreateFence(vk_device, &vk_info_create_fence, null, &vk_fence);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+      errdefer c.vkDestroyFence(vk_device, vk_fence, null);
+
+      return @This(){
+         .vk_fence   = vk_fence,
+      };
+   }
+
+   pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      c.vkDestroyFence(vk_device, self.vk_fence, null);
       return;
    }
 };
