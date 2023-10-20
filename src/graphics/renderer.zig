@@ -1239,6 +1239,8 @@ const VulkanSwapchain = struct {
 };
 
 const VulkanGraphicsPipeline = struct {
+   vk_pipeline_layout   : c.VkPipelineLayout,
+
    pub const CreateOptions = struct {
       spv_vertex     : [] align(@alignOf(u32)) const u8,
       spv_fragment   : [] align(@alignOf(u32)) const u8,
@@ -1279,9 +1281,127 @@ const VulkanGraphicsPipeline = struct {
          },
       };
 
-      // TODO: Fixed function pipeline and pipeline creation
+      const vk_dynamic_states = [_] c.VkDynamicState {
+         c.VK_DYNAMIC_STATE_VIEWPORT,
+         c.VK_DYNAMIC_STATE_SCISSOR,
+      };
+
+      const vk_info_create_dynamic_state = c.VkPipelineDynamicStateCreateInfo{
+         .sType               = c.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+         .pNext               = null,
+         .flags               = 0x00000000,
+         .dynamicStateCount   = @intCast(vk_dynamic_states.len),
+         .pDynamicStates      = &vk_dynamic_states,
+      };
+
+      const vk_info_create_vertex_input = c.VkPipelineVertexInputStateCreateInfo{
+         .sType                           = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+         .pNext                           = null,
+         .flags                           = 0x00000000,
+         .vertexBindingDescriptionCount   = 0,
+         .pVertexBindingDescriptions      = null,
+         .vertexAttributeDescriptionCount = 0,
+         .pVertexAttributeDescriptions    = null,
+      };
+
+      const vk_info_create_input_assembly = c.VkPipelineInputAssemblyStateCreateInfo{
+         .sType                  = c.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+         .pNext                  = null,
+         .flags                  = 0x00000000,
+         .topology               = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+         .primitiveRestartEnable = c.VK_FALSE,
+      };
+
+      const vk_info_create_viewport = c.VkPipelineViewportStateCreateInfo{
+         .sType         = c.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+         .pNext         = null,
+         .flags         = 0x00000000,
+         .viewportCount = 1,
+         .pViewports    = null,
+         .scissorCount  = 1,
+         .pScissors     = null,
+      };
+
+      const vk_info_create_rasterizer = c.VkPipelineRasterizationStateCreateInfo{
+         .sType                     = c.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+         .pNext                     = null,
+         .flags                     = 0x00000000,
+         .depthClampEnable          = c.VK_FALSE,
+         .rasterizerDiscardEnable   = c.VK_FALSE,
+         .polygonMode               = c.VK_POLYGON_MODE_FILL,
+         .cullMode                  = c.VK_CULL_MODE_BACK_BIT,
+         .frontFace                 = c.VK_FRONT_FACE_CLOCKWISE,
+         .depthBiasEnable           = c.VK_FALSE,
+         .depthBiasConstantFactor   = 0.0,
+         .depthBiasClamp            = 0.0,
+         .depthBiasSlopeFactor      = 0.0,
+         .lineWidth                 = 1.0,
+      };
+
+      const vk_info_create_multisample = c.VkPipelineMultisampleStateCreateInfo{
+         .sType                  = c.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+         .pNext                  = null,
+         .flags                  = 0x00000000,
+         .rasterizationSamples   = c.VK_SAMPLE_COUNT_1_BIT,
+         .sampleShadingEnable    = c.VK_FALSE,
+         .minSampleShading       = 1.0,
+         .pSampleMask            = null,
+         .alphaToCoverageEnable  = c.VK_FALSE,
+         .alphaToOneEnable       = c.VK_FALSE,
+      };
+
+      const vk_color_blend_attachment_states = [_] c.VkPipelineColorBlendAttachmentState {
+         .{
+            .blendEnable         = c.VK_FALSE,
+            .srcColorBlendFactor = c.VK_BLEND_FACTOR_ONE,
+            .dstColorBlendFactor = c.VK_BLEND_FACTOR_ZERO,
+            .colorBlendOp        = c.VK_BLEND_OP_ADD,
+            .srcAlphaBlendFactor = c.VK_BLEND_FACTOR_ONE,
+            .dstAlphaBlendFactor = c.VK_BLEND_FACTOR_ZERO,
+            .alphaBlendOp        = c.VK_BLEND_OP_ADD,
+            .colorWriteMask      = c.VK_COLOR_COMPONENT_R_BIT | c.VK_COLOR_COMPONENT_G_BIT | c.VK_COLOR_COMPONENT_B_BIT | c.VK_COLOR_COMPONENT_A_BIT,
+         },
+      };
+
+      const vk_info_create_blend_state = c.VkPipelineColorBlendStateCreateInfo{
+         .sType            = c.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+         .pNext            = null,
+         .flags            = 0x00000000,
+         .logicOpEnable    = c.VK_FALSE,
+         .logicOp          = c.VK_LOGIC_OP_COPY,
+         .attachmentCount  = @intCast(vk_color_blend_attachment_states.len),
+         .pAttachments     = &vk_color_blend_attachment_states,
+         .blendConstants   = [4] f32 {0.0, 0.0, 0.0, 0.0},
+      };
+
+      const vk_info_create_pipeline_layout = c.VkPipelineLayoutCreateInfo{
+         .sType                  = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+         .pNext                  = null,
+         .flags                  = 0x00000000,
+         .setLayoutCount         = 0,
+         .pSetLayouts            = null,
+         .pushConstantRangeCount = 0,
+         .pPushConstantRanges    = null,
+      };
+
+      var vk_pipeline_layout : c.VkPipelineLayout = undefined;
+      vk_result = c.vkCreatePipelineLayout(vk_device, &vk_info_create_pipeline_layout, null, &vk_pipeline_layout);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+      errdefer c.vkDestroyPipelineLayout(vk_device, vk_pipeline_layout, null);
+
       _ = vk_shader_stages;
-      _ = vk_result;
+      _ = vk_info_create_dynamic_state;
+      _ = vk_info_create_vertex_input;
+      _ = vk_info_create_input_assembly;
+      _ = vk_info_create_viewport;
+      _ = vk_info_create_rasterizer;
+      _ = vk_info_create_multisample;
+      _ = vk_info_create_blend_state;
       unreachable;
    }
 
@@ -1311,9 +1431,8 @@ const VulkanGraphicsPipeline = struct {
    }
 
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
-      _ = self;
-      _ = vk_device;
-      unreachable;
+      c.vkDestroyPipelineLayout(vk_device, self.vk_pipeline_layout, null);
+      return;
    }
 };
 
