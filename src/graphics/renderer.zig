@@ -144,6 +144,8 @@ pub const Renderer = struct {
    }
 
    pub fn destroy(self : @This()) void {
+      _ = c.vkDeviceWaitIdle(self._vulkan_device.vk_device);
+
       self._vulkan_fence_in_flight.destroy(self._vulkan_device.vk_device);
       self._vulkan_semaphore_render_finished.destroy(self._vulkan_device.vk_device);
       self._vulkan_semaphore_image_available.destroy(self._vulkan_device.vk_device);
@@ -158,11 +160,111 @@ pub const Renderer = struct {
    }
 
    pub const RenderError = error {
-
+      OutOfMemory,
+      UnknownError,
+      DeviceLost,
+      SurfaceLost,
+      OutdatedSwapchain,
    };
 
    pub fn renderFrame(self : * @This()) RenderError!void {
-      _ = self;
+      var vk_result : c.VkResult = undefined;
+
+      const vk_device = self._vulkan_device.vk_device;
+
+      vk_result = c.vkWaitForFences(vk_device, 1, &self._vulkan_fence_in_flight.vk_fence, c.VK_TRUE, std.math.maxInt(u64));
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_TIMEOUT                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_DEVICE_LOST           => return error.DeviceLost,
+         else                             => unreachable,
+      }
+
+      vk_result = c.vkResetFences(vk_device, 1, &self._vulkan_fence_in_flight.vk_fence);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+
+      var vk_swapchain_image_index : u32 = undefined;
+      vk_result = c.vkAcquireNextImageKHR(vk_device, self._vulkan_swapchain.vk_swapchain, std.math.maxInt(u64), self._vulkan_semaphore_image_available.vk_semaphore, @ptrCast(@alignCast(c.VK_NULL_HANDLE)), &vk_swapchain_image_index);
+      switch (vk_result) {
+         c.VK_SUCCESS                                    => {},
+         c.VK_TIMEOUT                                    => {},
+         c.VK_NOT_READY                                  => {},
+         c.VK_SUBOPTIMAL_KHR                             => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY                   => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY                 => return error.OutOfMemory,
+         c.VK_ERROR_DEVICE_LOST                          => return error.DeviceLost,
+         c.VK_ERROR_OUT_OF_DATE_KHR                      => return error.OutdatedSwapchain,
+         c.VK_ERROR_SURFACE_LOST_KHR                     => return error.SurfaceLost,
+         c.VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT  => return error.UnknownError,
+         else                                            => unreachable,
+      }
+
+      var vk_framebuffer = self._vulkan_framebuffers.vk_framebuffers[vk_swapchain_image_index];
+
+      vk_result = c.vkResetCommandBuffer(self._vulkan_graphics_command_buffer.vk_command_buffer, 0);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+
+      try self._vulkan_graphics_command_buffer.recordRenderPass(vk_framebuffer, &self._vulkan_graphics_pipeline, &self._vulkan_swapchain_configuration);
+
+      const vk_wait_stages = [_] c.VkPipelineStageFlags {
+         c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+      };
+
+      const vk_info_submit = c.VkSubmitInfo{
+         .sType                  = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+         .pNext                  = null,
+         .waitSemaphoreCount     = 1,
+         .pWaitSemaphores        = &self._vulkan_semaphore_image_available.vk_semaphore,
+         .pWaitDstStageMask      = &vk_wait_stages,
+         .commandBufferCount     = 1,
+         .pCommandBuffers        = &self._vulkan_graphics_command_buffer.vk_command_buffer,
+         .signalSemaphoreCount   = 1,
+         .pSignalSemaphores      = &self._vulkan_semaphore_render_finished.vk_semaphore, 
+      };
+
+      vk_result = c.vkQueueSubmit(self._vulkan_device.queues.graphics, 1, &vk_info_submit, self._vulkan_fence_in_flight.vk_fence);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_DEVICE_LOST           => return error.DeviceLost,
+         else                             => unreachable,
+      }
+
+      const vk_info_present = c.VkPresentInfoKHR{
+         .sType               = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+         .pNext               = null,
+         .waitSemaphoreCount  = 1,
+         .pWaitSemaphores     = &self._vulkan_semaphore_render_finished.vk_semaphore,
+         .swapchainCount      = 1,
+         .pSwapchains         = &self._vulkan_swapchain.vk_swapchain,
+         .pImageIndices       = &vk_swapchain_image_index,
+         .pResults            = null,
+      };
+
+      vk_result = c.vkQueuePresentKHR(self._vulkan_device.queues.presentation, &vk_info_present);
+      switch (vk_result) {
+         c.VK_SUCCESS                                    => {},
+         c.VK_SUBOPTIMAL_KHR                             => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY                   => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY                 => return error.OutOfMemory,
+         c.VK_ERROR_DEVICE_LOST                          => return error.DeviceLost,
+         c.VK_ERROR_OUT_OF_DATE_KHR                      => return error.OutdatedSwapchain,
+         c.VK_ERROR_SURFACE_LOST_KHR                     => return error.SurfaceLost,
+         c.VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT  => return error.UnknownError,
+         else                                            => unreachable,
+      }
+
       return;
    }
 };
@@ -1559,6 +1661,16 @@ const VulkanGraphicsPipeline = struct {
          .pPreserveAttachments      = null,
       };
 
+      const vk_info_subpass_dependency = c.VkSubpassDependency {
+         .srcSubpass       = c.VK_SUBPASS_EXTERNAL,
+         .dstSubpass       = 0,
+         .srcStageMask     = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+         .dstStageMask     = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+         .srcAccessMask    = 0,
+         .dstAccessMask    = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+         .dependencyFlags  = 0x00000000,
+      };
+
       const vk_info_create_render_pass = c.VkRenderPassCreateInfo{
          .sType            = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
          .pNext            = null,
@@ -1567,8 +1679,8 @@ const VulkanGraphicsPipeline = struct {
          .pAttachments     = &vk_attachment_color,
          .subpassCount     = 1,
          .pSubpasses       = &vk_subpass_color,
-         .dependencyCount  = 0,
-         .pDependencies    = null,
+         .dependencyCount  = 1,
+         .pDependencies    = &vk_info_subpass_dependency,
       };
 
       var vk_render_pass : c.VkRenderPass = undefined;
@@ -1863,7 +1975,7 @@ const VulkanFence = struct {
       const vk_info_create_fence = c.VkFenceCreateInfo{
          .sType   = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
          .pNext   = null,
-         .flags   = 0x00000000,
+         .flags   = c.VK_FENCE_CREATE_SIGNALED_BIT,
       };
 
       var vk_fence : c.VkFence = undefined;
