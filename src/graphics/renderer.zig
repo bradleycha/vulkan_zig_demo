@@ -1700,5 +1700,84 @@ const VulkanGraphicsCommandBuffer = struct {
          .vk_command_buffer   = vk_command_buffer,
       };
    }
+
+   pub const RecordError = error {
+      OutOfMemory,
+      UnknownError,
+   };
+
+   pub fn recordRenderPass(self : @This(), vk_framebuffer : c.VkFramebuffer, vulkan_graphics_pipeline : * const VulkanGraphicsPipeline, swapchain_configuration : * const VulkanSwapchainConfiguration) RecordError!void {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
+         .sType            = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+         .pNext            = null,
+         .flags            = 0x00000000,
+         .pInheritanceInfo = null,
+      };
+
+      vk_result = c.vkBeginCommandBuffer(self.vk_command_buffer, &vk_info_command_buffer_begin);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+
+      const vk_render_area = c.VkRect2D{
+         .offset  = .{.x = 0, .y = 0},
+         .extent  = swapchain_configuration.extent,
+      };
+
+      const vk_clear_color = c.VkClearValue{.color = .{.float32 = [4] f32 {
+         0.0, 0.0, 0.0, 1.0,
+      }}};
+
+      const vk_info_render_pass_begin = c.VkRenderPassBeginInfo{
+         .sType            = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+         .pNext            = null,
+         .renderPass       = vulkan_graphics_pipeline.vk_render_pass,
+         .framebuffer      = vk_framebuffer,
+         .renderArea       = vk_render_area,
+         .clearValueCount  = 1,
+         .pClearValues     = &vk_clear_color,
+      };
+
+      c.vkCmdBeginRenderPass(self.vk_command_buffer, &vk_info_render_pass_begin, c.VK_SUBPASS_CONTENTS_INLINE);
+
+      c.vkCmdBindPipeline(self.vk_command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, vulkan_graphics_pipeline.vk_pipeline);
+
+      const vk_viewport = c.VkViewport{
+         .x          = 0.0,
+         .y          = 0.0,
+         .width      = @floatFromInt(swapchain_configuration.extent.width),
+         .height     = @floatFromInt(swapchain_configuration.extent.height),
+         .minDepth   = 0.0,
+         .maxDepth   = 1.0,
+      };
+
+      c.vkCmdSetViewport(self.vk_command_buffer, 0, 1, &vk_viewport);
+
+      const vk_scissor = c.VkRect2D{
+         .offset  = .{.x = 0, .y = 0},
+         .extent  = swapchain_configuration.extent,
+      };
+
+      c.vkCmdSetScissor(self.vk_command_buffer, 0, 1, &vk_scissor);
+
+      c.vkCmdDraw(self.vk_command_buffer, 3, 1, 0, 0);
+
+      c.vkCmdEndRenderPass(self.vk_command_buffer);
+
+      vk_result = c.vkEndCommandBuffer(self.vk_command_buffer);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => return error.UnknownError,
+      }
+
+      return;
+   }
 };
 
