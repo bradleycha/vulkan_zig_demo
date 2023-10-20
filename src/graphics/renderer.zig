@@ -79,7 +79,7 @@ pub const Renderer = struct {
       ) catch return error.VulkanSwapchainCreateFailure;
       errdefer vulkan_swapchain.destroy(vulkan_device.vk_device);
 
-      const vulkan_graphics_pipeline = VulkanGraphicsPipeline.create(vulkan_device.vk_device, .{
+      const vulkan_graphics_pipeline = VulkanGraphicsPipeline.create(vulkan_device.vk_device, &vulkan_physical_device.initial_swapchain_configuration, .{
          .spv_vertex    = create_options.shader_spv_vertex,
          .spv_fragment  = create_options.shader_spv_fragment,
       }) catch return error.VulkanGraphicsPipelineCreateFailure;
@@ -1239,7 +1239,9 @@ const VulkanSwapchain = struct {
 };
 
 const VulkanGraphicsPipeline = struct {
+   vk_render_pass       : c.VkRenderPass,
    vk_pipeline_layout   : c.VkPipelineLayout,
+   vk_pipeline          : c.VkPipeline,
 
    pub const CreateOptions = struct {
       spv_vertex     : [] align(@alignOf(u32)) const u8,
@@ -1251,8 +1253,11 @@ const VulkanGraphicsPipeline = struct {
       InvalidShader,
    };
 
-   pub fn create(vk_device : c.VkDevice, create_options : CreateOptions) CreateError!@This() {
+   pub fn create(vk_device : c.VkDevice, swapchain_configuration : * const VulkanSwapchainConfiguration, create_options : CreateOptions) CreateError!@This() {
       var vk_result : c.VkResult = undefined;
+
+      const vk_render_pass = try _createRenderPass(vk_device, swapchain_configuration);
+      errdefer c.vkDestroyRenderPass(vk_device, vk_render_pass, null);
 
       const vk_shader_module_vertex    = try _createShaderModule(vk_device, create_options.spv_vertex);
       defer c.vkDestroyShaderModule(vk_device, vk_shader_module_vertex, null);
@@ -1394,15 +1399,45 @@ const VulkanGraphicsPipeline = struct {
       }
       errdefer c.vkDestroyPipelineLayout(vk_device, vk_pipeline_layout, null);
 
-      _ = vk_shader_stages;
-      _ = vk_info_create_dynamic_state;
-      _ = vk_info_create_vertex_input;
-      _ = vk_info_create_input_assembly;
-      _ = vk_info_create_viewport;
-      _ = vk_info_create_rasterizer;
-      _ = vk_info_create_multisample;
-      _ = vk_info_create_blend_state;
-      unreachable;
+      const vk_info_create_graphics_pipeline = c.VkGraphicsPipelineCreateInfo{
+         .sType               = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+         .pNext               = null,
+         .flags               = 0x00000000,
+         .stageCount          = @intCast(vk_shader_stages.len),
+         .pStages             = &vk_shader_stages,
+         .pVertexInputState   = &vk_info_create_vertex_input,
+         .pInputAssemblyState = &vk_info_create_input_assembly,
+         .pTessellationState  = null,
+         .pViewportState      = &vk_info_create_viewport,
+         .pRasterizationState = &vk_info_create_rasterizer,
+         .pMultisampleState   = &vk_info_create_multisample,
+         .pDepthStencilState  = null,
+         .pColorBlendState    = &vk_info_create_blend_state,
+         .pDynamicState       = &vk_info_create_dynamic_state,
+         .layout              = vk_pipeline_layout,
+         .renderPass          = vk_render_pass,
+         .subpass             = 0,
+         .basePipelineHandle  = @ptrCast(@alignCast(c.VK_NULL_HANDLE)),
+         .basePipelineIndex   = -1,
+      };
+
+      var vk_pipeline : c.VkPipeline = undefined;
+      vk_result = c.vkCreateGraphicsPipelines(vk_device, @ptrCast(@alignCast(c.VK_NULL_HANDLE)), 1, &vk_info_create_graphics_pipeline, null, &vk_pipeline);
+      switch (vk_result) {
+         c.VK_SUCCESS                        => {},
+         c.VK_PIPELINE_COMPILE_REQUIRED_EXT  => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY       => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY     => return error.OutOfMemory,
+         c.VK_ERROR_INVALID_SHADER_NV        => return error.InvalidShader,
+         else                                => unreachable,
+      }
+      errdefer c.vkDestroyPipeline(vk_device, vk_pipeline, null);
+
+      return @This(){
+         .vk_render_pass      = vk_render_pass,
+         .vk_pipeline_layout  = vk_pipeline_layout,
+         .vk_pipeline         = vk_pipeline,
+      };
    }
 
    fn _createShaderModule(vk_device : c.VkDevice, bytecode : [] align(@alignOf(u32)) const u8) CreateError!c.VkShaderModule {
@@ -1430,8 +1465,68 @@ const VulkanGraphicsPipeline = struct {
       return vk_shader_module;
    }
 
+   fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!c.VkRenderPass {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_attachment_color = c.VkAttachmentDescription{
+         .flags            = 0x00000000,
+         .format           = swapchain_configuration.pixel_format.format,
+         .samples          = c.VK_SAMPLE_COUNT_1_BIT,
+         .loadOp           = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+         .storeOp          = c.VK_ATTACHMENT_STORE_OP_STORE,
+         .stencilLoadOp    = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+         .stencilStoreOp   = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+         .initialLayout    = c.VK_IMAGE_LAYOUT_UNDEFINED,
+         .finalLayout      = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+      };
+
+      const vk_attachment_reference_color = c.VkAttachmentReference{
+         .attachment = 0,
+         .layout     = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      };
+
+      const vk_subpass_color = c.VkSubpassDescription{
+         .flags                     = 0x00000000,
+         .pipelineBindPoint         = c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+         .inputAttachmentCount      = 0,
+         .pInputAttachments         = null,
+         .colorAttachmentCount      = 1,
+         .pColorAttachments         = &vk_attachment_reference_color,
+         .pResolveAttachments       = null,
+         .pDepthStencilAttachment   = null,
+         .preserveAttachmentCount   = 0,
+         .pPreserveAttachments      = null,
+      };
+
+      const vk_info_create_render_pass = c.VkRenderPassCreateInfo{
+         .sType            = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+         .pNext            = null,
+         .flags            = 0x00000000,
+         .attachmentCount  = 1,
+         .pAttachments     = &vk_attachment_color,
+         .subpassCount     = 1,
+         .pSubpasses       = &vk_subpass_color,
+         .dependencyCount  = 0,
+         .pDependencies    = null,
+      };
+
+      var vk_render_pass : c.VkRenderPass = undefined;
+      vk_result = c.vkCreateRenderPass(vk_device, &vk_info_create_render_pass, null, &vk_render_pass);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+      errdefer c.vkDestroyRenderPass(vk_device, vk_render_pass, null);
+
+      return vk_render_pass;
+   }
+
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      c.vkDestroyPipeline(vk_device, self.vk_pipeline, null);
       c.vkDestroyPipelineLayout(vk_device, self.vk_pipeline_layout, null);
+      c.vkDestroyRenderPass(vk_device, self.vk_render_pass, null);
       return;
    }
 };
