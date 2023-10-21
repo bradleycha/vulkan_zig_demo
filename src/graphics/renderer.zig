@@ -7,6 +7,8 @@ const VULKAN_TEMP_HEAP = zest.mem.SingleScopeHeap(8 * 1024 * 1024);
 
 pub const Renderer = struct {
    _allocator                          : std.mem.Allocator,
+   _window                             : * const f_present.Window,
+   _refresh_mode                       : RefreshMode,
    _vulkan_instance                    : VulkanInstance,
    _vulkan_surface                     : VulkanSurface,
    _vulkan_physical_device             : VulkanPhysicalDevice,
@@ -146,6 +148,8 @@ pub const Renderer = struct {
 
       return @This(){
          ._allocator                         = allocator,
+         ._window                            = window,
+         ._refresh_mode                      = create_options.refresh_mode,
          ._vulkan_instance                   = vulkan_instance,
          ._vulkan_surface                    = vulkan_surface,
          ._vulkan_physical_device            = vulkan_physical_device,
@@ -189,7 +193,7 @@ pub const Renderer = struct {
       UnknownError,
       DeviceLost,
       SurfaceLost,
-      OutdatedSwapchain,
+      SwapchainRecreateFailure,
    };
 
    pub fn renderFrame(self : * @This()) RenderError!void {
@@ -226,11 +230,11 @@ pub const Renderer = struct {
          c.VK_SUCCESS                                    => {},
          c.VK_TIMEOUT                                    => {},
          c.VK_NOT_READY                                  => {},
-         c.VK_SUBOPTIMAL_KHR                             => {},
+         c.VK_SUBOPTIMAL_KHR                             => return self._recreateSwapchain() catch return error.SwapchainRecreateFailure,
          c.VK_ERROR_OUT_OF_HOST_MEMORY                   => return error.OutOfMemory,
          c.VK_ERROR_OUT_OF_DEVICE_MEMORY                 => return error.OutOfMemory,
          c.VK_ERROR_DEVICE_LOST                          => return error.DeviceLost,
-         c.VK_ERROR_OUT_OF_DATE_KHR                      => return error.OutdatedSwapchain,
+         c.VK_ERROR_OUT_OF_DATE_KHR                      => return self._recreateSwapchain() catch return error.SwapchainRecreateFailure,
          c.VK_ERROR_SURFACE_LOST_KHR                     => return error.SurfaceLost,
          c.VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT  => return error.UnknownError,
          else                                            => unreachable,
@@ -245,7 +249,7 @@ pub const Renderer = struct {
          else                             => unreachable,
       }
 
-      try _recordRenderPass(vk_graphics_command_buffer, vk_framebuffer, &self._vulkan_graphics_pipeline, &self._vulkan_swapchain_configuration);
+      try _recordRenderPass(self, vk_graphics_command_buffer, vk_framebuffer);
 
       const vk_wait_stages = [_] c.VkPipelineStageFlags {
          c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -290,7 +294,7 @@ pub const Renderer = struct {
          c.VK_ERROR_OUT_OF_HOST_MEMORY                   => return error.OutOfMemory,
          c.VK_ERROR_OUT_OF_DEVICE_MEMORY                 => return error.OutOfMemory,
          c.VK_ERROR_DEVICE_LOST                          => return error.DeviceLost,
-         c.VK_ERROR_OUT_OF_DATE_KHR                      => return error.OutdatedSwapchain,
+         c.VK_ERROR_OUT_OF_DATE_KHR                      => return self._recreateSwapchain() catch return error.SwapchainRecreateFailure,
          c.VK_ERROR_SURFACE_LOST_KHR                     => return error.SurfaceLost,
          c.VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT  => return error.UnknownError,
          else                                            => unreachable,
@@ -301,7 +305,7 @@ pub const Renderer = struct {
       return;
    }
 
-   fn _recordRenderPass(vk_command_buffer : c.VkCommandBuffer, vk_framebuffer : c.VkFramebuffer, vulkan_graphics_pipeline : * const VulkanGraphicsPipeline, swapchain_configuration : * const VulkanSwapchainConfiguration) RenderError!void {
+   fn _recordRenderPass(self : * const @This(), vk_command_buffer : c.VkCommandBuffer, vk_framebuffer : c.VkFramebuffer) RenderError!void {
       var vk_result : c.VkResult = undefined;
 
       const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
@@ -321,7 +325,7 @@ pub const Renderer = struct {
 
       const vk_render_area = c.VkRect2D{
          .offset  = .{.x = 0, .y = 0},
-         .extent  = swapchain_configuration.extent,
+         .extent  = self._vulkan_swapchain_configuration.extent,
       };
 
       const vk_clear_color = c.VkClearValue{.color = .{.float32 = [4] f32 {
@@ -331,7 +335,7 @@ pub const Renderer = struct {
       const vk_info_render_pass_begin = c.VkRenderPassBeginInfo{
          .sType            = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
          .pNext            = null,
-         .renderPass       = vulkan_graphics_pipeline.vk_render_pass,
+         .renderPass       = self._vulkan_graphics_pipeline.vk_render_pass,
          .framebuffer      = vk_framebuffer,
          .renderArea       = vk_render_area,
          .clearValueCount  = 1,
@@ -340,13 +344,13 @@ pub const Renderer = struct {
 
       c.vkCmdBeginRenderPass(vk_command_buffer, &vk_info_render_pass_begin, c.VK_SUBPASS_CONTENTS_INLINE);
 
-      c.vkCmdBindPipeline(vk_command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, vulkan_graphics_pipeline.vk_pipeline);
+      c.vkCmdBindPipeline(vk_command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self._vulkan_graphics_pipeline.vk_pipeline);
 
       const vk_viewport = c.VkViewport{
          .x          = 0.0,
          .y          = 0.0,
-         .width      = @floatFromInt(swapchain_configuration.extent.width),
-         .height     = @floatFromInt(swapchain_configuration.extent.height),
+         .width      = @floatFromInt(self._vulkan_swapchain_configuration.extent.width),
+         .height     = @floatFromInt(self._vulkan_swapchain_configuration.extent.height),
          .minDepth   = 0.0,
          .maxDepth   = 1.0,
       };
@@ -355,7 +359,7 @@ pub const Renderer = struct {
 
       const vk_scissor = c.VkRect2D{
          .offset  = .{.x = 0, .y = 0},
-         .extent  = swapchain_configuration.extent,
+         .extent  = self._vulkan_swapchain_configuration.extent,
       };
 
       c.vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
@@ -372,6 +376,60 @@ pub const Renderer = struct {
          else                             => return error.UnknownError,
       }
 
+      return;
+   }
+
+   const RecreateSwapchainError = error {
+      NoAvailableSwapchainConfiguration,
+      OutOfMemory,
+      DeviceLost,
+      SurfaceLost,
+      WindowInUse,
+      UnknownError,
+   };
+
+   fn _recreateSwapchain(self : * @This()) RecreateSwapchainError!void {
+      var vk_result : c.VkResult = undefined;
+
+      const allocator = self._allocator;
+      const vk_device = self._vulkan_device.vk_device;
+
+      vk_result = c.vkDeviceWaitIdle(vk_device);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_DEVICE_LOST           => return error.DeviceLost,
+         else                             => unreachable,
+      }
+
+      const vulkan_swapchain_configuration = try VulkanSwapchainConfiguration.selectBest(
+         self._vulkan_physical_device.vk_physical_device,
+         self._vulkan_surface.vk_surface,
+         self._window,
+         self._refresh_mode,
+      ) orelse return error.NoAvailableSwapchainConfiguration;
+
+      try self._vulkan_swapchain.recreate(
+         allocator,
+         vk_device,
+         self._vulkan_surface.vk_surface,
+         &self._vulkan_physical_device.queue_family_indices,
+         &vulkan_swapchain_configuration,
+      );
+
+      const vulkan_framebuffers = try VulkanFramebuffers.create(
+         allocator,
+         vk_device,
+         &self._vulkan_swapchain,
+         &self._vulkan_graphics_pipeline,
+         &vulkan_swapchain_configuration,
+      );
+      errdefer vulkan_framebuffers.destroy(allocator, vk_device);
+
+      self._vulkan_swapchain_configuration = vulkan_swapchain_configuration;
+      self._vulkan_framebuffers.destroy(allocator, vk_device);
+      self._vulkan_framebuffers = vulkan_framebuffers;
       return;
    }
 };
@@ -1417,6 +1475,7 @@ const VulkanSwapchain = struct {
       }
       allocator.free(self.image_views);
       allocator.free(self.images);
+      c.vkDestroySwapchainKHR(vk_device, self.vk_swapchain, null);
       self.vk_swapchain = vk_swapchain;
       self.images       = vk_images;
       self.image_views  = vk_image_views;
