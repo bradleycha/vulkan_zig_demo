@@ -26,7 +26,7 @@ pub const Renderer = struct {
    _vulkan_fences_in_flight            : VulkanFenceList,
    _frames_in_flight                   : u32,
    _frame_index                        : u32,
-   _old_framebuffer_size               : f_present.Window.Resolution,
+   _framebuffer_size                   : f_present.Window.Resolution,
 
    pub const CreateOptions = struct {
       debugging            : bool,
@@ -183,7 +183,7 @@ pub const Renderer = struct {
          ._vulkan_fences_in_flight           = vulkan_fences_in_flight,
          ._frames_in_flight                  = create_options.frames_in_flight,
          ._frame_index                       = 0,
-         ._old_framebuffer_size              = window_framebuffer_size,
+         ._framebuffer_size                  = window_framebuffer_size,
       };
    }
 
@@ -242,7 +242,7 @@ pub const Renderer = struct {
       }
 
       const current_framebuffer_size = self._window.getFramebufferSize();
-      if (self._old_framebuffer_size.width != current_framebuffer_size.width or self._old_framebuffer_size.height != current_framebuffer_size.height) {
+      if (self._framebuffer_size.width != current_framebuffer_size.width or self._framebuffer_size.height != current_framebuffer_size.height) {
          self._recreateSwapchain() catch return error.SwapchainRecreateFailure;
          return false;
       }
@@ -456,6 +456,8 @@ pub const Renderer = struct {
          else                             => unreachable,
       }
 
+      const framebuffer_size = self._window.getFramebufferSize();
+
       const vulkan_swapchain_configuration = try VulkanSwapchainConfiguration.selectBest(
          self._vulkan_physical_device.vk_physical_device,
          self._vulkan_surface.vk_surface,
@@ -463,29 +465,31 @@ pub const Renderer = struct {
          self._refresh_mode,
       ) orelse return error.NoAvailableSwapchainConfiguration;
 
-      try self._vulkan_swapchain.recreate(
+      const vulkan_swapchain = try self._vulkan_swapchain.createFrom(
          allocator,
          vk_device,
          self._vulkan_surface.vk_surface,
          &self._vulkan_physical_device.queue_family_indices,
          &vulkan_swapchain_configuration,
       );
+      errdefer vulkan_swapchain.destroy(allocator, vk_device);
 
       const vulkan_framebuffers = try VulkanFramebuffers.create(
          allocator,
          vk_device,
-         &self._vulkan_swapchain,
+         &vulkan_swapchain,
          &self._vulkan_graphics_pipeline,
          &vulkan_swapchain_configuration,
       );
       errdefer vulkan_framebuffers.destroy(allocator, vk_device);
 
-      const framebuffer_size = self._window.getFramebufferSize();
-
-      self._vulkan_swapchain_configuration = vulkan_swapchain_configuration;
+      self._vulkan_swapchain.destroy(allocator, vk_device);
       self._vulkan_framebuffers.destroy(allocator, vk_device);
-      self._vulkan_framebuffers = vulkan_framebuffers;
-      self._old_framebuffer_size = framebuffer_size;
+
+      self._vulkan_swapchain_configuration   = vulkan_swapchain_configuration;
+      self._vulkan_swapchain                 = vulkan_swapchain;
+      self._vulkan_framebuffers              = vulkan_framebuffers;
+      self._framebuffer_size                 = framebuffer_size;
       return;
    }
 };
@@ -1431,18 +1435,14 @@ const VulkanSwapchain = struct {
    };
 
    pub fn create(allocator : std.mem.Allocator, vk_device : c.VkDevice, vk_surface : c.VkSurfaceKHR, queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!@This() {
-      var self = @This(){
-         .vk_swapchain  = @ptrCast(@alignCast(c.VK_NULL_HANDLE)),
-         .images        = try allocator.alloc(c.VkImage, 0),
-         .image_views   = try allocator.alloc(c.VkImageView, 0),
-      };
-
-      try self.recreate(allocator, vk_device, vk_surface, queue_family_indices, swapchain_configuration);
-
-      return self;
+      return _createFromRaw(@ptrCast(@alignCast(c.VK_NULL_HANDLE)), allocator, vk_device, vk_surface, queue_family_indices, swapchain_configuration);
    }
 
-   pub fn recreate(self : * @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice, vk_surface : c.VkSurfaceKHR, queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!void {
+   pub fn createFrom(self : * const @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice, vk_surface : c.VkSurfaceKHR, queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!@This() {
+      return _createFromRaw(self.vk_swapchain, allocator, vk_device, vk_surface, queue_family_indices, swapchain_configuration);
+   }
+
+   fn _createFromRaw(vk_swapchain_old : c.VkSwapchainKHR, allocator : std.mem.Allocator, vk_device : c.VkDevice, vk_surface : c.VkSurfaceKHR, queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!@This() {
       var vk_result : c.VkResult = undefined;
 
       const vk_image_count = _chooseImageCount(swapchain_configuration.capabilities);
@@ -1473,7 +1473,7 @@ const VulkanSwapchain = struct {
          .compositeAlpha         = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
          .presentMode            = swapchain_configuration.present_mode,
          .clipped                = c.VK_TRUE,
-         .oldSwapchain           = self.vk_swapchain,
+         .oldSwapchain           = vk_swapchain_old,
       };
 
       var vk_swapchain : c.VkSwapchainKHR = undefined;
@@ -1526,16 +1526,11 @@ const VulkanSwapchain = struct {
          c.vkDestroyImageView(vk_device, image_view, null);
       };
 
-      for (self.image_views) |old_image_view| {
-         c.vkDestroyImageView(vk_device, old_image_view, null);
-      }
-      allocator.free(self.image_views);
-      allocator.free(self.images);
-      c.vkDestroySwapchainKHR(vk_device, self.vk_swapchain, null);
-      self.vk_swapchain = vk_swapchain;
-      self.images       = vk_images;
-      self.image_views  = vk_image_views;
-      return;
+      return @This(){
+         .vk_swapchain  = vk_swapchain,
+         .images        = vk_images,
+         .image_views   = vk_image_views,
+      };
    }
 
    fn _chooseImageCount(vk_swapchain_capabilities : c.VkSurfaceCapabilitiesKHR) u32 {
