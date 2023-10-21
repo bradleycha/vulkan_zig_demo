@@ -3,17 +3,22 @@ const builtin     = @import("builtin");
 const zest        = @import("zig-essential-tools");
 const graphics    = @import("graphics");
 const resources   = @import("resources");
+const timing      = @import("timing.zig");
 
 const MainError = error {
    CompositorConnectFailure,
    WindowCreateFailure,
    RendererCreateFailure,
+   WindowTitleFormatFailure,
 };
 
 pub fn main() MainError!void {
    const PROGRAM_SEXY_NAME = "Learn Vulkan with Zig!";
 
    const allocator = std.heap.page_allocator;
+
+   var delta_timer         = timing.DeltaTimer.start();
+   var window_title_timer  = timing.UpdateTimer.start(1000000000);
 
    zest.dbg.log.info("connecting to default desktop compositor", .{});
    const compositor = graphics.present.Compositor.connect_default() catch return error.CompositorConnectFailure;
@@ -42,7 +47,21 @@ pub fn main() MainError!void {
 
    zest.dbg.log.info("initialization complete, entering main loop", .{});
 
+   delta_timer.lap();
+
    while (window.shouldClose() == false) {
+      const delta_time  = delta_timer.deltaSeconds();
+      const fps         = 1.0 / delta_time;
+
+      if (window_title_timer.isElapsed() == true) {
+         const window_title_formatted = std.fmt.allocPrintZ(allocator, PROGRAM_SEXY_NAME ++ " - {d:.0} fps", .{fps}) catch return error.WindowTitleFormatFailure;
+         defer allocator.free(window_title_formatted);
+
+         window.setTitle(window_title_formatted);
+
+         window_title_timer.lap();
+      }
+
       window.pollEvents() catch |err| {
          std.log.warn("failed to poll events: {}", .{err});
       };
@@ -56,6 +75,9 @@ pub fn main() MainError!void {
       renderer.renderFrame() catch |err| {
          std.log.warn("failed to render frame: {}", .{err});
       };
+
+      delta_timer.lap();
+      window_title_timer.tick();
    }
 
    return;

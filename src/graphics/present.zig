@@ -162,6 +162,11 @@ pub const Window = struct {
       return;
    }
 
+   pub fn setTitle(self : * @This(), title : [:0] const u8) void {
+      c.glfwSetWindowTitle(self._glfw_window, title.ptr);
+      return;
+   }
+
    pub fn createVulkanSurface(
       self        : * const @This(),
       instance    : c.VkInstance,
