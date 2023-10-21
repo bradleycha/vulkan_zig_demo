@@ -53,9 +53,9 @@ pub fn main() MainError!void {
          window.setShouldClose(true);
       }
 
-      //renderer.renderFrame() catch |err| {
-      //   std.log.warn("failed to render frame: {}", .{err});
-      //};
+      renderer.renderFrame() catch |err| {
+         std.log.warn("failed to render frame: {}", .{err});
+      };
    }
 
    return;
