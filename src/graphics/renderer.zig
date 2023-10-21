@@ -52,7 +52,7 @@ pub const Renderer = struct {
 
    pub const ClearColor = union(ClearColorTag) {
       none  : void,
-      color : f_types.ColorRGBA(f32),
+      color : f_types.Color.Rgba(f32),
    };
    
    pub const CreateError = error {
