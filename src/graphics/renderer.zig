@@ -90,7 +90,7 @@ pub const Renderer = struct {
          &vulkan_physical_device.queue_family_indices,
          &vulkan_swapchain_configuration,
       ) catch return error.VulkanSwapchainCreateFailure;
-      errdefer vulkan_swapchain.destroy(vulkan_device.vk_device);
+      errdefer vulkan_swapchain.destroy(allocator, vulkan_device.vk_device);
 
       const vulkan_graphics_pipeline = VulkanGraphicsPipeline.create(vulkan_device.vk_device, &vulkan_swapchain_configuration, .{
          .spv_vertex    = create_options.shader_spv_vertex,
@@ -105,7 +105,7 @@ pub const Renderer = struct {
          &vulkan_graphics_pipeline,
          &vulkan_swapchain_configuration,
       ) catch return error.VulkanFramebuffersCreateFailure;
-      errdefer vulkan_framebuffers.destroy(vulkan_device.vk_device);
+      errdefer vulkan_framebuffers.destroy(allocator, vulkan_device.vk_device);
 
       const vulkan_graphics_command_pool = VulkanGraphicsCommandPool.create(
          vulkan_device.vk_device, vulkan_physical_device.queue_family_indices.graphics,
@@ -150,9 +150,9 @@ pub const Renderer = struct {
       self._vulkan_semaphore_render_finished.destroy(self._vulkan_device.vk_device);
       self._vulkan_semaphore_image_available.destroy(self._vulkan_device.vk_device);
       self._vulkan_graphics_command_pool.destroy(self._vulkan_device.vk_device);
-      self._vulkan_framebuffers.destroy(self._vulkan_device.vk_device);
+      self._vulkan_framebuffers.destroy(self._allocator, self._vulkan_device.vk_device);
       self._vulkan_graphics_pipeline.destroy(self._vulkan_device.vk_device);
-      self._vulkan_swapchain.destroy(self._vulkan_device.vk_device);
+      self._vulkan_swapchain.destroy(self._allocator, self._vulkan_device.vk_device);
       self._vulkan_device.destroy();
       self._vulkan_surface.destroy(self._vulkan_instance.vk_instance);
       self._vulkan_instance.destroy();
@@ -1191,7 +1191,6 @@ const VulkanSwapchainConfiguration = struct {
 };
 
 const VulkanSwapchain = struct {
-   _allocator     : std.mem.Allocator,
    vk_swapchain   : c.VkSwapchainKHR,
    images         : [] c.VkImage,
    image_views    : [] c.VkImageView,
@@ -1212,18 +1211,17 @@ const VulkanSwapchain = struct {
 
    pub fn create(allocator : std.mem.Allocator, vk_device : c.VkDevice, vk_surface : c.VkSurfaceKHR, queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!@This() {
       var self = @This(){
-         ._allocator    = allocator,
          .vk_swapchain  = @ptrCast(@alignCast(c.VK_NULL_HANDLE)),
          .images        = try allocator.alloc(c.VkImage, 0),
          .image_views   = try allocator.alloc(c.VkImageView, 0),
       };
 
-      try self.recreate(vk_device, vk_surface, queue_family_indices, swapchain_configuration);
+      try self.recreate(allocator, vk_device, vk_surface, queue_family_indices, swapchain_configuration);
 
       return self;
    }
 
-   pub fn recreate(self : * @This(), vk_device : c.VkDevice, vk_surface : c.VkSurfaceKHR, queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!void {
+   pub fn recreate(self : * @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice, vk_surface : c.VkSurfaceKHR, queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!void {
       var vk_result : c.VkResult = undefined;
 
       const vk_image_count = _chooseImageCount(swapchain_configuration.capabilities);
@@ -1282,8 +1280,8 @@ const VulkanSwapchain = struct {
          else                             => unreachable,
       }
 
-      var vk_images = try self._allocator.alloc(c.VkImage, @as(usize, vk_images_count));
-      errdefer self._allocator.free(vk_images);
+      var vk_images = try allocator.alloc(c.VkImage, @as(usize, vk_images_count));
+      errdefer allocator.free(vk_images);
       vk_result = c.vkGetSwapchainImagesKHR(vk_device, vk_swapchain, &vk_images_count, vk_images.ptr);
       switch (vk_result) {
          c.VK_SUCCESS                     => {},
@@ -1293,8 +1291,8 @@ const VulkanSwapchain = struct {
          else                             => unreachable,
       }
 
-      var vk_image_views = try self._allocator.alloc(c.VkImageView, @as(usize, vk_images_count));
-      errdefer self._allocator.free(vk_image_views);
+      var vk_image_views = try allocator.alloc(c.VkImageView, @as(usize, vk_images_count));
+      errdefer allocator.free(vk_image_views);
       for (vk_images, vk_image_views, 0..vk_images_count) |image, *image_view, i| {
          // In the case of error in the loop, we clean up all previously image views.
          errdefer for (vk_image_views[0..i]) |previous_image_view| {
@@ -1310,8 +1308,8 @@ const VulkanSwapchain = struct {
       for (self.image_views) |old_image_view| {
          c.vkDestroyImageView(vk_device, old_image_view, null);
       }
-      self._allocator.free(self.image_views);
-      self._allocator.free(self.images);
+      allocator.free(self.image_views);
+      allocator.free(self.images);
       self.vk_swapchain = vk_swapchain;
       self.images       = vk_images;
       self.image_views  = vk_image_views;
@@ -1390,12 +1388,12 @@ const VulkanSwapchain = struct {
       return vk_image_view;
    }
 
-   pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+   pub fn destroy(self : @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
       for (self.image_views) |image_view| {
          c.vkDestroyImageView(vk_device, image_view, null);
       }
 
-      self._allocator.free(self.images);
+      allocator.free(self.images);
       c.vkDestroySwapchainKHR(vk_device, self.vk_swapchain, null);
       return;
    }
@@ -1705,7 +1703,6 @@ const VulkanGraphicsPipeline = struct {
 };
 
 const VulkanFramebuffers = struct {
-   _allocator        : std.mem.Allocator,
    vk_framebuffers   : [] c.VkFramebuffer,
 
    pub const CreateError = error {
@@ -1731,7 +1728,6 @@ const VulkanFramebuffers = struct {
       };
 
       return @This(){
-         ._allocator       = allocator,
          .vk_framebuffers  = vk_framebuffers,
       };
    }
@@ -1764,12 +1760,12 @@ const VulkanFramebuffers = struct {
       return vk_framebuffer;
    }
 
-   pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+   pub fn destroy(self : @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
       for (self.vk_framebuffers) |vk_framebuffer| {
          c.vkDestroyFramebuffer(vk_device, vk_framebuffer, null);
       }
 
-      self._allocator.free(self.vk_framebuffers);
+      allocator.free(self.vk_framebuffers);
 
       return;
    }
