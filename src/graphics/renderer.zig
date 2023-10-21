@@ -24,6 +24,7 @@ pub const Renderer = struct {
    _vulkan_fences_in_flight            : VulkanFenceList,
    _frames_in_flight                   : u32,
    _frame_index                        : u32,
+   _old_framebuffer_size               : f_present.Window.Resolution,
 
    pub const CreateOptions = struct {
       debugging            : bool,
@@ -146,6 +147,8 @@ pub const Renderer = struct {
       ) catch return error.VulkanFencesInFlightCreateFailure;
       errdefer vulkan_fences_in_flight.destroy(allocator, vulkan_device.vk_device);
 
+      const window_framebuffer_size = window.getFramebufferSize();
+
       return @This(){
          ._allocator                         = allocator,
          ._window                            = window,
@@ -165,6 +168,7 @@ pub const Renderer = struct {
          ._vulkan_fences_in_flight           = vulkan_fences_in_flight,
          ._frames_in_flight                  = create_options.frames_in_flight,
          ._frame_index                       = 0,
+         ._old_framebuffer_size              = window_framebuffer_size,
       };
    }
 
@@ -215,6 +219,13 @@ pub const Renderer = struct {
          c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
          c.VK_ERROR_DEVICE_LOST           => return error.DeviceLost,
          else                             => unreachable,
+      }
+
+      const current_framebuffer_size = self._window.getFramebufferSize();
+      if (self._old_framebuffer_size.width != current_framebuffer_size.width or self._old_framebuffer_size.height != current_framebuffer_size.height) {
+         self._recreateSwapchain() catch return error.SwapchainRecreateFailure;
+         self._old_framebuffer_size = current_framebuffer_size;
+         return;
       }
 
       var vk_swapchain_image_index : u32 = undefined;
