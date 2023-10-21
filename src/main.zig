@@ -36,6 +36,7 @@ pub fn main() MainError!void {
       .refresh_mode        = .TripleBuffered,
       .shader_spv_vertex   = resources.SHADER_SPV_VERTEX,
       .shader_spv_fragment = resources.SHADER_SPV_FRAGMENT,
+      .frames_in_flight    = 2,
    }) catch return error.RendererCreateFailure;
    defer renderer.destroy();
 
@@ -52,9 +53,9 @@ pub fn main() MainError!void {
          window.setShouldClose(true);
       }
 
-      renderer.renderFrame() catch |err| {
-         std.log.warn("failed to render frame: {}", .{err});
-      };
+      //renderer.renderFrame() catch |err| {
+      //   std.log.warn("failed to render frame: {}", .{err});
+      //};
    }
 
    return;
