@@ -1,6 +1,7 @@
 const std         = @import("std");
 const zest        = @import("zig-essential-tools");
 const f_present   = @import("present.zig");
+const f_types     = @import("types.zig");
 const c           = @import("cimports.zig");
 
 const VULKAN_TEMP_HEAP = zest.mem.SingleScopeHeap(8 * 1024 * 1024);
@@ -9,6 +10,7 @@ pub const Renderer = struct {
    _allocator                          : std.mem.Allocator,
    _window                             : * const f_present.Window,
    _refresh_mode                       : RefreshMode,
+   _clear_color                        : ClearColor,
    _vulkan_instance                    : VulkanInstance,
    _vulkan_surface                     : VulkanSurface,
    _vulkan_physical_device             : VulkanPhysicalDevice,
@@ -31,6 +33,7 @@ pub const Renderer = struct {
       name                 : [*:0] const u8,
       version              : u32,
       refresh_mode         : RefreshMode,
+      clear_color          : ClearColor,
       shader_spv_vertex    : [] align(@alignOf(u32)) const u8,
       shader_spv_fragment  : [] align(@alignOf(u32)) const u8,
       frames_in_flight     : u32,
@@ -40,6 +43,16 @@ pub const Renderer = struct {
       SingleBuffered,
       DoubleBuffered,
       TripleBuffered,
+   };
+
+   pub const ClearColorTag = enum {
+      none,
+      color,
+   };
+
+   pub const ClearColor = union(ClearColorTag) {
+      none  : void,
+      color : f_types.ColorRGBA(f32),
    };
    
    pub const CreateError = error {
@@ -99,6 +112,7 @@ pub const Renderer = struct {
       errdefer vulkan_swapchain.destroy(allocator, vulkan_device.vk_device);
 
       const vulkan_graphics_pipeline = VulkanGraphicsPipeline.create(vulkan_device.vk_device, &vulkan_swapchain_configuration, .{
+         .clear_mode    = create_options.clear_color,
          .spv_vertex    = create_options.shader_spv_vertex,
          .spv_fragment  = create_options.shader_spv_fragment,
       }) catch return error.VulkanGraphicsPipelineCreateFailure;
@@ -153,6 +167,7 @@ pub const Renderer = struct {
          ._allocator                         = allocator,
          ._window                            = window,
          ._refresh_mode                      = create_options.refresh_mode,
+         ._clear_color                       = create_options.clear_color,
          ._vulkan_instance                   = vulkan_instance,
          ._vulkan_surface                    = vulkan_surface,
          ._vulkan_physical_device            = vulkan_physical_device,
@@ -260,7 +275,7 @@ pub const Renderer = struct {
          else                             => unreachable,
       }
 
-      try _recordRenderPass(self, vk_graphics_command_buffer, vk_framebuffer);
+      try _recordRenderPass(self, vk_graphics_command_buffer, vk_framebuffer, self._clear_color);
 
       const vk_wait_stages = [_] c.VkPipelineStageFlags {
          c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -316,7 +331,7 @@ pub const Renderer = struct {
       return;
    }
 
-   fn _recordRenderPass(self : * const @This(), vk_command_buffer : c.VkCommandBuffer, vk_framebuffer : c.VkFramebuffer) RenderError!void {
+   fn _recordRenderPass(self : * const @This(), vk_command_buffer : c.VkCommandBuffer, vk_framebuffer : c.VkFramebuffer, clear_color : ClearColor) RenderError!void {
       var vk_result : c.VkResult = undefined;
 
       const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
@@ -339,18 +354,31 @@ pub const Renderer = struct {
          .extent  = self._vulkan_swapchain_configuration.extent,
       };
 
-      const vk_clear_color = c.VkClearValue{.color = .{.float32 = [4] f32 {
-         0.0, 0.0, 0.0, 1.0,
-      }}};
-
+      var vk_clear_color_count   : u32 = undefined;
+      var vk_clear_color_ptr     : ? [*] const c.VkClearValue = undefined;
+      var vk_clear_color_value   : [1] c.VkClearValue = undefined;
+      switch (clear_color) {
+         .none => {
+            vk_clear_color_count = 0;
+            vk_clear_color_ptr   = null;
+         },
+         .color => |color| {
+            vk_clear_color_count = 1;
+            vk_clear_color_ptr   = &vk_clear_color_value;
+            vk_clear_color_value[0] = .{.color = .{.float32 = [4] f32 {
+               color.r, color.g, color.b, color.a,
+            }}};
+         },
+      }
+     
       const vk_info_render_pass_begin = c.VkRenderPassBeginInfo{
          .sType            = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
          .pNext            = null,
          .renderPass       = self._vulkan_graphics_pipeline.vk_render_pass,
          .framebuffer      = vk_framebuffer,
          .renderArea       = vk_render_area,
-         .clearValueCount  = 1,
-         .pClearValues     = &vk_clear_color,
+         .clearValueCount  = vk_clear_color_count,
+         .pClearValues     = vk_clear_color_ptr,
       };
 
       c.vkCmdBeginRenderPass(vk_command_buffer, &vk_info_render_pass_begin, c.VK_SUBPASS_CONTENTS_INLINE);
@@ -1582,6 +1610,7 @@ const VulkanGraphicsPipeline = struct {
    vk_pipeline          : c.VkPipeline,
 
    pub const CreateOptions = struct {
+      clear_mode     : Renderer.ClearColorTag,
       spv_vertex     : [] align(@alignOf(u32)) const u8,
       spv_fragment   : [] align(@alignOf(u32)) const u8,
    };
@@ -1594,7 +1623,7 @@ const VulkanGraphicsPipeline = struct {
    pub fn create(vk_device : c.VkDevice, swapchain_configuration : * const VulkanSwapchainConfiguration, create_options : CreateOptions) CreateError!@This() {
       var vk_result : c.VkResult = undefined;
 
-      const vk_render_pass = try _createRenderPass(vk_device, swapchain_configuration);
+      const vk_render_pass = try _createRenderPass(vk_device, swapchain_configuration, create_options.clear_mode);
       errdefer c.vkDestroyRenderPass(vk_device, vk_render_pass, null);
 
       const vk_shader_module_vertex    = try _createShaderModule(vk_device, create_options.spv_vertex);
@@ -1803,14 +1832,21 @@ const VulkanGraphicsPipeline = struct {
       return vk_shader_module;
    }
 
-   fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const VulkanSwapchainConfiguration) CreateError!c.VkRenderPass {
+   fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const VulkanSwapchainConfiguration, clear_mode : Renderer.ClearColorTag) CreateError!c.VkRenderPass {
       var vk_result : c.VkResult = undefined;
+
+      const vk_color_load_op : c_uint = blk: {
+         switch (clear_mode) {
+            .none    => break :blk c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .color   => break :blk c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+         }
+      };
 
       const vk_attachment_color = c.VkAttachmentDescription{
          .flags            = 0x00000000,
          .format           = swapchain_configuration.pixel_format.format,
          .samples          = c.VK_SAMPLE_COUNT_1_BIT,
-         .loadOp           = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+         .loadOp           = vk_color_load_op,
          .storeOp          = c.VK_ATTACHMENT_STORE_OP_STORE,
          .stencilLoadOp    = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
          .stencilStoreOp   = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,

@@ -15,7 +15,7 @@ const MainError = error {
 pub fn main() MainError!void {
    const PROGRAM_SEXY_NAME = "Learn Vulkan with Zig!";
 
-   const allocator = std.heap.page_allocator;
+   const allocator = zest.mem.allocator;
 
    var delta_timer         = timing.DeltaTimer.start();
    var window_title_timer  = timing.UpdateTimer.start(1000000000);
@@ -39,6 +39,7 @@ pub fn main() MainError!void {
       .name                = PROGRAM_SEXY_NAME,
       .version             = 0x00000000,
       .refresh_mode        = .TripleBuffered,
+      .clear_color         = .{.color = .{.r = 1.0, .g = 1.0, .b = 1.0, .a = 1.0}},
       .shader_spv_vertex   = resources.SHADER_SPV_VERTEX,
       .shader_spv_fragment = resources.SHADER_SPV_FRAGMENT,
       .frames_in_flight    = 2,
