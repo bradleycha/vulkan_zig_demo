@@ -217,13 +217,6 @@ pub const Renderer = struct {
          else                             => unreachable,
       }
 
-      vk_result = c.vkResetFences(vk_device, 1, &vk_fence_in_flight);
-      switch (vk_result) {
-         c.VK_SUCCESS                     => {},
-         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
-         else                             => unreachable,
-      }
-
       var vk_swapchain_image_index : u32 = undefined;
       vk_result = c.vkAcquireNextImageKHR(vk_device, self._vulkan_swapchain.vk_swapchain, std.math.maxInt(u64), vk_semaphore_image_available, @ptrCast(@alignCast(c.VK_NULL_HANDLE)), &vk_swapchain_image_index);
       switch (vk_result) {
@@ -238,6 +231,13 @@ pub const Renderer = struct {
          c.VK_ERROR_SURFACE_LOST_KHR                     => return error.SurfaceLost,
          c.VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT  => return error.UnknownError,
          else                                            => unreachable,
+      }
+
+      vk_result = c.vkResetFences(vk_device, 1, &vk_fence_in_flight);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
       }
 
       var vk_framebuffer = self._vulkan_framebuffers.vk_framebuffers[vk_swapchain_image_index];
