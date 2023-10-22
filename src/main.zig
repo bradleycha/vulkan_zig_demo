@@ -40,8 +40,8 @@ pub fn main() MainError!void {
       .version          = 0x00000000,
       .refresh_mode     = .TripleBuffered,
       .clear_color      = .{.color = .{.r = 1.0, .g = 1.0, .b = 1.0, .a = 1.0}},
-      .shader_vertex    = &resources.Shaders.Vertex,
-      .shader_fragment  = &resources.Shaders.Fragment,
+      .shader_vertex    = &resources.shaders.Vertex,
+      .shader_fragment  = &resources.shaders.Fragment,
       .frames_in_flight = 2,
    }) catch return error.RendererCreateFailure;
    defer renderer.destroy();

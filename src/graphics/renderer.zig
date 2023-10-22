@@ -66,6 +66,13 @@ pub const Renderer = struct {
       position : f_types.Vector3(f32),
    };
    
+   pub const IndexBufferType = u32;
+
+   pub const Mesh = struct {
+      vertices : [] const Vertex,
+      indices  : [] const IndexBufferType,
+   };
+   
    pub const CreateError = error {
       OutOfMemory,
       VulkanInstanceCreateFailure,
