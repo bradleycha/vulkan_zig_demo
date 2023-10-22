@@ -19,6 +19,7 @@ pub const Renderer = struct {
    _vulkan_swapchain                   : VulkanSwapchain,
    _vulkan_graphics_pipeline           : VulkanGraphicsPipeline,
    _vulkan_framebuffers                : VulkanFramebuffers,
+   _vulkan_vertex_buffer               : VulkanVertexBuffer,
    _vulkan_graphics_command_pool       : VulkanGraphicsCommandPool,
    _vulkan_graphics_command_buffers    : VulkanGraphicsCommandBufferList,
    _vulkan_semaphores_image_available  : VulkanSemaphoreList,
@@ -37,6 +38,7 @@ pub const Renderer = struct {
       shader_vertex     : * const ShaderBinary,
       shader_fragment   : * const ShaderBinary,
       frames_in_flight  : u32,
+      render_mesh       : * const Mesh,
    };
 
    pub const RefreshMode = enum {
@@ -83,6 +85,7 @@ pub const Renderer = struct {
       VulkanSwapchainCreateFailure,
       VulkanGraphicsPipelineCreateFailure,
       VulkanFramebuffersCreateFailure,
+      VulkanVertexBufferCreateFailure,
       VulkanGraphicsCommandPoolCreateFailure,
       VulkanGraphicsCommandBuffersCreateFailure,
       VulkanSemaphoresImageAvailableCreateFailure,
@@ -145,6 +148,13 @@ pub const Renderer = struct {
       ) catch return error.VulkanFramebuffersCreateFailure;
       errdefer vulkan_framebuffers.destroy(allocator, vulkan_device.vk_device);
 
+      const vulkan_vertex_buffer = VulkanVertexBuffer.create(
+         vulkan_device.vk_device,
+         &vulkan_physical_device,
+         @intCast(create_options.render_mesh.vertices.len * @sizeOf(Vertex)),
+      ) catch return error.VulkanVertexBufferCreateFailure;
+      errdefer vulkan_vertex_buffer.destroy(vulkan_device.vk_device);
+
       const vulkan_graphics_command_pool = VulkanGraphicsCommandPool.create(
          vulkan_device.vk_device, vulkan_physical_device.queue_family_indices.graphics,
       ) catch return error.VulkanGraphicsCommandPoolCreateFailure;
@@ -194,6 +204,7 @@ pub const Renderer = struct {
          ._vulkan_swapchain                  = vulkan_swapchain,
          ._vulkan_graphics_pipeline          = vulkan_graphics_pipeline,
          ._vulkan_framebuffers               = vulkan_framebuffers,
+         ._vulkan_vertex_buffer              = vulkan_vertex_buffer,
          ._vulkan_graphics_command_pool      = vulkan_graphics_command_pool,
          ._vulkan_graphics_command_buffers   = vulkan_graphics_command_buffers,
          ._vulkan_semaphores_image_available = vulkan_semaphores_image_available,
@@ -216,6 +227,7 @@ pub const Renderer = struct {
       self._vulkan_semaphores_image_available.destroy(allocator, vk_device);
       self._vulkan_graphics_command_buffers.destroy(allocator);
       self._vulkan_graphics_command_pool.destroy(vk_device);
+      self._vulkan_vertex_buffer.destroy(vk_device);
       self._vulkan_framebuffers.destroy(allocator, vk_device);
       self._vulkan_graphics_pipeline.destroy(vk_device);
       self._vulkan_swapchain.destroy(allocator, vk_device);
@@ -810,11 +822,12 @@ const VulkanDebugMessenger = struct {
 };
 
 const VulkanPhysicalDevice = struct {
-   vk_physical_device               : c.VkPhysicalDevice,
-   vk_physical_device_properties    : c.VkPhysicalDeviceProperties,
-   vk_physical_device_features      : c.VkPhysicalDeviceFeatures,
-   queue_family_indices             : QueueFamilyIndices,
-   initial_swapchain_configuration  : VulkanSwapchainConfiguration,
+   vk_physical_device                     : c.VkPhysicalDevice,
+   vk_physical_device_properties          : c.VkPhysicalDeviceProperties,
+   vk_physical_device_features            : c.VkPhysicalDeviceFeatures,
+   vk_physical_device_memory_properties   : c.VkPhysicalDeviceMemoryProperties,
+   queue_family_indices                   : QueueFamilyIndices,
+   initial_swapchain_configuration        : VulkanSwapchainConfiguration,
 
    pub const QueueFamilyIndices = struct {
       graphics       : u32,
@@ -889,6 +902,9 @@ const VulkanPhysicalDevice = struct {
 
       var vk_physical_device_features : c.VkPhysicalDeviceFeatures = undefined;
       c.vkGetPhysicalDeviceFeatures(vk_physical_device, &vk_physical_device_features);
+
+      var vk_physical_device_memory_properties : c.VkPhysicalDeviceMemoryProperties = undefined;
+      c.vkGetPhysicalDeviceMemoryProperties(vk_physical_device, &vk_physical_device_memory_properties);
       
       if (try _deviceSupportsExtensions(vk_physical_device, vk_required_extensions) == false) {
          zest.dbg.log.info("device \"{s}\" does not support required extensions, choosing new device", .{vk_physical_device_properties.deviceName});
@@ -906,11 +922,12 @@ const VulkanPhysicalDevice = struct {
       };
 
       return @This(){
-         .vk_physical_device              = vk_physical_device,
-         .vk_physical_device_properties   = vk_physical_device_properties,
-         .vk_physical_device_features     = vk_physical_device_features,
-         .queue_family_indices            = queue_family_indices,
-         .initial_swapchain_configuration = initial_swapchain_configuration,
+         .vk_physical_device                    = vk_physical_device,
+         .vk_physical_device_properties         = vk_physical_device_properties,
+         .vk_physical_device_features           = vk_physical_device_features,
+         .vk_physical_device_memory_properties  = vk_physical_device_memory_properties,
+         .queue_family_indices                  = queue_family_indices,
+         .initial_swapchain_configuration       = initial_swapchain_configuration,
       };   
    }
 
@@ -2040,6 +2057,27 @@ const VulkanFramebuffers = struct {
       allocator.free(self.vk_framebuffers);
 
       return;
+   }
+};
+
+const VulkanVertexBuffer = struct {
+   vk_buffer   : c.VkBuffer,
+
+   pub const CreateError = error {
+
+   };
+
+   pub fn create(vk_device : c.VkDevice, vulkan_physical_device : * const VulkanPhysicalDevice, bytes : u32) CreateError!@This() {
+      _ = vk_device;
+      _ = vulkan_physical_device;
+      _ = bytes;
+      unreachable;
+   }
+
+   pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      _ = self;
+      _ = vk_device;
+      unreachable;
    }
 };
 
