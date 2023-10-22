@@ -122,8 +122,10 @@ pub const ShaderModuleStep = struct {
    generated_file : std.Build.GeneratedFile,
 
    pub const ShaderBinary = struct {
-      spv_file    : std.Build.LazyPath,
-      identifier  : [] const u8,
+      spv_identifier          : [] const u8,
+      spv_file                : std.Build.LazyPath,
+      entrypoint_identifier   : [] const u8,
+      entrypoint              : [] const u8,
    };
 
    pub fn create(owner : * std.Build) * @This() {
@@ -173,8 +175,10 @@ pub const ShaderModuleStep = struct {
       man.hash.add(@as(u32, 0x0b4fce55));
 
       for (self.shaders.items) |shader| {
+         man.hash.addBytes(shader.spv_identifier);
          man.hash.addBytes(shader.spv_file.getPath(b));
-         man.hash.addBytes(shader.identifier);
+         man.hash.addBytes(shader.entrypoint_identifier);
+         man.hash.addBytes(shader.entrypoint);
       }
 
       const cache_hit   = try step.cacheHit(&man);
@@ -215,7 +219,7 @@ pub const ShaderModuleStep = struct {
       var shader_reader_buffer = std.io.BufferedReader(BUFFERED_IO_SIZE, std.fs.File.Reader){.unbuffered_reader = shader_file.reader()};
       var shader_reader        = shader_reader_buffer.reader();
 
-      try output_writer.print("pub const {s} align(@alignOf(u32)) = [_] u8 {{", .{shader.identifier});
+      try output_writer.print("pub const {s} align(@alignOf(u32)) = [_] u8 {{", .{shader.spv_identifier});
 
       while (shader_reader.readByte()) |byte| {
          try output_writer.print("{},", .{byte});
@@ -225,6 +229,8 @@ pub const ShaderModuleStep = struct {
       }
 
       try output_writer.print("}};\n", .{});
+
+      try output_writer.print("pub const {s} = [_:0] u8 {{}} ++ \"{s}\";\n", .{shader.entrypoint_identifier, shader.entrypoint});
 
       return;
    }

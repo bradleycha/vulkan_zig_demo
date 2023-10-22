@@ -29,14 +29,14 @@ pub const Renderer = struct {
    _framebuffer_size                   : f_present.Window.Resolution,
 
    pub const CreateOptions = struct {
-      debugging            : bool,
-      name                 : [*:0] const u8,
-      version              : u32,
-      refresh_mode         : RefreshMode,
-      clear_color          : ClearColor,
-      shader_spv_vertex    : [] align(@alignOf(u32)) const u8,
-      shader_spv_fragment  : [] align(@alignOf(u32)) const u8,
-      frames_in_flight     : u32,
+      debugging         : bool,
+      name              : [*:0] const u8,
+      version           : u32,
+      refresh_mode      : RefreshMode,
+      clear_color       : ClearColor,
+      shader_vertex     : * const ShaderBinary,
+      shader_fragment   : * const ShaderBinary,
+      frames_in_flight  : u32,
    };
 
    pub const RefreshMode = enum {
@@ -48,6 +48,11 @@ pub const Renderer = struct {
    pub const ClearColorTag = enum {
       none,
       color,
+   };
+
+   pub const ShaderBinary = struct {
+      spv_binary  : [] align(@alignOf(u32)) const u8,
+      entrypoint  : [*:0] const u8,
    };
 
    pub const ClearColor = union(ClearColorTag) {
@@ -112,9 +117,9 @@ pub const Renderer = struct {
       errdefer vulkan_swapchain.destroy(allocator, vulkan_device.vk_device);
 
       const vulkan_graphics_pipeline = VulkanGraphicsPipeline.create(vulkan_device.vk_device, &vulkan_swapchain_configuration, .{
-         .clear_mode    = create_options.clear_color,
-         .spv_vertex    = create_options.shader_spv_vertex,
-         .spv_fragment  = create_options.shader_spv_fragment,
+         .clear_mode       = create_options.clear_color,
+         .shader_vertex    = create_options.shader_vertex,
+         .shader_fragment  = create_options.shader_fragment,
       }) catch return error.VulkanGraphicsPipelineCreateFailure;
       errdefer vulkan_graphics_pipeline.destroy(vulkan_device.vk_device);
 
@@ -1622,9 +1627,9 @@ const VulkanGraphicsPipeline = struct {
    vk_pipeline          : c.VkPipeline,
 
    pub const CreateOptions = struct {
-      clear_mode     : Renderer.ClearColorTag,
-      spv_vertex     : [] align(@alignOf(u32)) const u8,
-      spv_fragment   : [] align(@alignOf(u32)) const u8,
+      clear_mode        : Renderer.ClearColorTag,
+      shader_vertex     : * const Renderer.ShaderBinary,
+      shader_fragment   : * const Renderer.ShaderBinary,
    };
 
    pub const CreateError = error {
@@ -1638,10 +1643,10 @@ const VulkanGraphicsPipeline = struct {
       const vk_render_pass = try _createRenderPass(vk_device, swapchain_configuration, create_options.clear_mode);
       errdefer c.vkDestroyRenderPass(vk_device, vk_render_pass, null);
 
-      const vk_shader_module_vertex    = try _createShaderModule(vk_device, create_options.spv_vertex);
+      const vk_shader_module_vertex    = try _createShaderModule(vk_device, create_options.shader_vertex.spv_binary);
       defer c.vkDestroyShaderModule(vk_device, vk_shader_module_vertex, null);
 
-      const vk_shader_module_fragment  = try _createShaderModule(vk_device, create_options.spv_fragment);
+      const vk_shader_module_fragment  = try _createShaderModule(vk_device, create_options.shader_fragment.spv_binary);
       defer c.vkDestroyShaderModule(vk_device, vk_shader_module_fragment, null);
 
       const vk_shader_stages = [_] c.VkPipelineShaderStageCreateInfo {
@@ -1651,7 +1656,7 @@ const VulkanGraphicsPipeline = struct {
             .flags               = 0x00000000,
             .stage               = c.VK_SHADER_STAGE_VERTEX_BIT,
             .module              = vk_shader_module_vertex,
-            .pName               = "main",
+            .pName               = create_options.shader_vertex.entrypoint,
             .pSpecializationInfo = null,
          },
          .{
@@ -1660,7 +1665,7 @@ const VulkanGraphicsPipeline = struct {
             .flags               = 0x00000000,
             .stage               = c.VK_SHADER_STAGE_FRAGMENT_BIT,
             .module              = vk_shader_module_fragment,
-            .pName               = "main",
+            .pName               = create_options.shader_fragment.entrypoint,
             .pSpecializationInfo = null,
          },
       };
@@ -1819,15 +1824,15 @@ const VulkanGraphicsPipeline = struct {
       };
    }
 
-   fn _createShaderModule(vk_device : c.VkDevice, bytecode : [] align(@alignOf(u32)) const u8) CreateError!c.VkShaderModule {
+   fn _createShaderModule(vk_device : c.VkDevice, spv_binary : [] align(@alignOf(u32)) const u8) CreateError!c.VkShaderModule {
       var vk_result : c.VkResult = undefined;
 
       const vk_info_create_shader_module = c.VkShaderModuleCreateInfo{
          .sType      = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
          .pNext      = null,
          .flags      = 0x00000000,
-         .codeSize   = @intCast(bytecode.len),
-         .pCode      = @ptrCast(bytecode.ptr),
+         .codeSize   = @intCast(spv_binary.len),
+         .pCode      = @ptrCast(spv_binary.ptr),
       };
 
       var vk_shader_module : c.VkShaderModule = undefined;

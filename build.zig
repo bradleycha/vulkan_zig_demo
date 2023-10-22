@@ -17,14 +17,24 @@ pub fn build(b : * std.Build) void {
       .optimize   = opt_optimize_mode,
    });
 
+   const SPV_IDENTIFIER_SUFFIX         = "_spv";
+   const ENTRYPOINT_IDENTIFIER_SUFFIX  = "_entrypoint";
+
+   const SHADER_NAME_VERTEX   = "shader_vertex";
+   const SHADER_NAME_FRAGMENT = "shader_fragment";
+
    var step_module_shaders = bd.ShaderModuleStep.create(b);
    step_module_shaders.addShader(.{
-      .spv_file   = shader_vertex.getOutput(),
-      .identifier = "shader_vertex",
+      .spv_identifier         = SHADER_NAME_VERTEX ++ SPV_IDENTIFIER_SUFFIX,
+      .spv_file               = shader_vertex.getOutput(),
+      .entrypoint_identifier  = SHADER_NAME_VERTEX ++ ENTRYPOINT_IDENTIFIER_SUFFIX,
+      .entrypoint             = "main",
    });
    step_module_shaders.addShader(.{
-      .spv_file   = shader_fragment.getOutput(),
-      .identifier = "shader_fragment",
+      .spv_identifier         = SHADER_NAME_FRAGMENT ++ SPV_IDENTIFIER_SUFFIX,
+      .spv_file               = shader_fragment.getOutput(),
+      .entrypoint_identifier  = SHADER_NAME_FRAGMENT ++ ENTRYPOINT_IDENTIFIER_SUFFIX,
+      .entrypoint             = "main",
    });
 
    const MODULE_NAME_ZEST        = "zig-essential-tools";

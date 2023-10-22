@@ -35,14 +35,14 @@ pub fn main() MainError!void {
 
    zest.dbg.log.info("creating vulkan renderer", .{});
    var renderer = window.createRenderer(allocator, .{
-      .debugging           = zest.dbg.enable,
-      .name                = PROGRAM_SEXY_NAME,
-      .version             = 0x00000000,
-      .refresh_mode        = .TripleBuffered,
-      .clear_color         = .{.color = .{.r = 1.0, .g = 1.0, .b = 1.0, .a = 1.0}},
-      .shader_spv_vertex   = resources.SHADER_SPV_VERTEX,
-      .shader_spv_fragment = resources.SHADER_SPV_FRAGMENT,
-      .frames_in_flight    = 2,
+      .debugging        = zest.dbg.enable,
+      .name             = PROGRAM_SEXY_NAME,
+      .version          = 0x00000000,
+      .refresh_mode     = .TripleBuffered,
+      .clear_color      = .{.color = .{.r = 1.0, .g = 1.0, .b = 1.0, .a = 1.0}},
+      .shader_vertex    = &resources.Shaders.Vertex,
+      .shader_fragment  = &resources.Shaders.Fragment,
+      .frames_in_flight = 2,
    }) catch return error.RendererCreateFailure;
    defer renderer.destroy();
 
