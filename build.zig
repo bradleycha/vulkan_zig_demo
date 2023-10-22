@@ -5,13 +5,13 @@ pub fn build(b : * std.Build) void {
    const opt_target_platform  = b.standardTargetOptions(.{});
    const opt_optimize_mode    = b.standardOptimizeOption(.{});
 
-   const shader_vertex = bd.ShaderCompileStep.create(b, .{
+   const shader_vertex = bd.shader.ShaderCompileStep.create(b, .{
       .input_file = .{.path = "src/shaders/vertex.glsl"},
       .stage      = .vertex,
       .optimize   = opt_optimize_mode,
    });
 
-   const shader_fragment = bd.ShaderCompileStep.create(b, .{
+   const shader_fragment = bd.shader.ShaderCompileStep.create(b, .{
       .input_file = .{.path = "src/shaders/fragment.glsl"},
       .stage      = .fragment,
       .optimize   = opt_optimize_mode,
@@ -23,7 +23,7 @@ pub fn build(b : * std.Build) void {
    const SHADER_NAME_VERTEX   = "shader_vertex";
    const SHADER_NAME_FRAGMENT = "shader_fragment";
 
-   var step_module_shaders = bd.ShaderModuleStep.create(b);
+   var step_module_shaders = bd.shader.ShaderModuleStep.create(b);
    step_module_shaders.addShader(.{
       .spv_identifier         = SHADER_NAME_VERTEX ++ SPV_IDENTIFIER_SUFFIX,
       .spv_file               = shader_vertex.getOutput(),
