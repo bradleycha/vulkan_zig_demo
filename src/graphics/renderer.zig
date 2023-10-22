@@ -22,7 +22,7 @@ pub const Renderer = struct {
    _vulkan_framebuffers                : VulkanFramebuffers,
    _vulkan_vertex_buffer               : VulkanVertexBuffer,
    _vulkan_command_pool_graphics       : VulkanCommandPool,
-   _vulkan_command_buffers_graphics    : VulkanGraphicsCommandBufferList,
+   _vulkan_command_buffers_graphics    : VulkanCommandBufferList,
    _vulkan_semaphores_image_available  : VulkanSemaphoreList,
    _vulkan_semaphores_render_finished  : VulkanSemaphoreList,
    _vulkan_fences_in_flight            : VulkanFenceList,
@@ -87,8 +87,8 @@ pub const Renderer = struct {
       VulkanGraphicsPipelineCreateFailure,
       VulkanFramebuffersCreateFailure,
       VulkanVertexBufferCreateFailure,
-      VulkanGraphicsCommandPoolCreateFailure,
-      VulkanGraphicsCommandBuffersCreateFailure,
+      VulkanCommandPoolGraphicsCreateFailure,
+      VulkanCommandBuffersGraphicsCreateFailure,
       VulkanSemaphoresImageAvailableCreateFailure,
       VulkanSemaphoresRenderFinishedCreateFailure,
       VulkanFencesInFlightCreateFailure,
@@ -158,15 +158,15 @@ pub const Renderer = struct {
 
       const vulkan_command_pool_graphics = VulkanCommandPool.create(
          vulkan_device.vk_device, vulkan_physical_device.queue_family_indices.graphics,
-      ) catch return error.VulkanGraphicsCommandPoolCreateFailure;
+      ) catch return error.VulkanCommandPoolGraphicsCreateFailure;
       errdefer vulkan_command_pool_graphics.destroy(vulkan_device.vk_device);
 
-      const vulkan_command_buffers_graphics = VulkanGraphicsCommandBufferList.create(
+      const vulkan_command_buffers_graphics = VulkanCommandBufferList.create(
          allocator,
          create_options.frames_in_flight,
          vulkan_device.vk_device,
          vulkan_command_pool_graphics.vk_command_pool,
-      ) catch return error.VulkanGraphicsCommandBuffersCreateFailure;
+      ) catch return error.VulkanCommandBuffersGraphicsCreateFailure;
       errdefer vulkan_command_buffers_graphics .destroy(allocator);
 
       const vulkan_semaphores_image_available = VulkanSemaphoreList.create(
@@ -2275,7 +2275,7 @@ const VulkanCommandPool = struct {
    }
 };
 
-const VulkanGraphicsCommandBufferList = struct {
+const VulkanCommandBufferList = struct {
    vk_command_buffers : [] c.VkCommandBuffer,
 
    pub const CreateError = error {
