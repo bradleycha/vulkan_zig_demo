@@ -846,6 +846,7 @@ const VulkanPhysicalDevice = struct {
    pub const QueueFamilyIndices = struct {
       graphics       : u32,
       presentation   : u32,
+      transfer       : u32,
    };
 
    pub const PickError = error {
@@ -992,6 +993,8 @@ const VulkanPhysicalDevice = struct {
       return required_extensions_found;
    }
 
+   const QUEUE_FAMILY_INDICES_LENGTH = @typeInfo(@This().QueueFamilyIndices).Struct.fields.len;
+
    fn _findQueueFamilyIndices(vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR) PickError!?QueueFamilyIndices {
       var vk_result : c.VkResult = undefined;
 
@@ -1005,8 +1008,11 @@ const VulkanPhysicalDevice = struct {
       try vk_queue_families.resize(@as(usize, vk_queue_families_count));
       c.vkGetPhysicalDeviceQueueFamilyProperties(vk_physical_device, &vk_queue_families_count, vk_queue_families.items.ptr);
 
-      var queue_family_index_graphics     : ? u32 = null;
-      var queue_family_index_presentation : ? u32 = null;
+      const QUEUE_FAMILY_INDEX_GRAPHICS      = 0;
+      const QUEUE_FAMILY_INDEX_PRESENTATION  = 1;
+      const QUEUE_FAMILY_INDEX_TRANSFER      = 2;
+
+      var queue_family_indices_found = [QUEUE_FAMILY_INDICES_LENGTH] ? u32 {null, null, null};
 
       for (vk_queue_families.items, 0..vk_queue_families_count) |vk_queue_family, i| {
          var vk_index : u32 = @intCast(i);
@@ -1021,34 +1027,61 @@ const VulkanPhysicalDevice = struct {
             else                             => unreachable,
          }
 
-         var queue_graphics      = false;
-         var queue_presentation  = false;
+         var queue_families_found = [QUEUE_FAMILY_INDICES_LENGTH] bool {false, false, false};
 
          if (vk_queue_family.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
-            queue_graphics = true;
+            queue_families_found[QUEUE_FAMILY_INDEX_GRAPHICS] = true;
          }
 
          if (vk_queue_supports_presentation != c.VK_FALSE) {
-            queue_presentation = true;
+            queue_families_found[QUEUE_FAMILY_INDEX_PRESENTATION] = true;
          }
 
-         if (queue_graphics == true) {
-            queue_family_index_graphics = vk_index;
+         if (vk_queue_family.queueFlags & c.VK_QUEUE_TRANSFER_BIT != 0) {
+            queue_families_found[QUEUE_FAMILY_INDEX_TRANSFER] = true;
          }
-         if (queue_presentation == true) {
-            queue_family_index_presentation = vk_index;
-         }
+
+         _assignUniqueQueueFamilyIndices(vk_index, &queue_families_found, &queue_family_indices_found);
       }
 
       const queue_family_indices = QueueFamilyIndices{
-         .graphics      = queue_family_index_graphics orelse return null,
-         .presentation  = queue_family_index_presentation orelse return null,
+         .graphics      = queue_family_indices_found[QUEUE_FAMILY_INDEX_GRAPHICS]      orelse return null,
+         .presentation  = queue_family_indices_found[QUEUE_FAMILY_INDEX_PRESENTATION]  orelse return null,
+         .transfer      = queue_family_indices_found[QUEUE_FAMILY_INDEX_TRANSFER]      orelse return null,
       };
 
       return queue_family_indices;
    }
 
-   
+   fn _assignUniqueQueueFamilyIndices(vk_index : u32, queue_families_found : * const [QUEUE_FAMILY_INDICES_LENGTH] bool, queue_family_indices_found : * [QUEUE_FAMILY_INDICES_LENGTH] ? u32) void {
+      for (queue_families_found, queue_family_indices_found) |queue_family_found, *queue_family_index| {
+         if (queue_family_found == false) {
+            continue;
+         }
+
+         if (queue_family_index.* == null) {
+            queue_family_index.* = vk_index;
+            continue;
+         }
+
+         var queue_family_index_already_in_use = false;
+         for (queue_family_indices_found) |*queue_family_index_existing| {
+            if (queue_family_index_existing == queue_family_index) {
+               continue;
+            }
+            
+            if (queue_family_index_existing.* orelse continue == queue_family_index.* orelse unreachable) {
+               queue_family_index_already_in_use = true;
+               break;
+            }
+         }
+
+         if (queue_family_index_already_in_use == true) {
+            queue_family_index.* = vk_index;
+            continue;
+         }
+      }
+   }
 
    fn _assignScore(self : * const @This()) u32 {
       var score : u32 = 0;
@@ -1069,6 +1102,7 @@ const VulkanDevice = struct {
    pub const Queues = struct {
       graphics       : c.VkQueue,
       presentation   : c.VkQueue,
+      transfer       : c.VkQueue,
    };
 
    pub const CreateError = error {
@@ -1240,9 +1274,13 @@ const VulkanDevice = struct {
       var vk_queue_presentation : c.VkQueue = undefined;
       c.vkGetDeviceQueue(vk_device, vulkan_physical_device.queue_family_indices.presentation, 0, &vk_queue_presentation);
 
+      var vk_queue_transfer : c.VkQueue = undefined;
+      c.vkGetDeviceQueue(vk_device, vulkan_physical_device.queue_family_indices.transfer, 0, &vk_queue_transfer);
+
       const queues = Queues{
          .graphics      = vk_queue_graphics,
          .presentation  = vk_queue_presentation,
+         .transfer      = vk_queue_transfer,
       };
 
       return @This(){
@@ -1500,6 +1538,7 @@ const VulkanSwapchain = struct {
       const vk_queue_family_array = [QUEUE_FAMILY_INDICES_LENGTH] u32 {
          queue_family_indices.graphics,
          queue_family_indices.presentation,
+         queue_family_indices.transfer,
       };
 
       const vk_queue_family_info = _createQueueFamilyInfo(queue_family_indices, QUEUE_FAMILY_INDICES_LENGTH, &vk_queue_family_array);
