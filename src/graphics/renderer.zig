@@ -21,8 +21,8 @@ pub const Renderer = struct {
    _vulkan_graphics_pipeline           : VulkanGraphicsPipeline,
    _vulkan_framebuffers                : VulkanFramebuffers,
    _vulkan_vertex_buffer               : VulkanVertexBuffer,
-   _vulkan_graphics_command_pool       : VulkanGraphicsCommandPool,
-   _vulkan_graphics_command_buffers    : VulkanGraphicsCommandBufferList,
+   _vulkan_command_pool_graphics       : VulkanCommandPool,
+   _vulkan_command_buffers_graphics    : VulkanGraphicsCommandBufferList,
    _vulkan_semaphores_image_available  : VulkanSemaphoreList,
    _vulkan_semaphores_render_finished  : VulkanSemaphoreList,
    _vulkan_fences_in_flight            : VulkanFenceList,
@@ -156,18 +156,18 @@ pub const Renderer = struct {
       ) catch return error.VulkanVertexBufferCreateFailure;
       errdefer vulkan_vertex_buffer.destroy(vulkan_device.vk_device);
 
-      const vulkan_graphics_command_pool = VulkanGraphicsCommandPool.create(
+      const vulkan_command_pool_graphics = VulkanCommandPool.create(
          vulkan_device.vk_device, vulkan_physical_device.queue_family_indices.graphics,
       ) catch return error.VulkanGraphicsCommandPoolCreateFailure;
-      errdefer vulkan_graphics_command_pool.destroy(vulkan_device.vk_device);
+      errdefer vulkan_command_pool_graphics.destroy(vulkan_device.vk_device);
 
-      const vulkan_graphics_command_buffers = VulkanGraphicsCommandBufferList.create(
+      const vulkan_command_buffers_graphics = VulkanGraphicsCommandBufferList.create(
          allocator,
          create_options.frames_in_flight,
          vulkan_device.vk_device,
-         vulkan_graphics_command_pool.vk_command_pool,
+         vulkan_command_pool_graphics.vk_command_pool,
       ) catch return error.VulkanGraphicsCommandBuffersCreateFailure;
-      errdefer vulkan_graphics_command_buffers.destroy(allocator);
+      errdefer vulkan_command_buffers_graphics .destroy(allocator);
 
       const vulkan_semaphores_image_available = VulkanSemaphoreList.create(
          allocator,
@@ -207,8 +207,8 @@ pub const Renderer = struct {
          ._vulkan_graphics_pipeline          = vulkan_graphics_pipeline,
          ._vulkan_framebuffers               = vulkan_framebuffers,
          ._vulkan_vertex_buffer              = vulkan_vertex_buffer,
-         ._vulkan_graphics_command_pool      = vulkan_graphics_command_pool,
-         ._vulkan_graphics_command_buffers   = vulkan_graphics_command_buffers,
+         ._vulkan_command_pool_graphics      = vulkan_command_pool_graphics,
+         ._vulkan_command_buffers_graphics   = vulkan_command_buffers_graphics,
          ._vulkan_semaphores_image_available = vulkan_semaphores_image_available,
          ._vulkan_semaphores_render_finished = vulkan_semaphores_render_finished,
          ._vulkan_fences_in_flight           = vulkan_fences_in_flight,
@@ -227,8 +227,8 @@ pub const Renderer = struct {
       self._vulkan_fences_in_flight.destroy(allocator, vk_device);
       self._vulkan_semaphores_render_finished.destroy(allocator, vk_device);
       self._vulkan_semaphores_image_available.destroy(allocator, vk_device);
-      self._vulkan_graphics_command_buffers.destroy(allocator);
-      self._vulkan_graphics_command_pool.destroy(vk_device);
+      self._vulkan_command_buffers_graphics.destroy(allocator);
+      self._vulkan_command_pool_graphics.destroy(vk_device);
       self._vulkan_vertex_buffer.destroy(vk_device);
       self._vulkan_framebuffers.destroy(allocator, vk_device);
       self._vulkan_graphics_pipeline.destroy(vk_device);
@@ -258,7 +258,7 @@ pub const Renderer = struct {
       const vk_device   = self._vulkan_device.vk_device;
       const frame_index = self._frame_index;
 
-      const vk_graphics_command_buffer    = self._vulkan_graphics_command_buffers.vk_command_buffers[frame_index];
+      const vk_command_buffer_graphics    = self._vulkan_command_buffers_graphics.vk_command_buffers[frame_index];
       const vk_fence_in_flight            = self._vulkan_fences_in_flight.vk_fences[frame_index];
       const vk_semaphore_image_available  = self._vulkan_semaphores_image_available.vk_semaphores[frame_index];
       const vk_semaphore_render_finished  = self._vulkan_semaphores_render_finished.vk_semaphores[frame_index];
@@ -310,14 +310,14 @@ pub const Renderer = struct {
 
       var vk_framebuffer = self._vulkan_framebuffers.vk_framebuffers[vk_swapchain_image_index];
 
-      vk_result = c.vkResetCommandBuffer(vk_graphics_command_buffer, 0);
+      vk_result = c.vkResetCommandBuffer(vk_command_buffer_graphics, 0);
       switch (vk_result) {
          c.VK_SUCCESS                     => {},
          c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
          else                             => unreachable,
       }
 
-      try _recordRenderPass(self, vk_graphics_command_buffer, vk_framebuffer, self._clear_color);
+      try _recordRenderPass(self, vk_command_buffer_graphics, vk_framebuffer, self._clear_color);
 
       const vk_wait_stages = [_] c.VkPipelineStageFlags {
          c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -330,7 +330,7 @@ pub const Renderer = struct {
          .pWaitSemaphores        = &vk_semaphore_image_available,
          .pWaitDstStageMask      = &vk_wait_stages,
          .commandBufferCount     = 1,
-         .pCommandBuffers        = &vk_graphics_command_buffer,
+         .pCommandBuffers        = &vk_command_buffer_graphics,
          .signalSemaphoreCount   = 1,
          .pSignalSemaphores      = &vk_semaphore_render_finished, 
       };
@@ -1069,8 +1069,12 @@ const VulkanPhysicalDevice = struct {
             if (queue_family_index_existing == queue_family_index) {
                continue;
             }
+
+            if (queue_family_index_existing.* == null) {
+               continue;
+            }
             
-            if (queue_family_index_existing.* orelse continue == queue_family_index.* orelse unreachable) {
+            if (queue_family_index_existing.* orelse unreachable == queue_family_index.* orelse unreachable) {
                queue_family_index_already_in_use = true;
                break;
             }
@@ -2233,7 +2237,7 @@ const VulkanVertexBuffer = struct {
    }
 };
 
-const VulkanGraphicsCommandPool = struct {
+const VulkanCommandPool = struct {
    vk_command_pool   : c.VkCommandPool,
 
    pub const CreateError = error {
