@@ -1,22 +1,16 @@
 #version 450
 
-vec2 test_triangle_positions[3] = vec2[](
-   vec2(0.0, -0.5),
-   vec2(0.5, 0.5),
-   vec2(-0.5, 0.5)
-);
+layout (location = 0) in vec4 v_color;
+layout (location = 1) in vec2 v_sample;
+layout (location = 2) in vec3 v_position;
 
-vec3 test_triangle_colors[3] = vec3[](
-   vec3(1.0, 0.0, 0.0),
-   vec3(0.0, 1.0, 0.0),
-   vec3(0.0, 0.0, 1.0)
-);
-
-layout (location = 0) out vec3 v_color;
+layout (location = 0) smooth out vec4 f_color;
+layout (location = 1) smooth out vec2 f_sample;
 
 void main() {
-   gl_Position = vec4(test_triangle_positions[gl_VertexIndex], 0.0, 1.0);
-   v_color     = test_triangle_colors[gl_VertexIndex];
-   return;      
+   gl_Position = vec4(v_position, 1.0);
+   f_color     = v_color;
+   f_sample    = v_sample;
+   return;
 }
 
