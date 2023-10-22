@@ -1696,14 +1696,43 @@ const VulkanGraphicsPipeline = struct {
          .pDynamicStates      = &vk_dynamic_states,
       };
 
+      const vk_vertex_input_binding_description = c.VkVertexInputBindingDescription{
+         .binding    = 0,
+         .stride     = @sizeOf(Renderer.Vertex),
+         .inputRate  = c.VK_VERTEX_INPUT_RATE_VERTEX,
+      };
+
+      const VERTEX_ATTRIBUTES = @typeInfo(Renderer.Vertex).Struct.fields.len;
+
+      const vk_vertex_attribute_binding_descriptions = [VERTEX_ATTRIBUTES] c.VkVertexInputAttributeDescription {
+         .{
+            .location   = 0,
+            .binding    = 0,
+            .format     = c.VK_FORMAT_R32G32B32A32_SFLOAT,
+            .offset     = @intCast(@offsetOf(Renderer.Vertex, "color")),
+         },
+         .{
+            .location   = 1,
+            .binding    = 0,
+            .format     = c.VK_FORMAT_R32G32_SFLOAT,
+            .offset     = @intCast(@offsetOf(Renderer.Vertex, "sample")),
+         },
+         .{
+            .location   = 2,
+            .binding    = 0,
+            .format     = c.VK_FORMAT_R32G32B32_SFLOAT,
+            .offset     = @intCast(@offsetOf(Renderer.Vertex, "position")),
+         },
+      };
+
       const vk_info_create_vertex_input = c.VkPipelineVertexInputStateCreateInfo{
          .sType                           = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
          .pNext                           = null,
          .flags                           = 0x00000000,
-         .vertexBindingDescriptionCount   = 0,
-         .pVertexBindingDescriptions      = null,
-         .vertexAttributeDescriptionCount = 0,
-         .pVertexAttributeDescriptions    = null,
+         .vertexBindingDescriptionCount   = 1,
+         .pVertexBindingDescriptions      = &vk_vertex_input_binding_description,
+         .vertexAttributeDescriptionCount = @intCast(VERTEX_ATTRIBUTES),
+         .pVertexAttributeDescriptions    = &vk_vertex_attribute_binding_descriptions,
       };
 
       const vk_info_create_input_assembly = c.VkPipelineInputAssemblyStateCreateInfo{
