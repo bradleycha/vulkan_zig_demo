@@ -50,14 +50,20 @@ pub const Renderer = struct {
       color,
    };
 
+   pub const ClearColor = union(ClearColorTag) {
+      none  : void,
+      color : f_types.Color.Rgba(f32),
+   };
+
    pub const ShaderBinary = struct {
       spv_binary  : [] align(@alignOf(u32)) const u8,
       entrypoint  : [*:0] const u8,
    };
 
-   pub const ClearColor = union(ClearColorTag) {
-      none  : void,
-      color : f_types.Color.Rgba(f32),
+   pub const Vertex = struct {
+      color    : f_types.Color.Rgba(f32),
+      sample   : f_types.Vector2(f32),
+      position : f_types.Vector3(f32),
    };
    
    pub const CreateError = error {

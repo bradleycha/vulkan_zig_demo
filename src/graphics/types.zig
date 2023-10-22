@@ -75,9 +75,3 @@ pub fn Vector4(comptime ty : type) type {
    };
 }
 
-pub const Vertex = struct {
-   color    : Color.Rgba(f32),
-   sample   : Vector2(f32),
-   position : Vector3(f32),
-};
-
