@@ -2400,8 +2400,6 @@ const VulkanBuffer = struct {
 
       var vk_memory_type_index = _findMemoryTypeIndex(
          create_options.memory_properties,
-         //vk_buffer_memory_requirements.memoryTypeBits,
-         create_options.memory_properties,   // This should not work, why does this work??
          vulkan_physical_device.vk_physical_device_memory_properties,
       ) orelse return error.NoSuitableMemoryAvailable;
 
@@ -2439,15 +2437,25 @@ const VulkanBuffer = struct {
       };
    }
 
-   fn _findMemoryTypeIndex(vk_type_filter : c_uint, vk_memory_property_flags : c.VkMemoryPropertyFlags, vk_physical_device_memory_properties : c.VkPhysicalDeviceMemoryProperties) ? u32 {
+   fn _findMemoryTypeIndex(vk_memory_property_flags : c.VkMemoryPropertyFlags, vk_physical_device_memory_properties : c.VkPhysicalDeviceMemoryProperties) ? u32 {
       const vk_memory_types_count   = vk_physical_device_memory_properties.memoryTypeCount;
       const vk_memory_types         = vk_physical_device_memory_properties.memoryTypes[0..vk_memory_types_count];
 
       for (vk_memory_types, 0..vk_memory_types_count) |vk_memory_type, i| {
-         if (vk_type_filter & (@as(u32, 1) << @truncate(i)) == 0) {
-            continue;
-         }
+         // This is specified in the tutorial, but I have no fucking clue
+         // what this is supposed to accomplish, but it's partly responsible
+         // for my code not working.
+         // 
+         // Fuck it, commenting it out.
+         // 
+         // if (vk_type_filter & (@as(u32, 1) << @truncate(i)) == 0) {
+         //    continue;
+         // }
 
+         // This is also specified in the tutorial, but it's modified because
+         // the returned value for the buffer was specifying seemingly contradictory
+         // flags (Device local AND Host visible memory, wtf??).  If this crashes,
+         // I blame Mesa's driver implementation.
          if (vk_memory_type.propertyFlags & vk_memory_property_flags != vk_memory_property_flags) {
             continue;
          }
