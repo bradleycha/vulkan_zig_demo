@@ -78,7 +78,7 @@ pub const Renderer = struct {
       vertices : [] const Vertex,
       indices  : [] const IndexBufferType,
    };
-   
+
    pub const CreateError = error {
       OutOfMemory,
       VulkanInstanceCreateFailure,
@@ -2371,12 +2371,11 @@ const VulkanBuffer = struct {
    vk_device_memory  : c.VkDeviceMemory,
 
    pub const CreateOptions = struct {
-      allocated_bytes      : c.VkDeviceSize,
-      buffer_usage         : c.VkBufferUsageFlags,
-      sharing_mode         : c.VkSharingMode,
-      queue_families_count : u32,
-      queue_families_ptr   : ? [*] u32,
-      memory_properties    : c.VkMemoryPropertyFlags,
+      allocated_bytes            : c.VkDeviceSize,
+      buffer_usage               : c.VkBufferUsageFlags,
+      sharing_mode               : c.VkSharingMode,
+      concurrent_queue_families  : ? [] u32,
+      memory_properties          : c.VkMemoryPropertyFlags,
    };
 
    pub const CreateError = error {
@@ -2389,6 +2388,16 @@ const VulkanBuffer = struct {
    pub fn create(vk_device : c.VkDevice, vulkan_physical_device : * const VulkanPhysicalDevice, create_options : * const CreateOptions) CreateError!@This() {
       var vk_result : c.VkResult = undefined;
 
+      var vk_queue_families_count   : u32       = undefined;
+      var vk_queue_families_ptr     : ? [*] u32  = undefined;
+      if (create_options.concurrent_queue_families) |queue_families| {
+         vk_queue_families_count = @intCast(queue_families.len);
+         vk_queue_families_ptr   = queue_families.ptr;
+      } else {
+         vk_queue_families_count = 0;
+         vk_queue_families_ptr   = null;
+      }
+
       const vk_info_create_buffer = c.VkBufferCreateInfo{
          .sType                  = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
          .pNext                  = null,
@@ -2396,8 +2405,8 @@ const VulkanBuffer = struct {
          .size                   = create_options.allocated_bytes,
          .usage                  = create_options.buffer_usage,
          .sharingMode            = create_options.sharing_mode,
-         .queueFamilyIndexCount  = create_options.queue_families_count,
-         .pQueueFamilyIndices    = create_options.queue_families_ptr,
+         .queueFamilyIndexCount  = vk_queue_families_count,
+         .pQueueFamilyIndices    = vk_queue_families_ptr,
       };
 
       var vk_buffer : c.VkBuffer = undefined;
@@ -2571,26 +2580,38 @@ const VulkanVertexBuffer = struct {
 
       const buffer_size_bytes : c.VkDeviceSize = @intCast(vertices.len * @sizeOf(Renderer.Vertex));
 
-      var queue_families_buffer : [2] u32 = undefined;
-      const concurrency_options = _selectConcurrencyOptions(&vulkan_physical_device.queue_family_indices, &queue_families_buffer);
+      var concurrent_queue_families_buffer   : [2] u32         = undefined;
+      var sharing_mode                       : c.VkSharingMode = undefined;
+      var concurrent_queue_families          : ? [] u32        = undefined;
+
+      if (vulkan_physical_device.queue_family_indices.graphics == vulkan_physical_device.queue_family_indices.transfer) {
+         sharing_mode               = c.VK_SHARING_MODE_EXCLUSIVE;
+         concurrent_queue_families  = null;
+      } else {
+         concurrent_queue_families_buffer = .{
+            vulkan_physical_device.queue_family_indices.graphics,
+            vulkan_physical_device.queue_family_indices.transfer,
+         };
+
+         sharing_mode               = c.VK_SHARING_MODE_CONCURRENT;
+         concurrent_queue_families  = &concurrent_queue_families_buffer;
+      }
 
       const vulkan_buffer_staging = try VulkanBuffer.create(vk_device, vulkan_physical_device, &.{
-         .allocated_bytes        = buffer_size_bytes,
-         .buffer_usage           = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-         .sharing_mode           = concurrency_options.sharing_mode,
-         .queue_families_count   = concurrency_options.queue_families_count,
-         .queue_families_ptr     = concurrency_options.queue_families_ptr,
-         .memory_properties      = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+         .allocated_bytes           = buffer_size_bytes,
+         .buffer_usage              = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+         .sharing_mode              = sharing_mode,
+         .concurrent_queue_families = concurrent_queue_families,
+         .memory_properties         = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
       });
       defer vulkan_buffer_staging.destroy(vk_device);
 
       const vulkan_buffer_vertex = try VulkanBuffer.create(vk_device, vulkan_physical_device, &.{
-         .allocated_bytes        = buffer_size_bytes,
-         .buffer_usage           = c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-         .sharing_mode           = concurrency_options.sharing_mode,
-         .queue_families_count   = concurrency_options.queue_families_count,
-         .queue_families_ptr     = concurrency_options.queue_families_ptr,
-         .memory_properties      = c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+         .allocated_bytes           = buffer_size_bytes,
+         .buffer_usage              = c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+         .sharing_mode              = sharing_mode,
+         .concurrent_queue_families = concurrent_queue_families,
+         .memory_properties         = c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       });
       errdefer vulkan_buffer_vertex.destroy(vk_device);
 
@@ -2615,37 +2636,6 @@ const VulkanVertexBuffer = struct {
       };
    }
 
-   const ConcurrencyOptions = struct {
-      sharing_mode         : c.VkSharingMode,
-      queue_families_count : u32,
-      queue_families_ptr   : ? [*] u32,
-   };
-
-   fn _selectConcurrencyOptions(queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, queue_families_buffer : * [2] u32) ConcurrencyOptions {
-      if (queue_family_indices.graphics == queue_family_indices.transfer) {
-         return .{
-            .sharing_mode           = c.VK_SHARING_MODE_EXCLUSIVE,
-            .queue_families_count   = 0,
-            .queue_families_ptr     = null,
-         };
-      } else {
-         queue_families_buffer.* = .{
-            queue_family_indices.graphics,
-            queue_family_indices.transfer,
-         };
-
-         return .{
-            .sharing_mode           = c.VK_SHARING_MODE_EXCLUSIVE,
-            .queue_families_count   = @intCast(queue_families_buffer.len),
-            .queue_families_ptr     = queue_families_buffer,
-         };
-      }
-
-      unreachable;
-   }
-
-   
-
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
       self.vulkan_buffer.destroy(vk_device);
       return;
@@ -2667,26 +2657,39 @@ const VulkanIndexBuffer = struct {
 
       const buffer_size_bytes : c.VkDeviceSize = @intCast(indices.len * @sizeOf(Renderer.Vertex));
 
-      var queue_families_buffer : [2] u32 = undefined;
-      const concurrency_options = _selectConcurrencyOptions(&vulkan_physical_device.queue_family_indices, &queue_families_buffer);
+      var concurrent_queue_families_buffer   : [2] u32         = undefined;
+      var sharing_mode                       : c.VkSharingMode = undefined;
+      var concurrent_queue_families          : ? [] u32        = undefined;
+
+      if (vulkan_physical_device.queue_family_indices.graphics == vulkan_physical_device.queue_family_indices.transfer) {
+         sharing_mode               = c.VK_SHARING_MODE_EXCLUSIVE;
+         concurrent_queue_families  = null;
+
+      } else {
+         concurrent_queue_families_buffer = .{
+            vulkan_physical_device.queue_family_indices.graphics,
+            vulkan_physical_device.queue_family_indices.transfer,
+         };
+
+         sharing_mode               = c.VK_SHARING_MODE_CONCURRENT;
+         concurrent_queue_families  = &concurrent_queue_families_buffer;
+      }
 
       const vulkan_buffer_staging = try VulkanBuffer.create(vk_device, vulkan_physical_device, &.{
-         .allocated_bytes        = buffer_size_bytes,
-         .buffer_usage           = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-         .sharing_mode           = concurrency_options.sharing_mode,
-         .queue_families_count   = concurrency_options.queue_families_count,
-         .queue_families_ptr     = concurrency_options.queue_families_ptr,
-         .memory_properties      = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+         .allocated_bytes           = buffer_size_bytes,
+         .buffer_usage              = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+         .sharing_mode              = sharing_mode,
+         .concurrent_queue_families = concurrent_queue_families,
+         .memory_properties         = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
       });
       defer vulkan_buffer_staging.destroy(vk_device);
 
       const vulkan_buffer_index = try VulkanBuffer.create(vk_device, vulkan_physical_device, &.{
-         .allocated_bytes        = buffer_size_bytes,
-         .buffer_usage           = c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-         .sharing_mode           = concurrency_options.sharing_mode,
-         .queue_families_count   = concurrency_options.queue_families_count,
-         .queue_families_ptr     = concurrency_options.queue_families_ptr,
-         .memory_properties      = c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+         .allocated_bytes           = buffer_size_bytes,
+         .buffer_usage              = c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+         .sharing_mode              = sharing_mode,
+         .concurrent_queue_families = concurrent_queue_families,
+         .memory_properties         = c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       });
       errdefer vulkan_buffer_index.destroy(vk_device);
 
@@ -2709,35 +2712,6 @@ const VulkanIndexBuffer = struct {
       return @This(){
          .vulkan_buffer = vulkan_buffer_index,
       };
-   }
-
-   const ConcurrencyOptions = struct {
-      sharing_mode         : c.VkSharingMode,
-      queue_families_count : u32,
-      queue_families_ptr   : ? [*] u32,
-   };
-
-   fn _selectConcurrencyOptions(queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, queue_families_buffer : * [2] u32) ConcurrencyOptions {
-      if (queue_family_indices.graphics == queue_family_indices.transfer) {
-         return .{
-            .sharing_mode           = c.VK_SHARING_MODE_EXCLUSIVE,
-            .queue_families_count   = 0,
-            .queue_families_ptr     = null,
-         };
-      } else {
-         queue_families_buffer.* = .{
-            queue_family_indices.graphics,
-            queue_family_indices.transfer,
-         };
-
-         return .{
-            .sharing_mode           = c.VK_SHARING_MODE_EXCLUSIVE,
-            .queue_families_count   = @intCast(queue_families_buffer.len),
-            .queue_families_ptr     = queue_families_buffer,
-         };
-      }
-
-      unreachable;
    }
 
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
