@@ -25,6 +25,7 @@ pub const Renderer = struct {
    _vulkan_command_buffers_graphics    : VulkanCommandBufferList,
    _vulkan_command_buffers_transfer    : VulkanCommandBufferList,
    _vulkan_vertex_buffer               : VulkanVertexBuffer,
+   _vulkan_index_buffer                : VulkanIndexBuffer,
    _vulkan_semaphores_image_available  : VulkanSemaphoreList,
    _vulkan_semaphores_render_finished  : VulkanSemaphoreList,
    _vulkan_fences_in_flight            : VulkanFenceList,
@@ -89,6 +90,7 @@ pub const Renderer = struct {
       VulkanGraphicsPipelineCreateFailure,
       VulkanFramebuffersCreateFailure,
       VulkanVertexBufferCreateFailure,
+      VulkanIndexBufferCreateFailure,
       VulkanCommandPoolGraphicsCreateFailure,
       VulkanCommandPoolTransferCreateFailure,
       VulkanCommandBuffersGraphicsCreateFailure,
@@ -191,6 +193,15 @@ pub const Renderer = struct {
       ) catch return error.VulkanVertexBufferCreateFailure;
       errdefer vulkan_vertex_buffer.destroy(vulkan_device.vk_device);
 
+      const vulkan_index_buffer = VulkanIndexBuffer.create(
+         vulkan_device.vk_device,
+         vulkan_command_buffers_transfer.vk_command_buffers[VULKAN_COMMAND_BUFFERS_TRANSFER_PRIMARY],
+         &vulkan_physical_device,
+         &vulkan_device.queues,
+         create_options.render_mesh.indices,
+      ) catch return error.VulkanIndexBufferCreateFailure;
+      errdefer vulkan_index_buffer.destroy(vulkan_device.vk_device);
+
       const vulkan_semaphores_image_available = VulkanSemaphoreList.create(
          allocator,
          create_options.frames_in_flight,
@@ -233,6 +244,7 @@ pub const Renderer = struct {
          ._vulkan_command_buffers_graphics   = vulkan_command_buffers_graphics,
          ._vulkan_command_buffers_transfer   = vulkan_command_buffers_transfer,
          ._vulkan_vertex_buffer              = vulkan_vertex_buffer,
+         ._vulkan_index_buffer               = vulkan_index_buffer,
          ._vulkan_semaphores_image_available = vulkan_semaphores_image_available,
          ._vulkan_semaphores_render_finished = vulkan_semaphores_render_finished,
          ._vulkan_fences_in_flight           = vulkan_fences_in_flight,
@@ -251,6 +263,7 @@ pub const Renderer = struct {
       self._vulkan_fences_in_flight.destroy(allocator, vk_device);
       self._vulkan_semaphores_render_finished.destroy(allocator, vk_device);
       self._vulkan_semaphores_image_available.destroy(allocator, vk_device);
+      self._vulkan_index_buffer.destroy(vk_device);
       self._vulkan_vertex_buffer.destroy(vk_device);
       self._vulkan_command_buffers_transfer.destroy(allocator);
       self._vulkan_command_buffers_graphics.destroy(allocator);
@@ -469,6 +482,8 @@ pub const Renderer = struct {
 
       c.vkCmdBindVertexBuffers(vk_command_buffer, 0, VERTEX_BUFFER_COUNT, &vk_vertex_buffers, &vk_vertex_buffer_offsets);
 
+      c.vkCmdBindIndexBuffer(vk_command_buffer, self._vulkan_index_buffer.vulkan_buffer.vk_buffer, 0, c.VK_INDEX_TYPE_UINT32);
+
       const vk_viewport = c.VkViewport{
          .x          = 0.0,
          .y          = 0.0,
@@ -487,7 +502,7 @@ pub const Renderer = struct {
 
       c.vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
 
-      c.vkCmdDraw(vk_command_buffer, @intCast(self._render_mesh.vertices.len), 1, 0, 0);
+      c.vkCmdDrawIndexed(vk_command_buffer, @intCast(self._render_mesh.indices.len), 1, 0, 0, 0);
 
       c.vkCmdEndRenderPass(vk_command_buffer);
 
@@ -2368,6 +2383,7 @@ const VulkanBuffer = struct {
       OutOfMemory,
       Unknown,
       NoSuitableMemoryAvailable,
+      DeviceLost,
    };
 
    pub fn create(vk_device : c.VkDevice, vulkan_physical_device : * const VulkanPhysicalDevice, create_options : * const CreateOptions) CreateError!@This() {
@@ -2471,97 +2487,8 @@ const VulkanBuffer = struct {
       c.vkDestroyBuffer(vk_device, self.vk_buffer, null);
       return;
    }
-};
 
-const VulkanVertexBuffer = struct {
-   vulkan_buffer  : VulkanBuffer,
-
-   pub const CreateError = error {
-      OutOfMemory,
-      Unknown,
-      NoSuitableMemoryAvailable,
-      DeviceLost,
-   };
-
-   pub fn create(vk_device : c.VkDevice, vk_command_buffer_transfer : c.VkCommandBuffer, vulkan_physical_device : * const VulkanPhysicalDevice, vulkan_queues : * const VulkanDevice.Queues, vertices : [] const Renderer.Vertex) CreateError!@This() {
-      var vk_result : c.VkResult = undefined;
-
-      const buffer_size_bytes : c.VkDeviceSize = @intCast(vertices.len * @sizeOf(Renderer.Vertex));
-
-      var queue_families_buffer : [2] u32 = undefined;
-      const concurrency_options = _selectConcurrencyOptions(&vulkan_physical_device.queue_family_indices, &queue_families_buffer);
-
-      const vulkan_buffer_staging = try VulkanBuffer.create(vk_device, vulkan_physical_device, &.{
-         .allocated_bytes        = buffer_size_bytes,
-         .buffer_usage           = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-         .sharing_mode           = concurrency_options.sharing_mode,
-         .queue_families_count   = concurrency_options.queue_families_count,
-         .queue_families_ptr     = concurrency_options.queue_families_ptr,
-         .memory_properties      = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-      });
-      defer vulkan_buffer_staging.destroy(vk_device);
-
-      const vulkan_buffer_vertex = try VulkanBuffer.create(vk_device, vulkan_physical_device, &.{
-         .allocated_bytes        = buffer_size_bytes,
-         .buffer_usage           = c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-         .sharing_mode           = concurrency_options.sharing_mode,
-         .queue_families_count   = concurrency_options.queue_families_count,
-         .queue_families_ptr     = concurrency_options.queue_families_ptr,
-         .memory_properties      = c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-      });
-      errdefer vulkan_buffer_vertex.destroy(vk_device);
-
-      var vk_memory_mapping : ? * anyopaque = undefined;
-      vk_result = c.vkMapMemory(vk_device, vulkan_buffer_staging.vk_device_memory, 0, buffer_size_bytes, 0, &vk_memory_mapping);
-      switch (vk_result) {
-         c.VK_SUCCESS                     => {},
-         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
-         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
-         c.VK_ERROR_MEMORY_MAP_FAILED     => return error.Unknown,
-         else                             => unreachable,
-      }
-      defer c.vkUnmapMemory(vk_device, vulkan_buffer_staging.vk_device_memory);
-
-      const vk_memory_mapping_vertices : [*] Renderer.Vertex = @ptrCast(@alignCast(vk_memory_mapping orelse unreachable));
-      @memcpy(vk_memory_mapping_vertices, vertices);
-
-      try _copyToDevice(vulkan_buffer_staging.vk_buffer, vulkan_buffer_vertex.vk_buffer, buffer_size_bytes, vk_command_buffer_transfer, vulkan_queues.transfer);
-
-      return @This(){
-         .vulkan_buffer = vulkan_buffer_vertex,
-      };
-   }
-
-   const ConcurrencyOptions = struct {
-      sharing_mode         : c.VkSharingMode,
-      queue_families_count : u32,
-      queue_families_ptr   : ? [*] u32,
-   };
-
-   fn _selectConcurrencyOptions(queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, queue_families_buffer : * [2] u32) ConcurrencyOptions {
-      if (queue_family_indices.graphics == queue_family_indices.transfer) {
-         return .{
-            .sharing_mode           = c.VK_SHARING_MODE_EXCLUSIVE,
-            .queue_families_count   = 0,
-            .queue_families_ptr     = null,
-         };
-      } else {
-         queue_families_buffer.* = .{
-            queue_family_indices.graphics,
-            queue_family_indices.transfer,
-         };
-
-         return .{
-            .sharing_mode           = c.VK_SHARING_MODE_EXCLUSIVE,
-            .queue_families_count   = @intCast(queue_families_buffer.len),
-            .queue_families_ptr     = queue_families_buffer,
-         };
-      }
-
-      unreachable;
-   }
-
-   fn _copyToDevice(src : c.VkBuffer, dst : c.VkBuffer, size : c.VkDeviceSize, vk_command_buffer : c.VkCommandBuffer, vk_queue : c.VkQueue) CreateError!void {
+   pub fn copyToDevice(src : c.VkBuffer, dst : c.VkBuffer, size : c.VkDeviceSize, vk_command_buffer : c.VkCommandBuffer, vk_queue : c.VkQueue) CreateError!void {
       var vk_result : c.VkResult = undefined;
 
       const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
@@ -2626,6 +2553,191 @@ const VulkanVertexBuffer = struct {
       }
 
       return;
+   }
+};
+
+const VulkanVertexBuffer = struct {
+   vulkan_buffer  : VulkanBuffer,
+
+   pub const CreateError = error {
+      OutOfMemory,
+      Unknown,
+      NoSuitableMemoryAvailable,
+      DeviceLost,
+   };
+
+   pub fn create(vk_device : c.VkDevice, vk_command_buffer_transfer : c.VkCommandBuffer, vulkan_physical_device : * const VulkanPhysicalDevice, vulkan_queues : * const VulkanDevice.Queues, vertices : [] const Renderer.Vertex) CreateError!@This() {
+      var vk_result : c.VkResult = undefined;
+
+      const buffer_size_bytes : c.VkDeviceSize = @intCast(vertices.len * @sizeOf(Renderer.Vertex));
+
+      var queue_families_buffer : [2] u32 = undefined;
+      const concurrency_options = _selectConcurrencyOptions(&vulkan_physical_device.queue_family_indices, &queue_families_buffer);
+
+      const vulkan_buffer_staging = try VulkanBuffer.create(vk_device, vulkan_physical_device, &.{
+         .allocated_bytes        = buffer_size_bytes,
+         .buffer_usage           = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+         .sharing_mode           = concurrency_options.sharing_mode,
+         .queue_families_count   = concurrency_options.queue_families_count,
+         .queue_families_ptr     = concurrency_options.queue_families_ptr,
+         .memory_properties      = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+      });
+      defer vulkan_buffer_staging.destroy(vk_device);
+
+      const vulkan_buffer_vertex = try VulkanBuffer.create(vk_device, vulkan_physical_device, &.{
+         .allocated_bytes        = buffer_size_bytes,
+         .buffer_usage           = c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+         .sharing_mode           = concurrency_options.sharing_mode,
+         .queue_families_count   = concurrency_options.queue_families_count,
+         .queue_families_ptr     = concurrency_options.queue_families_ptr,
+         .memory_properties      = c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      });
+      errdefer vulkan_buffer_vertex.destroy(vk_device);
+
+      var vk_memory_mapping : ? * anyopaque = undefined;
+      vk_result = c.vkMapMemory(vk_device, vulkan_buffer_staging.vk_device_memory, 0, buffer_size_bytes, 0, &vk_memory_mapping);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_MEMORY_MAP_FAILED     => return error.Unknown,
+         else                             => unreachable,
+      }
+      defer c.vkUnmapMemory(vk_device, vulkan_buffer_staging.vk_device_memory);
+
+      const vk_memory_mapping_vertices : [*] Renderer.Vertex = @ptrCast(@alignCast(vk_memory_mapping orelse unreachable));
+      @memcpy(vk_memory_mapping_vertices, vertices);
+
+      try VulkanBuffer.copyToDevice(vulkan_buffer_staging.vk_buffer, vulkan_buffer_vertex.vk_buffer, buffer_size_bytes, vk_command_buffer_transfer, vulkan_queues.transfer);
+
+      return @This(){
+         .vulkan_buffer = vulkan_buffer_vertex,
+      };
+   }
+
+   const ConcurrencyOptions = struct {
+      sharing_mode         : c.VkSharingMode,
+      queue_families_count : u32,
+      queue_families_ptr   : ? [*] u32,
+   };
+
+   fn _selectConcurrencyOptions(queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, queue_families_buffer : * [2] u32) ConcurrencyOptions {
+      if (queue_family_indices.graphics == queue_family_indices.transfer) {
+         return .{
+            .sharing_mode           = c.VK_SHARING_MODE_EXCLUSIVE,
+            .queue_families_count   = 0,
+            .queue_families_ptr     = null,
+         };
+      } else {
+         queue_families_buffer.* = .{
+            queue_family_indices.graphics,
+            queue_family_indices.transfer,
+         };
+
+         return .{
+            .sharing_mode           = c.VK_SHARING_MODE_EXCLUSIVE,
+            .queue_families_count   = @intCast(queue_families_buffer.len),
+            .queue_families_ptr     = queue_families_buffer,
+         };
+      }
+
+      unreachable;
+   }
+
+   
+
+   pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      self.vulkan_buffer.destroy(vk_device);
+      return;
+   }
+};
+
+const VulkanIndexBuffer = struct {
+   vulkan_buffer  : VulkanBuffer,
+
+   pub const CreateError = error {
+      OutOfMemory,
+      Unknown,
+      NoSuitableMemoryAvailable,
+      DeviceLost,
+   };
+
+   pub fn create(vk_device : c.VkDevice, vk_command_buffer_transfer : c.VkCommandBuffer, vulkan_physical_device : * const VulkanPhysicalDevice, vulkan_queues : * const VulkanDevice.Queues, indices : [] const Renderer.IndexBufferType) CreateError!@This() {
+      var vk_result : c.VkResult = undefined;
+
+      const buffer_size_bytes : c.VkDeviceSize = @intCast(indices.len * @sizeOf(Renderer.Vertex));
+
+      var queue_families_buffer : [2] u32 = undefined;
+      const concurrency_options = _selectConcurrencyOptions(&vulkan_physical_device.queue_family_indices, &queue_families_buffer);
+
+      const vulkan_buffer_staging = try VulkanBuffer.create(vk_device, vulkan_physical_device, &.{
+         .allocated_bytes        = buffer_size_bytes,
+         .buffer_usage           = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+         .sharing_mode           = concurrency_options.sharing_mode,
+         .queue_families_count   = concurrency_options.queue_families_count,
+         .queue_families_ptr     = concurrency_options.queue_families_ptr,
+         .memory_properties      = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+      });
+      defer vulkan_buffer_staging.destroy(vk_device);
+
+      const vulkan_buffer_index = try VulkanBuffer.create(vk_device, vulkan_physical_device, &.{
+         .allocated_bytes        = buffer_size_bytes,
+         .buffer_usage           = c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+         .sharing_mode           = concurrency_options.sharing_mode,
+         .queue_families_count   = concurrency_options.queue_families_count,
+         .queue_families_ptr     = concurrency_options.queue_families_ptr,
+         .memory_properties      = c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      });
+      errdefer vulkan_buffer_index.destroy(vk_device);
+
+      var vk_memory_mapping : ? * anyopaque = undefined;
+      vk_result = c.vkMapMemory(vk_device, vulkan_buffer_staging.vk_device_memory, 0, buffer_size_bytes, 0, &vk_memory_mapping);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_MEMORY_MAP_FAILED     => return error.Unknown,
+         else                             => unreachable,
+      }
+      defer c.vkUnmapMemory(vk_device, vulkan_buffer_staging.vk_device_memory);
+
+      const vk_memory_mapping_vertices : [*] Renderer.IndexBufferType = @ptrCast(@alignCast(vk_memory_mapping orelse unreachable));
+      @memcpy(vk_memory_mapping_vertices, indices);
+
+      try VulkanBuffer.copyToDevice(vulkan_buffer_staging.vk_buffer, vulkan_buffer_index.vk_buffer, buffer_size_bytes, vk_command_buffer_transfer, vulkan_queues.transfer);
+
+      return @This(){
+         .vulkan_buffer = vulkan_buffer_index,
+      };
+   }
+
+   const ConcurrencyOptions = struct {
+      sharing_mode         : c.VkSharingMode,
+      queue_families_count : u32,
+      queue_families_ptr   : ? [*] u32,
+   };
+
+   fn _selectConcurrencyOptions(queue_family_indices : * const VulkanPhysicalDevice.QueueFamilyIndices, queue_families_buffer : * [2] u32) ConcurrencyOptions {
+      if (queue_family_indices.graphics == queue_family_indices.transfer) {
+         return .{
+            .sharing_mode           = c.VK_SHARING_MODE_EXCLUSIVE,
+            .queue_families_count   = 0,
+            .queue_families_ptr     = null,
+         };
+      } else {
+         queue_families_buffer.* = .{
+            queue_family_indices.graphics,
+            queue_family_indices.transfer,
+         };
+
+         return .{
+            .sharing_mode           = c.VK_SHARING_MODE_EXCLUSIVE,
+            .queue_families_count   = @intCast(queue_families_buffer.len),
+            .queue_families_ptr     = queue_families_buffer,
+         };
+      }
+
+      unreachable;
    }
 
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
