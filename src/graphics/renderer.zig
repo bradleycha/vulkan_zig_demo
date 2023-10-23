@@ -186,6 +186,7 @@ pub const Renderer = struct {
          vulkan_device.vk_device,
          vulkan_command_buffers_transfer.vk_command_buffers[VULKAN_COMMAND_BUFFERS_TRANSFER_PRIMARY],
          &vulkan_physical_device,
+         &vulkan_device.queues,
          create_options.render_mesh.vertices,
       ) catch return error.VulkanVertexBufferCreateFailure;
       errdefer vulkan_vertex_buffer.destroy(vulkan_device.vk_device);
@@ -2399,7 +2400,8 @@ const VulkanBuffer = struct {
 
       var vk_memory_type_index = _findMemoryTypeIndex(
          create_options.memory_properties,
-         vk_buffer_memory_requirements.memoryTypeBits,
+         //vk_buffer_memory_requirements.memoryTypeBits,
+         create_options.memory_properties,   // This should not work, why does this work??
          vulkan_physical_device.vk_physical_device_memory_properties,
       ) orelse return error.NoSuitableMemoryAvailable;
 
@@ -2442,6 +2444,21 @@ const VulkanBuffer = struct {
       const vk_memory_types         = vk_physical_device_memory_properties.memoryTypes[0..vk_memory_types_count];
 
       for (vk_memory_types, 0..vk_memory_types_count) |vk_memory_type, i| {
+         zest.dbg.log.info(
+            \\
+            \\-----------------------------------
+            \\required flags:    {x}
+            \\available flags:   {x}
+            \\AND'd flags:       {x}
+            \\-----------------------------------
+            \\
+            , .{
+               vk_memory_property_flags,
+               vk_memory_type.propertyFlags,
+               vk_memory_property_flags & vk_memory_type.propertyFlags,
+            },
+         );
+
          if (vk_type_filter & (@as(u32, 1) << @truncate(i)) == 0) {
             continue;
          }
@@ -2470,9 +2487,10 @@ const VulkanVertexBuffer = struct {
       OutOfMemory,
       Unknown,
       NoSuitableMemoryAvailable,
+      DeviceLost,
    };
 
-   pub fn create(vk_device : c.VkDevice, vk_command_buffer_transfer : c.VkCommandBuffer, vulkan_physical_device : * const VulkanPhysicalDevice, vertices : [] const Renderer.Vertex) CreateError!@This() {
+   pub fn create(vk_device : c.VkDevice, vk_command_buffer_transfer : c.VkCommandBuffer, vulkan_physical_device : * const VulkanPhysicalDevice, vulkan_queues : * const VulkanDevice.Queues, vertices : [] const Renderer.Vertex) CreateError!@This() {
       var vk_result : c.VkResult = undefined;
 
       const buffer_size_bytes : c.VkDeviceSize = @intCast(vertices.len * @sizeOf(Renderer.Vertex));
@@ -2480,21 +2498,28 @@ const VulkanVertexBuffer = struct {
       var queue_families_buffer : [2] u32 = undefined;
       const concurrency_options = _selectConcurrencyOptions(&vulkan_physical_device.queue_family_indices, &queue_families_buffer);
 
-      const vulkan_buffer = try VulkanBuffer.create(vk_device, vulkan_physical_device, &.{
+      const vulkan_buffer_staging = try VulkanBuffer.create(vk_device, vulkan_physical_device, &.{
          .allocated_bytes        = buffer_size_bytes,
-         .buffer_usage           = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+         .buffer_usage           = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
          .sharing_mode           = concurrency_options.sharing_mode,
          .queue_families_count   = concurrency_options.queue_families_count,
          .queue_families_ptr     = concurrency_options.queue_families_ptr,
          .memory_properties      = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
       });
-      errdefer vulkan_buffer.destroy(vk_device);
+      defer vulkan_buffer_staging.destroy(vk_device);
 
-      // TODO: Staging buffers
-      _ = vk_command_buffer_transfer;
+      const vulkan_buffer_vertex = try VulkanBuffer.create(vk_device, vulkan_physical_device, &.{
+         .allocated_bytes        = buffer_size_bytes,
+         .buffer_usage           = c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+         .sharing_mode           = concurrency_options.sharing_mode,
+         .queue_families_count   = concurrency_options.queue_families_count,
+         .queue_families_ptr     = concurrency_options.queue_families_ptr,
+         .memory_properties      = c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      });
+      errdefer vulkan_buffer_vertex.destroy(vk_device);
 
-      var vk_mapping_ptr : ? * anyopaque = undefined;
-      vk_result = c.vkMapMemory(vk_device, vulkan_buffer.vk_device_memory, 0, buffer_size_bytes, 0, &vk_mapping_ptr);
+      var vk_memory_mapping : ? * anyopaque = undefined;
+      vk_result = c.vkMapMemory(vk_device, vulkan_buffer_staging.vk_device_memory, 0, buffer_size_bytes, 0, &vk_memory_mapping);
       switch (vk_result) {
          c.VK_SUCCESS                     => {},
          c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
@@ -2502,13 +2527,15 @@ const VulkanVertexBuffer = struct {
          c.VK_ERROR_MEMORY_MAP_FAILED     => return error.Unknown,
          else                             => unreachable,
       }
-      defer c.vkUnmapMemory(vk_device, vulkan_buffer.vk_device_memory);
+      defer c.vkUnmapMemory(vk_device, vulkan_buffer_staging.vk_device_memory);
 
-      const vk_mapping_vertices : [*] Renderer.Vertex = @ptrCast(@alignCast(vk_mapping_ptr orelse unreachable));
-      @memcpy(vk_mapping_vertices, vertices);
+      const vk_memory_mapping_vertices : [*] Renderer.Vertex = @ptrCast(@alignCast(vk_memory_mapping orelse unreachable));
+      @memcpy(vk_memory_mapping_vertices, vertices);
+
+      try _copyToDevice(vulkan_buffer_staging.vk_buffer, vulkan_buffer_vertex.vk_buffer, buffer_size_bytes, vk_command_buffer_transfer, vulkan_queues.transfer);
 
       return @This(){
-         .vulkan_buffer = vulkan_buffer,
+         .vulkan_buffer = vulkan_buffer_vertex,
       };
    }
 
@@ -2539,6 +2566,73 @@ const VulkanVertexBuffer = struct {
       }
 
       unreachable;
+   }
+
+   fn _copyToDevice(src : c.VkBuffer, dst : c.VkBuffer, size : c.VkDeviceSize, vk_command_buffer : c.VkCommandBuffer, vk_queue : c.VkQueue) CreateError!void {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
+         .sType            = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+         .pNext            = null,
+         .flags            = 0x00000000,
+         .pInheritanceInfo = null,
+      };
+
+      vk_result = c.vkBeginCommandBuffer(vk_command_buffer, &vk_info_command_buffer_begin);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+
+      const vk_buffer_copy = c.VkBufferCopy{
+         .srcOffset  = 0,
+         .dstOffset  = 0,
+         .size       = size,
+      };
+
+      c.vkCmdCopyBuffer(vk_command_buffer, src, dst, 1, &vk_buffer_copy);
+
+      vk_result = c.vkEndCommandBuffer(vk_command_buffer);
+      switch (vk_result) {
+         c.VK_SUCCESS                                 => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY                => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY              => return error.OutOfMemory,
+         else                                         => return error.Unknown,
+      }
+
+      const vk_info_submit = c.VkSubmitInfo{
+         .sType                  = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+         .pNext                  = null,
+         .waitSemaphoreCount     = 0,
+         .pWaitSemaphores        = null,
+         .pWaitDstStageMask      = null,
+         .commandBufferCount     = 1,
+         .pCommandBuffers        = &vk_command_buffer,
+         .signalSemaphoreCount   = 0,
+         .pSignalSemaphores      = null,
+      };
+
+      vk_result = c.vkQueueSubmit(vk_queue, 1, &vk_info_submit, @ptrCast(@alignCast(c.VK_NULL_HANDLE)));
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_DEVICE_LOST           => return error.DeviceLost,
+         else                             => unreachable,
+      }
+
+      vk_result = c.vkQueueWaitIdle(vk_queue);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_DEVICE_LOST           => return error.DeviceLost,
+         else                             => unreachable,
+      }
+
+      return;
    }
 
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
