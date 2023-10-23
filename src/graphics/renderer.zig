@@ -2444,21 +2444,6 @@ const VulkanBuffer = struct {
       const vk_memory_types         = vk_physical_device_memory_properties.memoryTypes[0..vk_memory_types_count];
 
       for (vk_memory_types, 0..vk_memory_types_count) |vk_memory_type, i| {
-         zest.dbg.log.info(
-            \\
-            \\-----------------------------------
-            \\required flags:    {x}
-            \\available flags:   {x}
-            \\AND'd flags:       {x}
-            \\-----------------------------------
-            \\
-            , .{
-               vk_memory_property_flags,
-               vk_memory_type.propertyFlags,
-               vk_memory_property_flags & vk_memory_type.propertyFlags,
-            },
-         );
-
          if (vk_type_filter & (@as(u32, 1) << @truncate(i)) == 0) {
             continue;
          }
