@@ -22,8 +22,10 @@ pub const Renderer = struct {
    _vulkan_framebuffers                : VulkanFramebuffers,
    _vulkan_command_pool_graphics       : VulkanCommandPool,
    _vulkan_command_pool_transfer       : VulkanCommandPool,
+   _vulkan_descriptor_pool             : VulkanDescriptorPool,
    _vulkan_command_buffers_graphics    : VulkanCommandBufferList,
    _vulkan_command_buffers_transfer    : VulkanCommandBufferList,
+   _vulkan_descriptor_sets             : VulkanDescriptorSetList,
    _vulkan_vertex_buffer               : VulkanVertexBuffer,
    _vulkan_index_buffer                : VulkanIndexBuffer,
    _vulkan_uniform_buffers             : VulkanUniformBufferList,
@@ -100,8 +102,10 @@ pub const Renderer = struct {
       VulkanUniformBuffersCreateFailure,
       VulkanCommandPoolGraphicsCreateFailure,
       VulkanCommandPoolTransferCreateFailure,
+      VulkanDescriptorPoolCreateFailure,
       VulkanCommandBuffersGraphicsCreateFailure,
       VulkanCommandBuffersTransferCreateFailure,
+      VulkanDescriptorSetsCreateFailure,
       VulkanSemaphoresImageAvailableCreateFailure,
       VulkanSemaphoresRenderFinishedCreateFailure,
       VulkanFencesInFlightCreateFailure,
@@ -175,6 +179,11 @@ pub const Renderer = struct {
       ) catch return error.VulkanCommandPoolTransferCreateFailure;
       errdefer vulkan_command_pool_transfer.destroy(vulkan_device.vk_device);
 
+      const vulkan_descriptor_pool = VulkanDescriptorPool.create(
+         vulkan_device.vk_device, create_options.frames_in_flight,
+      ) catch return error.VulkanDescriptorPoolCreateFailure;
+      errdefer vulkan_descriptor_pool.destroy(vulkan_device.vk_device);
+
       const vulkan_command_buffers_graphics = VulkanCommandBufferList.create(
          allocator,
          create_options.frames_in_flight,
@@ -216,6 +225,16 @@ pub const Renderer = struct {
          &vulkan_physical_device,
       ) catch return error.VulkanUniformBuffersCreateFailure;
       errdefer vulkan_uniform_buffers.destroy(allocator, vulkan_device.vk_device);
+
+      const vulkan_descriptor_sets = VulkanDescriptorSetList.create(
+         allocator,
+         create_options.frames_in_flight,
+         vulkan_device.vk_device,
+         vulkan_descriptor_pool.vk_descriptor_pool,
+         vulkan_graphics_pipeline.vk_descriptor_set_layout,
+         vulkan_uniform_buffers.vulkan_uniform_buffers,
+      ) catch return error.VulkanDescriptorSetsCreateFailure;
+      errdefer vulkan_descriptor_sets.destroy(allocator);
 
       const vulkan_semaphores_image_available = VulkanSemaphoreList.create(
          allocator,
@@ -260,8 +279,10 @@ pub const Renderer = struct {
          ._vulkan_framebuffers               = vulkan_framebuffers,
          ._vulkan_command_pool_graphics      = vulkan_command_pool_graphics,
          ._vulkan_command_pool_transfer      = vulkan_command_pool_transfer,
+         ._vulkan_descriptor_pool            = vulkan_descriptor_pool,
          ._vulkan_command_buffers_graphics   = vulkan_command_buffers_graphics,
          ._vulkan_command_buffers_transfer   = vulkan_command_buffers_transfer,
+         ._vulkan_descriptor_sets            = vulkan_descriptor_sets,
          ._vulkan_vertex_buffer              = vulkan_vertex_buffer,
          ._vulkan_index_buffer               = vulkan_index_buffer,
          ._vulkan_uniform_buffers            = vulkan_uniform_buffers,
@@ -287,8 +308,10 @@ pub const Renderer = struct {
       self._vulkan_uniform_buffers.destroy(allocator, vk_device);
       self._vulkan_index_buffer.destroy(vk_device);
       self._vulkan_vertex_buffer.destroy(vk_device);
+      self._vulkan_descriptor_sets.destroy(allocator);
       self._vulkan_command_buffers_transfer.destroy(allocator);
       self._vulkan_command_buffers_graphics.destroy(allocator);
+      self._vulkan_descriptor_pool.destroy(vk_device);
       self._vulkan_command_pool_transfer.destroy(vk_device);
       self._vulkan_command_pool_graphics.destroy(vk_device);
       self._vulkan_framebuffers.destroy(allocator, vk_device);
@@ -330,6 +353,7 @@ pub const Renderer = struct {
 
       const vulkan_uniform_buffer         = &self._vulkan_uniform_buffers.vulkan_uniform_buffers[frame_index];
       const vk_command_buffer_graphics    = self._vulkan_command_buffers_graphics.vk_command_buffers[frame_index];
+      const vk_descriptor_set             = self._vulkan_descriptor_sets.vk_descriptor_sets[frame_index];
       const vk_fence_in_flight            = self._vulkan_fences_in_flight.vk_fences[frame_index];
       const vk_semaphore_image_available  = self._vulkan_semaphores_image_available.vk_semaphores[frame_index];
       const vk_semaphore_render_finished  = self._vulkan_semaphores_render_finished.vk_semaphores[frame_index];
@@ -355,14 +379,6 @@ pub const Renderer = struct {
          self._vulkan_command_buffers_transfer.vk_command_buffers[VULKAN_COMMAND_BUFFERS_TRANSFER_PRIMARY],
          &self._vulkan_device.queues,
       ) catch return error.UniformBufferSendFailure;
-
-      // TODO - Get descriptor pools working, can't test now as it will freeze Hyprland for some reason
-      const S = struct {
-         pub fn foobar() void {
-            unreachable;
-         }
-      };
-      S.foobar();
 
       // We have to do this at the end to avoid partially signaled sync objects.
       var recreate_swapchain_at_end = false;
@@ -402,7 +418,7 @@ pub const Renderer = struct {
          else                             => unreachable,
       }
 
-      try _recordRenderPass(self, vk_command_buffer_graphics, vk_framebuffer, self._clear_color);
+      try _recordRenderPass(self, vk_command_buffer_graphics, vk_descriptor_set, vk_framebuffer, self._clear_color);
 
       const vk_wait_stages = [_] c.VkPipelineStageFlags {
          c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -462,7 +478,7 @@ pub const Renderer = struct {
       return true;
    }
 
-   fn _recordRenderPass(self : * const @This(), vk_command_buffer : c.VkCommandBuffer, vk_framebuffer : c.VkFramebuffer, clear_color : ClearColor) RenderError!void {
+   fn _recordRenderPass(self : * const @This(), vk_command_buffer : c.VkCommandBuffer, vk_descriptor_set : c.VkDescriptorSet, vk_framebuffer : c.VkFramebuffer, clear_color : ClearColor) RenderError!void {
       var vk_result : c.VkResult = undefined;
 
       const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
@@ -547,6 +563,8 @@ pub const Renderer = struct {
       };
 
       c.vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
+
+      c.vkCmdBindDescriptorSets(vk_command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self._vulkan_graphics_pipeline.vk_pipeline_layout, 0, 1, &vk_descriptor_set, 0, null);
 
       c.vkCmdDrawIndexed(vk_command_buffer, @intCast(self._render_mesh.indices.len), 1, 0, 0, 0);
 
@@ -2934,6 +2952,126 @@ const VulkanUniformBufferList = struct {
 
       allocator.free(self.vulkan_uniform_buffers);
 
+      return;
+   }
+};
+
+const VulkanDescriptorPool = struct {
+   vk_descriptor_pool   : c.VkDescriptorPool,
+
+   pub const CreateError = error {
+      OutOfMemory,
+      Unknown,
+   };
+   
+   pub fn create(vk_device : c.VkDevice, maximum_allocations : u32) CreateError!@This() {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_descriptor_pool_size = c.VkDescriptorPoolSize{
+         .type             = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+         .descriptorCount  = maximum_allocations,
+      };
+
+      const vk_info_create_descriptor_pool = c.VkDescriptorPoolCreateInfo{
+         .sType         = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+         .pNext         = null,
+         .flags         = 0x00000000,
+         .maxSets       = maximum_allocations,
+         .poolSizeCount = 1,
+         .pPoolSizes    = &vk_descriptor_pool_size,
+      };
+
+      var vk_descriptor_pool : c.VkDescriptorPool = undefined;
+      vk_result = c.vkCreateDescriptorPool(vk_device, &vk_info_create_descriptor_pool, null, &vk_descriptor_pool);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_FRAGMENTATION_EXT     => return error.Unknown,
+         else                             => unreachable,
+      }
+      errdefer c.vkDestroyDescriptorPool(vk_device, vk_descriptor_pool, null);
+
+      return @This(){
+         .vk_descriptor_pool  = vk_descriptor_pool,
+      };
+   }
+
+   pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      c.vkDestroyDescriptorPool(vk_device, self.vk_descriptor_pool, null);
+      return;
+   }
+};
+
+const VulkanDescriptorSetList = struct {
+   vk_descriptor_sets   : [] c.VkDescriptorSet,
+
+   pub const CreateError = error {
+      OutOfMemory,
+      Unknown,
+   };
+
+   pub fn create(allocator : std.mem.Allocator, count : u32, vk_device : c.VkDevice, vk_descriptor_pool : c.VkDescriptorPool, vk_descriptor_set_layout : c.VkDescriptorSetLayout, vk_uniform_buffers : [] VulkanUniformBuffer) CreateError!@This() {
+      var vk_result : c.VkResult = undefined;
+
+      var vk_descriptor_set_layouts = try allocator.alloc(c.VkDescriptorSetLayout, count);
+      defer allocator.free(vk_descriptor_set_layouts);
+
+      var vk_descriptor_sets = try allocator.alloc(c.VkDescriptorSet, count);
+      errdefer allocator.free(vk_descriptor_sets);
+
+      for (vk_descriptor_set_layouts) |*vk_descriptor_set_layout_dest| {
+         vk_descriptor_set_layout_dest.* = vk_descriptor_set_layout;
+      }
+
+      const vk_info_descriptor_set_allocate = c.VkDescriptorSetAllocateInfo{
+         .sType               = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+         .pNext               = null,
+         .descriptorPool      = vk_descriptor_pool,
+         .descriptorSetCount  = @intCast(vk_descriptor_set_layouts.len),
+         .pSetLayouts         = vk_descriptor_set_layouts.ptr,
+      };
+
+      vk_result = c.vkAllocateDescriptorSets(vk_device, &vk_info_descriptor_set_allocate, vk_descriptor_sets.ptr);
+      switch (vk_result) {
+         c.VK_SUCCESS => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_FRAGMENTED_POOL       => return error.Unknown,
+         c.VK_ERROR_OUT_OF_POOL_MEMORY    => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+
+      for (vk_descriptor_sets, vk_uniform_buffers[0..count]) |vk_descriptor_set, vk_uniform_buffer| {
+         const vk_info_descriptor_buffer = c.VkDescriptorBufferInfo{
+            .buffer  = vk_uniform_buffer.vulkan_uniform_buffer.vk_buffer,
+            .offset  = 0,
+            .range   = @intCast(@sizeOf(Renderer.UniformBufferObject)),
+         };
+
+         const vk_write_descriptor_set = c.VkWriteDescriptorSet{
+            .sType            = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .pNext            = null,
+            .dstSet           = vk_descriptor_set,
+            .dstBinding       = 0,
+            .dstArrayElement  = 0,
+            .descriptorCount  = 1,
+            .descriptorType   = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .pImageInfo       = null,
+            .pBufferInfo      = &vk_info_descriptor_buffer,
+            .pTexelBufferView = null,
+         };
+
+         c.vkUpdateDescriptorSets(vk_device, 1, &vk_write_descriptor_set, 0, null);
+      }
+
+      return @This(){
+         .vk_descriptor_sets  = vk_descriptor_sets,
+      };
+   }
+
+   pub fn destroy(self : @This(), allocator : std.mem.Allocator) void {
+      allocator.free(self.vk_descriptor_sets);
       return;
    }
 };
