@@ -4,14 +4,14 @@ const builtin  = @import("builtin");
 const MODULE_NAME = struct {
    pub const options    = "options";
    pub const cimports   = "cimports";
-   pub const window     = "window";
+   pub const present    = "present";
    pub const graphics   = "graphics";
    pub const resources  = "resources";
 };
 
 const MODULE_ROOT_SOURCE_PATH = struct {
    pub const cimports   = "src/cimports.zig";
-   pub const window     = "src/window/index.zig";
+   pub const present    = "src/present/index.zig";
    pub const graphics   = "src/graphics/index.zig";
    pub const resources  = "res/index.zig";
 };
@@ -60,8 +60,8 @@ pub fn build(b : * std.Build) void {
       },
    });
 
-   const module_window = b.addModule(MODULE_NAME.window, .{
-      .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.window},
+   const module_present = b.addModule(MODULE_NAME.present, .{
+      .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.present},
       .dependencies  = &.{
          .{
             .name    = MODULE_NAME.options,
@@ -86,8 +86,8 @@ pub fn build(b : * std.Build) void {
             .module  = module_cimports,
          },
          .{
-            .name    = MODULE_NAME.window,
-            .module  = module_window,
+            .name    = MODULE_NAME.present,
+            .module  = module_present,
          },
       },
    });
@@ -115,7 +115,7 @@ pub fn build(b : * std.Build) void {
 
    exe_main.linkLibC();
    exe_main.addModule(MODULE_NAME.options, module_options);
-   exe_main.addModule(MODULE_NAME.window, module_window);
+   exe_main.addModule(MODULE_NAME.present, module_present);
    exe_main.addModule(MODULE_NAME.graphics, module_graphics);
    exe_main.addModule(MODULE_NAME.resources, module_resources);
    exe_main.strip = opt_optimize_mode != .Debug;

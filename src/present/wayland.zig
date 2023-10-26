@@ -1,8 +1,10 @@
-const root  = @import("index.zig");
-const std   = @import("std");
+const std      = @import("std");
+const f_shared = @import("shared.zig");
 
 pub const Compositor = struct {
-   pub fn connect(allocator : std.mem.Allocator) root.CompositorConnectError!@This() {
+   pub const ConnectError = f_shared.Compositor.ConnectError;
+
+   pub fn connect(allocator : std.mem.Allocator) ConnectError!@This() {
       _ = allocator;
       unreachable;
    }
