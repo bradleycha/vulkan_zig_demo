@@ -1,11 +1,13 @@
 const std         = @import("std");
 const builtin     = @import("builtin");
+const options     = @import("options");
 const window      = @import("window");
 const graphics    = @import("graphics");
 const resources   = @import("resources");
 
 const MainError = error {
    OutOfMemory,
+   CompositorConnectError,
 };
 
 pub fn main() MainError!void {
@@ -13,6 +15,9 @@ pub fn main() MainError!void {
    defer _ = heap.deinit();
 
    const allocator = heap.allocator();
+
+   const compositor = window.Compositor.connect(allocator) catch return error.CompositorConnectError;
+   defer compositor.disconnect(allocator);
 
    return;
 }
