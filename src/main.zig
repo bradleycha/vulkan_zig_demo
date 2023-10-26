@@ -51,9 +51,12 @@ pub fn main() MainError!void {
 
    delta_timer.lap();
 
+   var theta : f32 = 0.0;
    while (window.shouldClose() == false) {
       const delta_time  = delta_timer.deltaSeconds();
       const fps         = 1.0 / delta_time;
+
+      theta = @floatCast(@mod(theta + (std.math.pi * delta_time), std.math.pi * 2.0));
 
       if (window_title_timer.isElapsed() == true) {
          const window_title_formatted = std.fmt.allocPrintZ(allocator, PROGRAM_SEXY_NAME ++ " - {d:.0} fps", .{fps}) catch return error.WindowTitleFormatFailure;
@@ -73,6 +76,11 @@ pub fn main() MainError!void {
       if (input.buttons.state(.exit).is_pressed()) {
          window.setShouldClose(true);
       }
+
+      renderer.uniformBufferObjectMutable().* = .{.translation = .{.xy = .{
+         .x = std.math.cos(theta) * 0.5,
+         .y = std.math.sin(theta) * 0.5,
+      }}};
 
       renderer.renderFrame() catch |err| {
          std.log.warn("failed to render frame: {}", .{err});
