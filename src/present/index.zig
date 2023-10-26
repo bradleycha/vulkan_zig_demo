@@ -64,7 +64,7 @@ fn _platformImplementation(comptime containers : PlatformContainers) type {
 const IMPLEMENTATION = blk: {
    const wayland = @import("wayland.zig");
 
-   switch (options.window_backend) {
+   switch (options.present_backend) {
       .wayland => break :blk _platformImplementation(.{
          .compositor = wayland.Compositor,
          .window     = wayland.Window,

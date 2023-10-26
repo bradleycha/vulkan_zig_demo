@@ -1,5 +1,5 @@
-const std      = @import("std");
-const builtin  = @import("builtin");
+const std   = @import("std");
+const bd    = @import("build/index.zig");
 
 const MODULE_NAME = struct {
    pub const options    = "options";
@@ -21,32 +21,17 @@ const PROGRAM_EXECUTABLE = struct {
    pub const root_source_path = "src/main.zig";
 };
 
-const WindowBackend = enum {
-   wayland,
-
-   pub fn targetDefault(b : * std.Build, target_platform : * const std.zig.CrossTarget) @This() {
-      const os_tag = target_platform.os_tag orelse builtin.os.tag;
-
-      switch (os_tag) {
-         .linux   => return .wayland,
-         else     => @panic(b.fmt("window backend is not supported for target {}", .{os_tag})),
-      }
-
-      unreachable;
-   }
-};
-
 pub fn build(b : * std.Build) void {
    const opt_target_platform  = b.standardTargetOptions(.{});
    const opt_optimize_mode    = b.standardOptimizeOption(.{});
    const opt_window_backend   = b.option(
-      WindowBackend,
-      "window-backend",
-      "backend library for window management",
-   ) orelse WindowBackend.targetDefault(b, &opt_target_platform);
+      bd.present.PresentBackend,
+      "present-backend",
+      "backend library for presentation, aka windowing",
+   ) orelse bd.present.PresentBackend.targetDefault(b, &opt_target_platform);
 
    const options = b.addOptions();
-   options.addOption(WindowBackend, "window_backend", opt_window_backend);
+   options.addOption(bd.present.PresentBackend, "present_backend", opt_window_backend);
 
    const module_options = options.createModule();
 
