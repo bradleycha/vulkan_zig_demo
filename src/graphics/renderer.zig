@@ -84,7 +84,8 @@ pub const Renderer = struct {
    };
 
    pub const UniformBufferObject = packed struct {
-      translation : f_types.Vector2(f32),
+      translation       : f_types.Vector2(f32),
+      aspect_correction : f32,
    };
 
    pub const CreateError = error {
@@ -260,7 +261,8 @@ pub const Renderer = struct {
       const window_framebuffer_size = window.getFramebufferSize();
 
       const uniform_buffer_object = UniformBufferObject{
-         .translation   = .{.xy = .{.x = 0.0, .y = 0.0}},
+         .translation         = .{.xy = .{.x = 0.0, .y = 0.0}},
+         .aspect_correction   = undefined,
       };
 
       return @This(){
@@ -373,6 +375,8 @@ pub const Renderer = struct {
          self._recreateSwapchain() catch return error.SwapchainRecreateFailure;
          return false;
       }
+
+      self._uniform_buffer_object.aspect_correction = @as(f32, @floatFromInt(current_framebuffer_size.height)) / @as(f32, @floatFromInt(current_framebuffer_size.width));
 
       vulkan_uniform_buffer.sendValue(
          &self._uniform_buffer_object,

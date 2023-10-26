@@ -77,10 +77,10 @@ pub fn main() MainError!void {
          window.setShouldClose(true);
       }
 
-      renderer.uniformBufferObjectMutable().* = .{.translation = .{.xy = .{
+      renderer.uniformBufferObjectMutable().translation = .{.xy = .{
          .x = std.math.cos(theta) * 0.5,
          .y = std.math.sin(theta) * 0.5,
-      }}};
+      }};
 
       renderer.renderFrame() catch |err| {
          std.log.warn("failed to render frame: {}", .{err});
