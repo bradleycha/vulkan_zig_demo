@@ -43,7 +43,7 @@ pub fn main() MainError!void {
       .shader_vertex    = &resources.shaders.Vertex,
       .shader_fragment  = &resources.shaders.Fragment,
       .frames_in_flight = 2,
-      .render_mesh      = &resources.meshes.TestRectangle,
+      .render_mesh      = &resources.meshes.TestOctagon,
    }) catch return error.RendererCreateFailure;
    defer renderer.destroy();
 
