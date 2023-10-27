@@ -27,7 +27,7 @@ pub fn build(b : * std.Build) void {
    const opt_present_backend   = b.option(
       bd.present.PresentBackend,
       "present-backend",
-      "backend library for presentation, aka windowing",
+      "Backend system library for window presentation",
    ) orelse bd.present.PresentBackend.targetDefault(b, &opt_target_platform);
 
    const options = b.addOptions();
