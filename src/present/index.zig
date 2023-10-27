@@ -12,8 +12,8 @@ fn _platformImplementation(comptime containers : PlatformContainers) type {
    return struct {
       containers : PlatformContainers = containers,
 
-      vulkan_required_extensions_instance : [] [*:0] const u8,
-      vulkan_required_extensions_device   : [] [*:0] const u8,
+      vulkan_required_extensions_instance : [] const [*:0] const u8,
+      vulkan_required_extensions_device   : [] const [*:0] const u8,
 
       pfn_compositor_connect : * const fn (
          allocator : std.mem.Allocator,
@@ -126,8 +126,13 @@ const IMPLEMENTATION = blk: {
 };
 
 pub const VULKAN_REQUIRED_EXTENSIONS = struct {
-   pub const Instance   = IMPLEMENTATION.vulkan_required_extensions_instance;
-   pub const Device     = IMPLEMENTATION.vulkan_required_extensions_device;
+   pub const Instance : [] const [*:0] const u8 = &([_] [*:0] const u8 {
+      c.VK_KHR_SURFACE_EXTENSION_NAME,
+   }) ++ IMPLEMENTATION.vulkan_required_extensions_instance;
+
+   pub const Device : [] const [*:0] const u8 = &([_] [*:0] const u8 {
+      c.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+   }) ++ IMPLEMENTATION.vulkan_required_extensions_device;
 };
 
 pub const Compositor = struct {

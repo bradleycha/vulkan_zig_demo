@@ -9,6 +9,8 @@ const options  = @import("options");
 // to technically be different and create annoying compile errors.
 
 pub usingnamespace @cImport({
+   @cInclude("string.h");
+
    switch (options.present_backend) {
       .wayland => {
          @cInclude("wayland-client.h");

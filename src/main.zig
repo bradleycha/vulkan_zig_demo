@@ -21,6 +21,13 @@ pub fn main() MainError!void {
    var compositor = present.Compositor.connect(allocator) catch return error.CompositorConnectError;
    defer compositor.disconnect(allocator);
 
+   for (present.VULKAN_REQUIRED_EXTENSIONS.Instance) |instance_extension| {
+      std.io.getStdOut().writer().print("vulkan instance extension: {s}\n", .{instance_extension}) catch {};
+   }
+   for (present.VULKAN_REQUIRED_EXTENSIONS.Device) |device_extension| {
+      std.io.getStdOut().writer().print("vulkan device extension: {s}\n", .{device_extension}) catch {};
+   }
+
    std.log.info("creating window for rendering", .{});
    var window = compositor.createWindow(allocator, &.{
       .title         = "Learn Graphics Programming with Zig!",

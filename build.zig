@@ -101,6 +101,7 @@ pub fn build(b : * std.Build) void {
    b.installArtifact(exe_main);
 
    exe_main.linkLibC();
+   exe_main.linkSystemLibrary("vulkan");
    exe_main.addModule(MODULE_NAME.options, module_options);
    exe_main.addModule(MODULE_NAME.present, module_present);
    exe_main.addModule(MODULE_NAME.graphics, module_graphics);
