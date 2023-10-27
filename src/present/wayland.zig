@@ -1,5 +1,9 @@
 const std      = @import("std");
 const f_shared = @import("shared.zig");
+const cimports = @import("cimports");
+const c        = struct {
+   pub usingnamespace cimports.wayland;
+};
 
 pub const Compositor = struct {
    pub fn connect(allocator : std.mem.Allocator) f_shared.Compositor.ConnectError!@This() {

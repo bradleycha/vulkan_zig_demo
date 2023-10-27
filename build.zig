@@ -24,14 +24,14 @@ const PROGRAM_EXECUTABLE = struct {
 pub fn build(b : * std.Build) void {
    const opt_target_platform  = b.standardTargetOptions(.{});
    const opt_optimize_mode    = b.standardOptimizeOption(.{});
-   const opt_window_backend   = b.option(
+   const opt_present_backend   = b.option(
       bd.present.PresentBackend,
       "present-backend",
       "backend library for presentation, aka windowing",
    ) orelse bd.present.PresentBackend.targetDefault(b, &opt_target_platform);
 
    const options = b.addOptions();
-   options.addOption(bd.present.PresentBackend, "present_backend", opt_window_backend);
+   options.addOption(bd.present.PresentBackend, "present_backend", opt_present_backend);
 
    const module_options = options.createModule();
 
@@ -98,6 +98,8 @@ pub fn build(b : * std.Build) void {
       .optimize         = opt_optimize_mode,
    });
 
+   b.installArtifact(exe_main);
+
    exe_main.linkLibC();
    exe_main.addModule(MODULE_NAME.options, module_options);
    exe_main.addModule(MODULE_NAME.present, module_present);
@@ -105,7 +107,7 @@ pub fn build(b : * std.Build) void {
    exe_main.addModule(MODULE_NAME.resources, module_resources);
    exe_main.strip = opt_optimize_mode != .Debug;
 
-   b.installArtifact(exe_main);
+   opt_present_backend.addCompileStepDependencies(b, exe_main);
 
    const cmd_run_exe_main = b.addRunArtifact(exe_main);
    cmd_run_exe_main.step.dependOn(b.getInstallStep());
