@@ -13,10 +13,14 @@ pub usingnamespace @cImport({
       .wayland => {
          @cInclude("wayland-client.h");
          @cInclude("xdg-shell.h");
+         @cDefine("VK_USE_PLATFORM_WAYLAND_KHR", {});
       },
       .xcb     => {
          @cInclude("xcb/xcb.h");
+         @cDefine("VK_USE_PLATFORM_XCB_KHR", .{});
       },
    }
+
+   @cInclude("vulkan/vulkan.h");
 });
 
