@@ -1,19 +1,22 @@
-// We make all cimports bundled inside a single module so we can share C types
-// between modules.  For example, defining a function to create a Vulkan
-// surface which returns a VkResult, while then also using that function in the
-// renderer module.  Making seperate cimports across modules will break because
-// as far as the Zig compiler sees, they are technically different types.
+const std      = @import("std");
+const builtin  = @import("builtin");
+const options  = @import("options");
 
-// We also further divide imports into different libraries so the Zig
-// compiler's (overzeallous) lazy evaluation allows cleanly including header
-// files as usual without messy conditional compilation.
+// We create a seperate module to lump all of our C includes together so we can
+// share C types across modules.  For example, writing a function with the
+// window presentation API to return a Vulkan surface, which can be used from
+// within the rendering API.  Using seperate cimports will cause these types
+// to technically be different and create annoying compile errors.
 
-pub const wayland = @cImport({
-   @cInclude("wayland-client.h");
-   @cInclude("xdg-shell.h");
-});
-
-pub const xcb = @cImport({
-   @cInclude("xcb/xcb.h");
+pub usingnamespace @cImport({
+   switch (options.present_backend) {
+      .wayland => {
+         @cInclude("wayland-client.h");
+         @cInclude("xdg-shell.h");
+      },
+      .xcb     => {
+         @cInclude("xcb/xcb.h");
+      },
+   }
 });
 
