@@ -3,6 +3,7 @@ const builtin  = @import("builtin");
 
 pub const PresentBackend = enum {
    wayland,
+   xcb,
 
    pub fn targetDefault(b : * std.Build, target_platform : * const std.zig.CrossTarget) @This() {
       const os_tag = target_platform.os_tag orelse builtin.os.tag;
@@ -18,6 +19,7 @@ pub const PresentBackend = enum {
    pub fn addCompileStepDependencies(self : @This(), owner : * std.Build, compile_step : * std.Build.Step.Compile) void {
       switch (self) {
          .wayland => return _addWaylandCompileStepDependencies(owner, compile_step),
+         .xcb     => return _addXcbCompileStepDependencies(owner, compile_step),
       }
 
       unreachable;
@@ -56,6 +58,14 @@ pub const PresentBackend = enum {
       compile_step.addIncludePath(wl_scanner_xdg_shell.getOutputDir());
       
       compile_step.linkSystemLibrary("wayland-client");
+
+      return;
+   }
+
+   fn _addXcbCompileStepDependencies(owner : * std.Build, compile_step : * std.Build.Step.Compile) void {
+      _ = owner;
+
+      compile_step.linkSystemLibrary("xcb");
 
       return;
    }

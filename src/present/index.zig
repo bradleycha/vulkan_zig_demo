@@ -62,7 +62,8 @@ fn _platformImplementation(comptime containers : PlatformContainers) type {
 }
 
 const IMPLEMENTATION = blk: {
-   const wayland = @import("wayland.zig");
+   const wayland  = @import("wayland.zig");
+   const xcb      = @import("xcb.zig");
 
    switch (options.present_backend) {
       .wayland => break :blk _platformImplementation(.{
@@ -79,6 +80,22 @@ const IMPLEMENTATION = blk: {
          .pfn_window_should_close         = wayland.Window.shouldClose,
          .pfn_window_set_should_close     = wayland.Window.setShouldClose,
          .pfn_window_poll_events          = wayland.Window.pollEvents,
+      },
+
+      .xcb => break :blk _platformImplementation(.{
+         .compositor = xcb.Compositor,
+         .window     = xcb.Window,
+      }){
+         .pfn_compositor_connect          = xcb.Compositor.connect,
+         .pfn_compositor_disconnect       = xcb.Compositor.disconnect,
+         .pfn_compositor_create_window    = xcb.Compositor.createWindow,
+         .pfn_window_create               = xcb.Window.create,
+         .pfn_window_destroy              = xcb.Window.destroy,
+         .pfn_window_get_resolution       = xcb.Window.getResolution,
+         .pfn_window_set_title            = xcb.Window.setTitle,
+         .pfn_window_should_close         = xcb.Window.shouldClose,
+         .pfn_window_set_should_close     = xcb.Window.setShouldClose,
+         .pfn_window_poll_events          = xcb.Window.pollEvents,
       },
    }
 };

@@ -13,3 +13,7 @@ pub const wayland = @cImport({
    @cInclude("xdg-shell.h");
 });
 
+pub const xcb = @cImport({
+   @cInclude("xcb/xcb.h");
+});
+
