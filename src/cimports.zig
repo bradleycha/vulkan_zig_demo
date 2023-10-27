@@ -17,7 +17,7 @@ pub usingnamespace @cImport({
       },
       .xcb     => {
          @cInclude("xcb/xcb.h");
-         @cDefine("VK_USE_PLATFORM_XCB_KHR", .{});
+         @cDefine("VK_USE_PLATFORM_XCB_KHR", {});
       },
    }
 
