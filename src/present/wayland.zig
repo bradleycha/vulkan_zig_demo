@@ -2,6 +2,16 @@ const std      = @import("std");
 const f_shared = @import("shared.zig");
 const c        = @import("cimports");
 
+pub const VULKAN_REQUIRED_EXTENSIONS = struct {
+   pub const Instance = [_] [*:0] const u8 {
+
+   };
+
+   pub const Device = [_] [*:0] const u8 {
+
+   };
+};
+
 pub const Compositor = struct {
    pub fn connect(allocator : std.mem.Allocator) f_shared.Compositor.ConnectError!@This() {
       _ = allocator;
@@ -27,16 +37,6 @@ pub const Compositor = struct {
 };
 
 pub const Window = struct {
-   pub const VULKAN_REQUIRED_EXTENSIONS = struct {
-      pub const Instance = [_] [*:0] const u8 {
-
-      };
-
-      pub const Device = [_] [*:0] const u8 {
-
-      };
-   };
-
    pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!@This() {
       _ = compositor;
       _ = allocator;

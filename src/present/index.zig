@@ -87,8 +87,8 @@ const IMPLEMENTATION = blk: {
          .compositor = wayland.Compositor,
          .window     = wayland.Window,
       }){
-         .vulkan_required_extensions_instance                              = &wayland.Window.VULKAN_REQUIRED_EXTENSIONS.Instance,
-         .vulkan_required_extensions_device                                = &wayland.Window.VULKAN_REQUIRED_EXTENSIONS.Device,
+         .vulkan_required_extensions_instance                              = &wayland.VULKAN_REQUIRED_EXTENSIONS.Instance,
+         .vulkan_required_extensions_device                                = &wayland.VULKAN_REQUIRED_EXTENSIONS.Device,
          .pfn_compositor_connect                                           = wayland.Compositor.connect,
          .pfn_compositor_disconnect                                        = wayland.Compositor.disconnect,
          .pfn_compositor_create_window                                     = wayland.Compositor.createWindow,
@@ -107,8 +107,8 @@ const IMPLEMENTATION = blk: {
          .compositor = xcb.Compositor,
          .window     = xcb.Window,
       }){
-         .vulkan_required_extensions_instance                              = &xcb.Window.VULKAN_REQUIRED_EXTENSIONS.Instance,
-         .vulkan_required_extensions_device                                = &xcb.Window.VULKAN_REQUIRED_EXTENSIONS.Device,
+         .vulkan_required_extensions_instance                              = &xcb.VULKAN_REQUIRED_EXTENSIONS.Instance,
+         .vulkan_required_extensions_device                                = &xcb.VULKAN_REQUIRED_EXTENSIONS.Device,
          .pfn_compositor_connect                                           = xcb.Compositor.connect,
          .pfn_compositor_disconnect                                        = xcb.Compositor.disconnect,
          .pfn_compositor_create_window                                     = xcb.Compositor.createWindow,
@@ -123,6 +123,11 @@ const IMPLEMENTATION = blk: {
          .pfn_window_vulkan_create_surface                                 = xcb.Window.vulkanCreateSurface,
       },
    }
+};
+
+pub const VULKAN_REQUIRED_EXTENSIONS = struct {
+   pub const Instance   = IMPLEMENTATION.vulkan_required_extensions_instance;
+   pub const Device     = IMPLEMENTATION.vulkan_required_extensions_device;
 };
 
 pub const Compositor = struct {
@@ -150,11 +155,6 @@ pub const Compositor = struct {
 
 pub const Window = struct {
    _container  : IMPLEMENTATION.containers.window,
-
-   pub const VULKAN_REQUIRED_EXTENSIONS = struct {
-      pub const Instance   = IMPLEMENTATION.vulkan_required_extensions_instance;
-      pub const Device     = IMPLEMENTATION.vulkan_required_extensions_device;
-   };
 
    pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!@This() {
       return @This(){._container = try IMPLEMENTATION.pfn_window_create(&compositor._container, allocator, create_info)};
