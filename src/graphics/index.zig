@@ -8,7 +8,8 @@ pub const Renderer = struct {
    _vulkan_instance  : vulkan.Instance,
 
    pub const CreateInfo = struct {
-      debugging   : bool,
+      program_name   : ? [*:0] const u8,
+      debugging      : bool,
    };
 
    pub const CreateError = error {
@@ -23,9 +24,13 @@ pub const Renderer = struct {
          present.VULKAN_REQUIRED_EXTENSIONS.Device;
 
       const vulkan_instance = vulkan.Instance.create(allocator, &.{
-         .extensions = vulkan_instance_extensions,
-         .debugging  = create_info.debugging,
-      }) catch return error.VulkanInstanceCreateFailure;
+         .extensions       = vulkan_instance_extensions,
+         .program_name     = create_info.program_name,
+         .engine_name      = "No Engine ;)",
+         .program_version  = 0x00000000,
+         .engine_version   = 0x00000000,
+         .debugging        = create_info.debugging,
+      }) catch return error.VulkanInstanceCreateError;
       errdefer vulkan_instance.destroy(allocator);
 
       _ = window;
@@ -38,7 +43,7 @@ pub const Renderer = struct {
    }
 
    pub fn destroy(self : @This()) void {
-      self._vulkan_instance.destroy(self._allocator);
+      self._vulkan_instance.destroy();
       return;
    }
 };

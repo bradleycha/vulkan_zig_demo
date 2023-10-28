@@ -12,6 +12,8 @@ const MainError = error {
    RendererCreateError,
 };
 
+const PROGRAM_NAME = "Learn Graphics Programming with Zig!";
+
 pub fn main() MainError!void {
    var heap = chooseHeapSettings();
    defer _ = heap.deinit();
@@ -24,13 +26,14 @@ pub fn main() MainError!void {
 
    std.log.info("creating window for rendering", .{});
    var window = compositor.createWindow(allocator, &.{
-      .title         = "Learn Graphics Programming with Zig!",
+      .title         = PROGRAM_NAME,
       .display_mode  = .{.windowed = .{.width = 1280, .height = 720}},
    }) catch return error.WindowCreateError;
    defer window.destroy(allocator);
 
    var renderer = graphics.Renderer.create(allocator, &window, &.{
-      .debugging  = builtin.mode == .Debug,
+      .program_name  = PROGRAM_NAME,
+      .debugging     = builtin.mode == .Debug,
    }) catch return error.RendererCreateError;
    defer renderer.destroy();
 
