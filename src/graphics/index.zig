@@ -6,6 +6,7 @@ const vulkan   = @import("vulkan/index.zig");
 pub const Renderer = struct {
    _allocator              : std.mem.Allocator,
    _vulkan_instance        : vulkan.Instance,
+   _vulkan_surface         : vulkan.Surface,
    _vulkan_physical_device : vulkan.PhysicalDevice,
    _vulkan_device          : vulkan.Device,
 
@@ -16,6 +17,7 @@ pub const Renderer = struct {
 
    pub const CreateError = error {
       VulkanInstanceCreateError,
+      VulkanSurfaceCreateError,
       VulkanPhysicalDeviceSelectError,
       VulkanDeviceCreateError,
    };
@@ -37,6 +39,12 @@ pub const Renderer = struct {
       }) catch return error.VulkanInstanceCreateError;
       errdefer vulkan_instance.destroy();
 
+      const vulkan_surface = vulkan.Surface.create(&.{
+         .vk_instance   = vulkan_instance.vk_instance,
+         .window        = window,
+      }) catch return error.VulkanSurfaceCreateError;
+      errdefer vulkan_surface.destroy(vulkan_instance.vk_instance);
+
       const vulkan_physical_device = vulkan.PhysicalDevice.selectMostSuitable(allocator, &.{
          .vk_instance   = vulkan_instance.vk_instance,
          .extensions    = vulkan_device_extensions,
@@ -48,18 +56,20 @@ pub const Renderer = struct {
       }) catch return error.VulkanDeviceCreateError;
       errdefer vulkan_device.destroy();
 
-      _ = window;
-      
       return @This(){
          ._allocator                = allocator,
          ._vulkan_instance          = vulkan_instance,
+         ._vulkan_surface           = vulkan_surface,
          ._vulkan_physical_device   = vulkan_physical_device,
          ._vulkan_device            = vulkan_device,
       };
    }
 
    pub fn destroy(self : @This()) void {
+      const vk_instance = self._vulkan_instance.vk_instance;
+
       self._vulkan_device.destroy();
+      self._vulkan_surface.destroy(vk_instance);
       self._vulkan_instance.destroy();
       return;
    }

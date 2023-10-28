@@ -182,7 +182,7 @@ pub const Window = struct {
    }
 
    pub fn vulkanCreateSurface(self : * @This(), vk_instance : c.VkInstance, vk_allocator : ? * const c.VkAllocationCallbacks, vk_surface : * c.VkSurfaceKHR) c.VkResult {
-      return IMPLEMENTATION.pfn_window_vulkan_create_surface(self, vk_instance, vk_allocator, vk_surface);
+      return IMPLEMENTATION.pfn_window_vulkan_create_surface(&self._container, vk_instance, vk_allocator, vk_surface);
    }
 };
 
