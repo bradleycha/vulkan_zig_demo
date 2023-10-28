@@ -1,6 +1,7 @@
-const root  = @import("index.zig");
-const std   = @import("std");
-const c     = @import("cimports");
+const root     = @import("index.zig");
+const std      = @import("std");
+const present  = @import("present");
+const c        = @import("cimports");
 
 pub const QueueFamilyIndices = struct {
    graphics : u32,
@@ -23,11 +24,18 @@ pub const PhysicalDevice = struct {
    vk_physical_device_features            : c.VkPhysicalDeviceFeatures,
    vk_physical_device_memory_properties   : c.VkPhysicalDeviceMemoryProperties,
    queue_family_indices                   : QueueFamilyIndices,
+};
+
+pub const PhysicalDeviceSelection = struct {
+   physical_device         : PhysicalDevice,
+   swapchain_configuration : root.SwapchainConfiguration,
 
    pub const SelectInfo = struct {
-      vk_instance : c.VkInstance,
-      vk_surface  : c.VkSurfaceKHR,
-      extensions  : [] const [*:0] const u8,
+      vk_instance          : c.VkInstance,
+      vk_surface           : c.VkSurfaceKHR,
+      window               : * const present.Window,
+      present_mode_desired : c.VkPresentModeKHR,
+      extensions           : [] const [*:0] const u8,
    };
 
    pub const SelectError = error {
@@ -38,41 +46,33 @@ pub const PhysicalDevice = struct {
    };
 
    pub fn selectMostSuitable(allocator : std.mem.Allocator, select_info : * const SelectInfo) SelectError!@This() {
-      const vk_instance = select_info.vk_instance;
-      const vk_surface  = select_info.vk_surface;
-
-      const vk_physical_devices = try _enumeratePhysicalDevices(allocator, vk_instance);
+      const vk_physical_devices = try _enumeratePhysicalDevices(allocator, select_info.vk_instance);
       defer allocator.free(vk_physical_devices);
 
-      var chosen_physical_device : ? @This() = null;
+      var chosen_selection : ? @This() = null;
       var chosen_physical_device_score : u32 = 0;
 
       for (vk_physical_devices) |vk_physical_device| {
-         const physical_device = try _parsePhysicalDevice(
-            allocator,
-            vk_physical_device,
-            vk_surface,
-            select_info.extensions,
-         ) orelse continue;
+         const selection = try _parseSelection(allocator, vk_physical_device, select_info) orelse continue;
 
-         const physical_device_score = physical_device._assignScore();
+         const physical_device_score = _assignPhysicalDeviceScore(&selection.physical_device);
 
-         if (chosen_physical_device != null and physical_device_score <= chosen_physical_device_score) {
+         if (chosen_selection != null and physical_device_score <= chosen_physical_device_score) {
             continue;
          }
 
-         chosen_physical_device        = physical_device;
+         chosen_selection              = selection;
          chosen_physical_device_score  = physical_device_score;
       }
 
-      const physical_device = chosen_physical_device orelse return error.NoneAvailable;
+      const selection = chosen_selection orelse return error.NoneAvailable;
 
-      std.log.info("using vulkan physical device \"{s}\" for rendering", .{physical_device.vk_physical_device_properties.deviceName});
+      std.log.info("using vulkan physical device \"{s}\" for rendering", .{selection.physical_device.vk_physical_device_properties.deviceName});
 
-      return physical_device;
+      return selection;
    }
 
-   fn _parsePhysicalDevice(allocator : std.mem.Allocator, vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR, enabled_extensions : [] const [*:0] const u8) SelectError!?@This() {
+   fn _parseSelection(allocator : std.mem.Allocator, vk_physical_device : c.VkPhysicalDevice, select_info : * const SelectInfo) SelectError!?@This() {
       var vk_physical_device_properties : c.VkPhysicalDeviceProperties = undefined;
       c.vkGetPhysicalDeviceProperties(vk_physical_device, &vk_physical_device_properties);
 
@@ -86,39 +86,42 @@ pub const PhysicalDevice = struct {
 
       std.log.info("attempting to enumerate vulkan physical device \"{s}\"", .{vk_physical_device_name});
 
-      if (try _checkExtensionsPresent(allocator, vk_physical_device, enabled_extensions) == false) {
+      if (try _checkExtensionsPresent(allocator, vk_physical_device, select_info.extensions) == false) {
          std.log.info("vulkan physical device \"{s}\" does not support enabled extensions, choosing new device", .{vk_physical_device_name});
          return null;
       }
 
-      const queue_family_indices = try _selectQueueFamilyIndices(allocator, vk_physical_device, vk_surface) orelse {
+      const queue_family_indices = try _selectQueueFamilyIndices(allocator, vk_physical_device, select_info.vk_surface) orelse {
          std.log.info("vulkan physical device \"{s}\" does not support required queue families, choosing new device" , .{vk_physical_device_name});
          return null;
       };
 
-      return @This(){
+      const physical_device = PhysicalDevice{
          .vk_physical_device                    = vk_physical_device,
          .vk_physical_device_properties         = vk_physical_device_properties,
          .vk_physical_device_features           = vk_physical_device_features,
          .vk_physical_device_memory_properties  = vk_physical_device_memory_properties,
          .queue_family_indices                  = queue_family_indices,
       };
-   }
 
-   fn _assignScore(self : * const @This()) u32 {
-      var score : u32 = 0;
+      const swapchain_configuration = try root.SwapchainConfiguration.selectMostSuitable(allocator, &.{
+         .vk_physical_device     = vk_physical_device,
+         .vk_surface             = select_info.vk_surface,
+         .window                 = select_info.window,
+         .present_mode_desired   = select_info.present_mode_desired,
+      }) orelse {
+         std.log.info("vulkan physical device \"{s}\" does not support required swapchain configuration, choosing new device", .{vk_physical_device_name});
+         return null;
+      };
 
-      // In the future we will use a more complex scoring method.
-      // For now, just simply prefer a discrete GPU.
-      if (self.vk_physical_device_properties.deviceType == c.VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-         score += 1;
-      }
-
-      return score;
+      return PhysicalDeviceSelection{
+         .physical_device           = physical_device,
+         .swapchain_configuration   = swapchain_configuration,
+      };
    }
 };
 
-fn _enumeratePhysicalDevices(allocator : std.mem.Allocator, vk_instance : c.VkInstance) PhysicalDevice.SelectError![] c.VkPhysicalDevice {
+fn _enumeratePhysicalDevices(allocator : std.mem.Allocator, vk_instance : c.VkInstance) PhysicalDeviceSelection.SelectError![] c.VkPhysicalDevice {
    var vk_result : c.VkResult = undefined;
 
    var vk_physical_devices_count : u32 = undefined;
@@ -147,7 +150,7 @@ fn _enumeratePhysicalDevices(allocator : std.mem.Allocator, vk_instance : c.VkIn
    return vk_physical_devices;
 }
 
-fn _checkExtensionsPresent(allocator : std.mem.Allocator, vk_physical_device : c.VkPhysicalDevice, enabled_extensions : [] const [*:0] const u8) PhysicalDevice.SelectError!bool {
+fn _checkExtensionsPresent(allocator : std.mem.Allocator, vk_physical_device : c.VkPhysicalDevice, enabled_extensions : [] const [*:0] const u8) PhysicalDeviceSelection.SelectError!bool {
    var vk_result : c.VkResult = undefined;
 
    var vk_extensions_available_count : u32 = undefined;
@@ -191,7 +194,7 @@ fn _checkExtensionsPresent(allocator : std.mem.Allocator, vk_physical_device : c
    return everything_found;
 }
 
-fn _selectQueueFamilyIndices(allocator : std.mem.Allocator, vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR) PhysicalDevice.SelectError!?QueueFamilyIndices {
+fn _selectQueueFamilyIndices(allocator : std.mem.Allocator, vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR) PhysicalDeviceSelection.SelectError!?QueueFamilyIndices {
    var vk_result : c.VkResult = undefined;
 
    var vk_physical_device_queue_families_count : u32 = undefined;
@@ -274,5 +277,17 @@ fn _assignUniqueQueueFamilyIndices(vk_physical_device_queue_family_index : u32, 
    }
 
    return;
+}
+
+fn _assignPhysicalDeviceScore(physical_device : * const PhysicalDevice) u32 {
+   var score : u32 = 0;
+
+   // In the future we will use a more complex scoring method.
+   // For now, just simply prefer a discrete GPU.
+   if (physical_device.vk_physical_device_properties.deviceType == c.VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+      score += 1;
+   }
+
+   return score;
 }
 
