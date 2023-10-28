@@ -281,13 +281,6 @@ pub const Window = struct {
       return self._callbacks.should_close;
    }
 
-   pub fn setShouldClose(self : * @This(), should_close : bool) void {
-      // TODO: Remove this from the API.
-      _ = self;
-      _ = should_close;
-      unreachable;
-   }
-
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       _ = c.wl_display_roundtrip(self._compositor._wl_display);
       _ = c.wl_surface_commit(self._wl_surface);

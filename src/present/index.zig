@@ -60,11 +60,6 @@ fn _platformImplementation(comptime containers : PlatformContainers) type {
          container   : * const containers.window,
       ) bool,
 
-      pfn_window_set_should_close : * const fn (
-         container      : * containers.window,
-         should_close   : bool,
-      ) void,
-
       pfn_window_poll_events : * const fn (
          container   : * containers.window,
       ) f_shared.Window.PollEventsError!void,
@@ -98,7 +93,6 @@ const IMPLEMENTATION = blk: {
          .pfn_window_get_resolution                                        = wayland.Window.getResolution,
          .pfn_window_set_title                                             = wayland.Window.setTitle,
          .pfn_window_should_close                                          = wayland.Window.shouldClose,
-         .pfn_window_set_should_close                                      = wayland.Window.setShouldClose,
          .pfn_window_poll_events                                           = wayland.Window.pollEvents,
          .pfn_window_vulkan_create_surface                                 = wayland.Window.vulkanCreateSurface,
       },
@@ -118,7 +112,6 @@ const IMPLEMENTATION = blk: {
          .pfn_window_get_resolution                                        = xcb.Window.getResolution,
          .pfn_window_set_title                                             = xcb.Window.setTitle,
          .pfn_window_should_close                                          = xcb.Window.shouldClose,
-         .pfn_window_set_should_close                                      = xcb.Window.setShouldClose,
          .pfn_window_poll_events                                           = xcb.Window.pollEvents,
          .pfn_window_vulkan_create_surface                                 = xcb.Window.vulkanCreateSurface,
       },
@@ -181,11 +174,6 @@ pub const Window = struct {
 
    pub fn shouldClose(self : * const @This()) bool {
       return IMPLEMENTATION.pfn_window_should_close(&self._container);
-   }
-
-   pub fn setShouldClose(self : * @This(), should_close : bool) void {
-      IMPLEMENTATION.pfn_window_set_should_close(&self._container, should_close);
-      return;
    }
    
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {

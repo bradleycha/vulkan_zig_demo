@@ -66,12 +66,6 @@ pub const Window = struct {
       unreachable;
    }
 
-   pub fn setShouldClose(self : * @This(), should_close : bool) void {
-      _ = self;
-      _ = should_close;
-      unreachable;
-   }
-
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       _ = self;
       unreachable;
