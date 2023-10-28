@@ -9,6 +9,7 @@ const MainError = error {
    OutOfMemory,
    CompositorConnectError,
    WindowCreateError,
+   RendererCreateError,
 };
 
 pub fn main() MainError!void {
@@ -28,7 +29,10 @@ pub fn main() MainError!void {
    }) catch return error.WindowCreateError;
    defer window.destroy(allocator);
 
-   // TODO: Create renderer
+   var renderer = graphics.Renderer.create(allocator, &window, &.{
+      .debugging  = builtin.mode == .Debug,
+   }) catch return error.RendererCreateError;
+   defer renderer.destroy();
 
    std.log.info("initialization complete, entering main loop", .{});
    while (window.shouldClose() == false) {
