@@ -24,6 +24,7 @@ pub const Compositor = struct {
       errdefer c.wl_display_disconnect(wl_display);
 
       const wl_registry = c.wl_display_get_registry(wl_display) orelse return error.PlatformError;
+      errdefer c.wl_registry_destroy(wl_registry);
 
       const wl_registry_listener = c.wl_registry_listener{
          .global        = _waylandRegistryListenerGlobal,
@@ -135,6 +136,7 @@ pub const Compositor = struct {
    pub fn disconnect(self : @This(), allocator : std.mem.Allocator) void {
       _ = allocator;
 
+      c.wl_registry_destroy(self._wl_registry);
       c.wl_display_disconnect(self._wl_display);
       return;
    }
@@ -149,52 +151,159 @@ pub const Compositor = struct {
 };
 
 pub const Window = struct {
+   _compositor    : * Compositor,
+   _wl_surface    : * c.wl_surface,
+   _xdg_surface   : * c.xdg_surface,
+   _xdg_toplevel  : * c.xdg_toplevel,
+   _callbacks     : * _Callbacks,
+
+   const _Callbacks = struct {
+      mutex                : std.Thread.Mutex = .{},
+      current_resolution   : f_shared.Window.Resolution = .{.width = 0, .height = 0},
+      should_close         : bool = false,
+   };
+
    pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!@This() {
-      _ = compositor;
-      _ = allocator;
-      _ = create_info;
-      unreachable;
+      // Since we are using listeners outside the scope of this function, we
+      // unfortunately have to allocate on the heap, otherwise we won't be able
+      // to safely move the struct.
+
+      const callbacks = try allocator.create(_Callbacks);
+      errdefer allocator.destroy(callbacks);
+      callbacks.* = .{};
+
+      const wl_surface = c.wl_compositor_create_surface(compositor._wl_globals.compositor) orelse return error.PlatformError;
+      errdefer c.wl_surface_destroy(wl_surface);
+
+      const xdg_surface = c.xdg_wm_base_get_xdg_surface(compositor._wl_globals.xdg_wm_base, wl_surface) orelse return error.PlatformError;
+      errdefer c.xdg_surface_destroy(xdg_surface);
+
+      const xdg_surface_listener = c.xdg_surface_listener{
+         .configure = _xdgSurfaceListenerConfigure,
+      };
+
+      _ = c.xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, null);
+
+      const xdg_toplevel = c.xdg_surface_get_toplevel(xdg_surface) orelse return error.PlatformError;
+      errdefer c.xdg_toplevel_destroy(xdg_toplevel);
+
+      const xdg_toplevel_listener = c.xdg_toplevel_listener{
+         .configure        = _xdgToplevelListenerConfigure,
+         .close            = _xdgToplevelListenerClose,
+         .configure_bounds = null,
+         .wm_capabilities  = null,
+      };
+
+      _ = c.xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, callbacks);
+
+      // TODO: Initial size and fullscreen mode
+
+      c.xdg_toplevel_set_title(xdg_toplevel, create_info.title);
+      c.xdg_toplevel_set_app_id(xdg_toplevel, create_info.title);
+
+      _ = c.wl_surface_commit(wl_surface);
+      _ = c.wl_display_roundtrip(compositor._wl_display);
+      _ = c.wl_surface_commit(wl_surface);
+
+      return @This(){
+         ._compositor   = compositor,
+         ._wl_surface   = wl_surface,
+         ._xdg_surface  = xdg_surface,
+         ._xdg_toplevel = xdg_toplevel,
+         ._callbacks    = callbacks,
+      };
+   }
+
+   fn _xdgSurfaceListenerConfigure(_ : ? * anyopaque, p_xdg_surface : ? * c.xdg_surface, p_serial : u32) callconv(.C) void {
+      const xdg_surface = p_xdg_surface orelse unreachable;
+      const serial = p_serial;
+
+      c.xdg_surface_ack_configure(xdg_surface, serial);
+
+      return;
+   }
+
+   fn _xdgToplevelListenerConfigure(p_callbacks : ? * anyopaque, p_xdg_toplevel : ? * c.xdg_toplevel, p_width : i32, p_height : i32, _ : ? * c.wl_array) callconv(.C) void {
+      const callbacks : * _Callbacks = @ptrCast(@alignCast(p_callbacks orelse unreachable));
+      const xdg_toplevel = p_xdg_toplevel orelse unreachable;
+      const width : u32 = @intCast(p_width);
+      const height : u32 = @intCast(p_height);
+
+      callbacks.mutex.lock();
+      defer callbacks.mutex.unlock();
+
+      callbacks.current_resolution = .{.width = width, .height = height};
+
+      _ = xdg_toplevel;
+
+      return;
+   }
+
+   fn _xdgToplevelListenerClose(p_callbacks : ? * anyopaque, p_xdg_toplevel : ? * c.xdg_toplevel) callconv(.C) void {
+      const callbacks : * _Callbacks = @ptrCast(@alignCast(p_callbacks orelse unreachable));
+      const xdg_toplevel = p_xdg_toplevel orelse unreachable;
+
+      callbacks.mutex.lock();
+      defer callbacks.mutex.unlock();
+
+      callbacks.should_close = true;
+
+      _ = xdg_toplevel;
+
+      return;
    }
 
    pub fn destroy(self : @This(), allocator : std.mem.Allocator) void {
-      _ = self;
-      _ = allocator;
-      unreachable;
+      c.xdg_toplevel_destroy(self._xdg_toplevel);
+      c.xdg_surface_destroy(self._xdg_surface);
+      c.wl_surface_destroy(self._wl_surface);
+      allocator.destroy(self._callbacks);
+      return;
    }
 
    pub fn getResolution(self : * const @This()) f_shared.Window.Resolution {
-      _ = self;
-      unreachable;
+      self._callbacks.mutex.lock();
+      defer self._callbacks.mutex.unlock();
+
+      return self._callbacks.current_resolution;
    }
 
    pub fn setTitle(self : * @This(), title : [*:0] const u8) void {
-      _ = self;
-      _ = title;
-      unreachable;
+      c.xdg_toplevel_set_title(self._xdg_toplevel, title);
+      c.xdg_toplevel_set_app_id(self._xdg_toplevel, title);
+      return;
    }
 
    pub fn shouldClose(self : * const @This()) bool {
-      _ = self;
-      unreachable;
+      self._callbacks.mutex.lock();
+      defer self._callbacks.mutex.unlock();
+
+      return self._callbacks.should_close;
    }
 
    pub fn setShouldClose(self : * @This(), should_close : bool) void {
+      // TODO: Remove this from the API.
       _ = self;
       _ = should_close;
       unreachable;
    }
 
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
-      _ = self;
-      unreachable;
+      _ = c.wl_display_roundtrip(self._compositor._wl_display);
+      _ = c.wl_surface_commit(self._wl_surface);
+      return;
    }
 
    pub fn vulkanCreateSurface(self : * @This(), vk_instance : c.VkInstance, vk_allocator : ? * const c.VkAllocationCallbacks, vk_surface : * c.VkSurfaceKHR) c.VkResult {
-      _ = self;
-      _ = vk_instance;
-      _ = vk_allocator;
-      _ = vk_surface;
-      unreachable;
+      const vk_info_create_wayland_surface = c.VkWaylandSurfaceCreateInfoKHR{
+         .sType   = c.VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
+         .pNext   = null,
+         .flags   = 0x00000000,
+         .display = self._compositor._wl_display,
+         .surface = self._wl_surface,
+      };
+
+      return c.vkCreateWaylandSurfaceKHR(vk_instance, &vk_info_create_wayland_surface, vk_allocator, vk_surface);
    }
 };
 
