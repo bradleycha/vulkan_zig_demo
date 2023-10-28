@@ -5,6 +5,7 @@ const c     = @import("cimports");
 pub const Queues = struct {
    graphics : c.VkQueue,
    transfer : c.VkQueue,
+   present  : c.VkQueue,
 };
 
 pub const Device = struct {
@@ -126,9 +127,13 @@ pub const Device = struct {
       var vk_queue_transfer : c.VkQueue = undefined;
       c.vkGetDeviceQueue(vk_device, queue_family_indices.transfer, 0, &vk_queue_transfer);
 
+      var vk_queue_present : c.VkQueue = undefined;
+      c.vkGetDeviceQueue(vk_device, queue_family_indices.present, 0, &vk_queue_present);
+
       const queues = Queues{
          .graphics   = vk_queue_graphics,
          .transfer   = vk_queue_transfer,
+         .present    = vk_queue_present,
       };
 
       return @This(){
@@ -151,6 +156,7 @@ fn _populateUniqueQueueCreateInfos(queue_family_indices : * const root.QueueFami
    var queue_families_array : [root.QueueFamilyIndices.INFO.Count] u32 = undefined;
    queue_families_array[root.QueueFamilyIndices.INFO.Index.Graphics] = queue_family_indices.graphics;
    queue_families_array[root.QueueFamilyIndices.INFO.Index.Transfer] = queue_family_indices.transfer;
+   queue_families_array[root.QueueFamilyIndices.INFO.Index.Present]  = queue_family_indices.present;
 
    var queue_families_unique : [root.QueueFamilyIndices.INFO.Count] u32 = undefined;
    var queue_families_unique_count : u32 = 0;

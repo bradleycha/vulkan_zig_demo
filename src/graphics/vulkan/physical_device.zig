@@ -5,12 +5,14 @@ const c     = @import("cimports");
 pub const QueueFamilyIndices = struct {
    graphics : u32,
    transfer : u32,
+   present  : u32,
 
    pub const INFO = struct {
-      pub const Count = 2;
+      pub const Count = @typeInfo(QueueFamilyIndices).Struct.fields.len;
       pub const Index = struct {
          pub const Graphics   = 0;
          pub const Transfer   = 1;
+         pub const Present    = 2;
       };
    };
 };
@@ -24,17 +26,20 @@ pub const PhysicalDevice = struct {
 
    pub const SelectInfo = struct {
       vk_instance : c.VkInstance,
+      vk_surface  : c.VkSurfaceKHR,
       extensions  : [] const [*:0] const u8,
    };
 
    pub const SelectError = error {
       OutOfMemory,
       Unknown,
+      SurfaceLost,
       NoneAvailable,
    };
 
    pub fn selectMostSuitable(allocator : std.mem.Allocator, select_info : * const SelectInfo) SelectError!@This() {
       const vk_instance = select_info.vk_instance;
+      const vk_surface  = select_info.vk_surface;
 
       const vk_physical_devices = try _enumeratePhysicalDevices(allocator, vk_instance);
       defer allocator.free(vk_physical_devices);
@@ -46,6 +51,7 @@ pub const PhysicalDevice = struct {
          const physical_device = try _parsePhysicalDevice(
             allocator,
             vk_physical_device,
+            vk_surface,
             select_info.extensions,
          ) orelse continue;
 
@@ -66,7 +72,7 @@ pub const PhysicalDevice = struct {
       return physical_device;
    }
 
-   fn _parsePhysicalDevice(allocator : std.mem.Allocator, vk_physical_device : c.VkPhysicalDevice, enabled_extensions : [] const [*:0] const u8) SelectError!?@This() {
+   fn _parsePhysicalDevice(allocator : std.mem.Allocator, vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR, enabled_extensions : [] const [*:0] const u8) SelectError!?@This() {
       var vk_physical_device_properties : c.VkPhysicalDeviceProperties = undefined;
       c.vkGetPhysicalDeviceProperties(vk_physical_device, &vk_physical_device_properties);
 
@@ -85,7 +91,7 @@ pub const PhysicalDevice = struct {
          return null;
       }
 
-      const queue_family_indices = try _selectQueueFamilyIndices(allocator, vk_physical_device) orelse {
+      const queue_family_indices = try _selectQueueFamilyIndices(allocator, vk_physical_device, vk_surface) orelse {
          std.log.info("vulkan physical device \"{s}\" does not support required queue families, choosing new device" , .{vk_physical_device_name});
          return null;
       };
@@ -185,7 +191,9 @@ fn _checkExtensionsPresent(allocator : std.mem.Allocator, vk_physical_device : c
    return everything_found;
 }
 
-fn _selectQueueFamilyIndices(allocator : std.mem.Allocator, vk_physical_device : c.VkPhysicalDevice) PhysicalDevice.SelectError!?QueueFamilyIndices {
+fn _selectQueueFamilyIndices(allocator : std.mem.Allocator, vk_physical_device : c.VkPhysicalDevice, vk_surface : c.VkSurfaceKHR) PhysicalDevice.SelectError!?QueueFamilyIndices {
+   var vk_result : c.VkResult = undefined;
+
    var vk_physical_device_queue_families_count : u32 = undefined;
    c.vkGetPhysicalDeviceQueueFamilyProperties(vk_physical_device, &vk_physical_device_queue_families_count, null);
 
@@ -200,11 +208,24 @@ fn _selectQueueFamilyIndices(allocator : std.mem.Allocator, vk_physical_device :
 
       var queue_families_found = [1] bool {false} ** QueueFamilyIndices.INFO.Count;
 
+      var vk_queue_family_supports_presentation : c.VkBool32 = undefined;
+      vk_result = c.vkGetPhysicalDeviceSurfaceSupportKHR(vk_physical_device, vk_physical_device_queue_family_index, vk_surface, &vk_queue_family_supports_presentation);
+      switch (vk_result) {
+         c.VK_SUCCESS => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_SURFACE_LOST_KHR      => return error.SurfaceLost,
+         else                             => unreachable,
+      }
+
       if (vk_physical_device_queue_family.queueFlags & c.VK_QUEUE_GRAPHICS_BIT != 0) {
-         queue_families_found[QueueFamilyIndices.INFO.Index.Graphics] = true;
+         queue_families_found[QueueFamilyIndices.INFO.Index.Graphics]   = true;
       }
       if (vk_physical_device_queue_family.queueFlags & c.VK_QUEUE_TRANSFER_BIT != 0) {
-         queue_families_found[QueueFamilyIndices.INFO.Index.Transfer] = true;
+         queue_families_found[QueueFamilyIndices.INFO.Index.Transfer]   = true;
+      }
+      if (vk_queue_family_supports_presentation != c.VK_FALSE) {
+         queue_families_found[QueueFamilyIndices.INFO.Index.Present]    = true;
       }
 
       _assignUniqueQueueFamilyIndices(vk_physical_device_queue_family_index, &queue_families_found, &queue_family_indices_found);
@@ -213,6 +234,7 @@ fn _selectQueueFamilyIndices(allocator : std.mem.Allocator, vk_physical_device :
    const queue_family_indices = QueueFamilyIndices{
       .graphics   = queue_family_indices_found[QueueFamilyIndices.INFO.Index.Graphics] orelse return null,
       .transfer   = queue_family_indices_found[QueueFamilyIndices.INFO.Index.Transfer] orelse return null,
+      .present    = queue_family_indices_found[QueueFamilyIndices.INFO.Index.Present]  orelse return null,
    };
 
    return queue_family_indices;

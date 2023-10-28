@@ -47,6 +47,7 @@ pub const Renderer = struct {
 
       const vulkan_physical_device = vulkan.PhysicalDevice.selectMostSuitable(allocator, &.{
          .vk_instance   = vulkan_instance.vk_instance,
+         .vk_surface    = vulkan_surface.vk_surface,
          .extensions    = vulkan_device_extensions,
       }) catch return error.VulkanPhysicalDeviceSelectError;
 
