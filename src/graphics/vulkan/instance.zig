@@ -3,7 +3,8 @@ const std   = @import("std");
 const c     = @import("cimports");
 
 pub const Instance = struct {
-   vk_instance : c.VkInstance,
+   vk_instance       : c.VkInstance,
+   debug_messenger   : ? root.DebugMessenger,
 
    pub const CreateInfo = struct {
       extensions        : [] const [*:0] const u8,
@@ -20,6 +21,7 @@ pub const Instance = struct {
       IncompatibleDriver,
       MissingRequiredLayers,
       MissingRequiredExtensions,
+      MissingRequiredFunctions,
    };
 
    pub fn create(allocator : std.mem.Allocator, create_info : * const CreateInfo) CreateError!@This() {
@@ -32,9 +34,19 @@ pub const Instance = struct {
       defer layers_enabled.deinit();
 
       try extensions_enabled.appendSlice(create_info.extensions);
-      try extensions_enabled.append(c.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+      try extensions_enabled.appendSlice(&.{
+         c.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
+      });
 
-      // TODO: Append validation layers if enabled
+      if (create_info.debugging == true) {
+         try extensions_enabled.appendSlice(&.{
+            c.VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+         });
+
+         try layers_enabled.appendSlice(&.{
+            "VK_LAYER_KHRONOS_validation",
+         });
+      }
 
       try _checkExtensionsPresent(allocator, extensions_enabled.items);
       try _checkLayersPresent(allocator, layers_enabled.items);
@@ -49,9 +61,17 @@ pub const Instance = struct {
          .apiVersion          = c.VK_API_VERSION_1_0,
       };
 
+      var vk_info_create_debug_utils_messenger : ? * const c.VkDebugUtilsMessengerCreateInfoEXT = blk: {
+         if (create_info.debugging == true) {
+            break :blk &root.DebugMessenger.VK_INFO_CREATE_DEBUG_UTILS_MESSENGER;
+         } else {
+            break :blk null;
+         }
+      };
+
       const vk_info_create_instance = c.VkInstanceCreateInfo{
          .sType                     = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-         .pNext                     = null,
+         .pNext                     = vk_info_create_debug_utils_messenger,
          .flags                     = c.VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
          .pApplicationInfo          = &vk_info_application,
          .enabledLayerCount         = @intCast(layers_enabled.items.len),
@@ -72,14 +92,30 @@ pub const Instance = struct {
          c.VK_ERROR_INCOMPATIBLE_DRIVER   => return error.IncompatibleDriver,
          else                             => unreachable,
       }
-      errdefer c.vkDestroyInstance();
+      errdefer c.vkDestroyInstance(vk_instance, null);
+
+      const debug_messenger : ? root.DebugMessenger = blk: {
+         if (create_info.debugging == true) {
+            break :blk try root.DebugMessenger.create(vk_instance);
+         } else {
+            break :blk null;
+         }
+      };
+      errdefer if (debug_messenger) |debug_messenger_unwrapped| {
+         debug_messenger_unwrapped.destroy(vk_instance);
+      };
 
       return @This(){
-         .vk_instance   = vk_instance,
+         .vk_instance      = vk_instance,
+         .debug_messenger  = debug_messenger,
       };
    }
 
    pub fn destroy(self : @This()) void {
+      if (self.debug_messenger) |*debug_messenger| {
+         debug_messenger.destroy(self.vk_instance);
+      }
+
       c.vkDestroyInstance(self.vk_instance, null);
       return;
    }
@@ -112,6 +148,7 @@ fn _checkExtensionsPresent(allocator : std.mem.Allocator, enabled_extensions : [
       else                             => unreachable,
    }
 
+   var everything_found = true;
    for (enabled_extensions) |enabled_extension| {
       var found = false;
       for (vk_extensions_available.items) |vk_extension_available| {
@@ -121,8 +158,13 @@ fn _checkExtensionsPresent(allocator : std.mem.Allocator, enabled_extensions : [
          }
       }
       if (found == false) {
-         return error.MissingRequiredExtensions;
+         everything_found = false;
+         std.log.err("missing required vulkan instance extension \"{s}\"", .{enabled_extension});
       }
+   }
+
+   if (everything_found == false) {
+      return error.MissingRequiredExtensions;
    }
 
    return;
@@ -153,6 +195,7 @@ fn _checkLayersPresent(allocator : std.mem.Allocator, enabled_layers : [] const 
       else                             => unreachable,
    }
 
+   var everything_found = true;
    for (enabled_layers) |enabled_layer| {
       var found = false;
       for (vk_layers_available.items) |vk_layer_available| {
@@ -162,8 +205,13 @@ fn _checkLayersPresent(allocator : std.mem.Allocator, enabled_layers : [] const 
          }
       }
       if (found == false) {
-         return error.MissingRequiredLayers;
+         everything_found = false;
+         std.log.err("missing required vulkan instance layer \"{s}\"", .{enabled_layer});
       }
+   }
+
+   if (everything_found == false) {
+      return error.MissingRequiredLayers;
    }
 
    return;
