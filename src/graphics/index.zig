@@ -4,8 +4,9 @@ const present  = @import("present");
 const vulkan   = @import("vulkan/index.zig");
 
 pub const Renderer = struct {
-   _allocator        : std.mem.Allocator,
-   _vulkan_instance  : vulkan.Instance,
+   _allocator              : std.mem.Allocator,
+   _vulkan_instance        : vulkan.Instance,
+   _vulkan_physical_device : vulkan.PhysicalDevice,
 
    pub const CreateInfo = struct {
       program_name   : ? [*:0] const u8,
@@ -14,6 +15,7 @@ pub const Renderer = struct {
 
    pub const CreateError = error {
       VulkanInstanceCreateError,
+      VulkanPhysicalDeviceSelectError,
    };
 
    pub fn create(allocator : std.mem.Allocator, window : * present.Window, create_info : * const CreateInfo) CreateError!@This() {
@@ -31,14 +33,19 @@ pub const Renderer = struct {
          .engine_version   = 0x00000000,
          .debugging        = create_info.debugging,
       }) catch return error.VulkanInstanceCreateError;
-      errdefer vulkan_instance.destroy(allocator);
+      errdefer vulkan_instance.destroy();
+
+      const vulkan_physical_device = vulkan.PhysicalDevice.selectMostSuitable(allocator, &.{
+         .vk_instance   = vulkan_instance.vk_instance,
+         .extensions    = vulkan_device_extensions,
+      }) catch return error.VulkanPhysicalDeviceSelectError;
 
       _ = window;
-      _ = vulkan_device_extensions;
       
       return @This(){
-         ._allocator       = allocator,
-         ._vulkan_instance = vulkan_instance,
+         ._allocator                = allocator,
+         ._vulkan_instance          = vulkan_instance,
+         ._vulkan_physical_device   = vulkan_physical_device,
       };
    }
 
