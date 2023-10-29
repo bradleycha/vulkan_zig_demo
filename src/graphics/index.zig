@@ -17,6 +17,7 @@ pub const Renderer = struct {
    _vulkan_physical_device          : vulkan.PhysicalDevice,
    _vulkan_swapchain_configuration  : vulkan.SwapchainConfiguration,
    _vulkan_device                   : vulkan.Device,
+   _vulkan_swapchain                : vulkan.Swapchain,
 
    pub const CreateInfo = struct {
       program_name   : ? [*:0] const u8,
@@ -29,6 +30,7 @@ pub const Renderer = struct {
       VulkanSurfaceCreateError,
       VulkanPhysicalDeviceSelectError,
       VulkanDeviceCreateError,
+      VulkanSwapchainCreateError,
    };
 
    pub fn create(allocator : std.mem.Allocator, window : * present.Window, create_info : * const CreateInfo) CreateError!@This() {
@@ -48,15 +50,19 @@ pub const Renderer = struct {
       }) catch return error.VulkanInstanceCreateError;
       errdefer vulkan_instance.destroy();
 
+      const vk_instance = vulkan_instance.vk_instance;
+
       const vulkan_surface = vulkan.Surface.create(&.{
-         .vk_instance   = vulkan_instance.vk_instance,
+         .vk_instance   = vk_instance,
          .window        = window,
       }) catch return error.VulkanSurfaceCreateError;
-      errdefer vulkan_surface.destroy(vulkan_instance.vk_instance);
+      errdefer vulkan_surface.destroy(vk_instance);
+
+      const vk_surface = vulkan_surface.vk_surface;
 
       const vulkan_physical_device_selection = vulkan.PhysicalDeviceSelection.selectMostSuitable(allocator, &.{
-         .vk_instance            = vulkan_instance.vk_instance,
-         .vk_surface             = vulkan_surface.vk_surface,
+         .vk_instance            = vk_instance,
+         .vk_surface             = vk_surface,
          .window                 = window,
          .present_mode_desired   = @intFromEnum(create_info.refresh_mode),
          .extensions             = vulkan_device_extensions,
@@ -71,6 +77,16 @@ pub const Renderer = struct {
       }) catch return error.VulkanDeviceCreateError;
       errdefer vulkan_device.destroy();
 
+      const vk_device = vulkan_device.vk_device;
+
+      const vulkan_swapchain = vulkan.Swapchain.create(allocator, &.{
+         .vk_device                 = vk_device,
+         .vk_surface                = vk_surface,
+         .queue_family_indices      = &vulkan_physical_device.queue_family_indices,
+         .swapchain_configuration   = &vulkan_swapchain_configuration,
+      }) catch return error.VulkanSwapchainCreateError;
+      errdefer vulkan_swapchain.destroy(allocator, vk_device);
+
       return @This(){
          ._allocator                      = allocator,
          ._vulkan_instance                = vulkan_instance,
@@ -78,12 +94,16 @@ pub const Renderer = struct {
          ._vulkan_physical_device         = vulkan_physical_device,
          ._vulkan_swapchain_configuration = vulkan_swapchain_configuration,
          ._vulkan_device                  = vulkan_device,
+         ._vulkan_swapchain               = vulkan_swapchain,
       };
    }
 
    pub fn destroy(self : @This()) void {
+      const allocator   = self._allocator;
       const vk_instance = self._vulkan_instance.vk_instance;
+      const vk_device   = self._vulkan_device.vk_device;
 
+      self._vulkan_swapchain.destroy(allocator, vk_device);
       self._vulkan_device.destroy();
       self._vulkan_surface.destroy(vk_instance);
       self._vulkan_instance.destroy();
