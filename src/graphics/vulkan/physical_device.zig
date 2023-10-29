@@ -50,7 +50,7 @@ pub const PhysicalDeviceSelection = struct {
       defer allocator.free(vk_physical_devices);
 
       var chosen_selection : ? @This() = null;
-      var chosen_physical_device_score : u32 = 0;
+      var chosen_physical_device_score : u32 = undefined;
 
       for (vk_physical_devices) |vk_physical_device| {
          const selection = try _parseSelection(allocator, vk_physical_device, select_info) orelse continue;
