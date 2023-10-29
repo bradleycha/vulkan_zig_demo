@@ -3,9 +3,10 @@ const std   = @import("std");
 const c     = @import("cimports");
 
 pub const Swapchain = struct {
-   vk_swapchain      : c.VkSwapchainKHR,
-   vk_images_count   : u32,
-   vk_images_ptr     : [*] c.VkImage,
+   vk_swapchain         : c.VkSwapchainKHR,
+   vk_images_count      : u32,
+   vk_images_ptr        : [*] c.VkImage,
+   vk_image_views_ptr   : [*] c.VkImageView,
 
    pub const CreateInfo = struct {
       vk_device               : c.VkDevice,
@@ -31,22 +32,40 @@ pub const Swapchain = struct {
    }
 
    fn _createRaw(allocator : std.mem.Allocator, create_info : * const CreateInfo, vk_swapchain_old : c.VkSwapchainKHR) CreateError!@This() {
-      const vk_swapchain = try _createSwapchain(create_info, vk_swapchain_old);
-      errdefer c.vkDestroySwapchainKHR(create_info.vk_device, vk_swapchain, null);
+      const vk_device = create_info.vk_device;
 
-      const vk_images = try _getSwapchainImages(allocator, create_info.vk_device, vk_swapchain);
+      const vk_swapchain = try _createSwapchain(create_info, vk_swapchain_old);
+      errdefer c.vkDestroySwapchainKHR(vk_device, vk_swapchain, null);
+
+      const vk_images = try _getSwapchainImages(allocator, vk_device, vk_swapchain);
       errdefer allocator.free(vk_images);
 
+      const vk_image_views = try _createSwapchainImageViews(allocator, vk_device, vk_images, create_info.swapchain_configuration.format.format);
+      errdefer {
+         for (vk_image_views) |vk_image_view| {
+            c.vkDestroyImageView(vk_device, vk_image_view, null);
+         }
+
+         allocator.free(vk_image_views);
+      }
+
       return @This(){
-         .vk_swapchain     = vk_swapchain,
-         .vk_images_count  = @intCast(vk_images.len),
-         .vk_images_ptr    = vk_images.ptr,
+         .vk_swapchain        = vk_swapchain,
+         .vk_images_count     = @intCast(vk_images.len),
+         .vk_images_ptr       = vk_images.ptr,
+         .vk_image_views_ptr  = vk_image_views.ptr,
       };
    }
 
    pub fn destroy(self : @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
-      const vk_images = self.vk_images_ptr[0..self.vk_images_count];
+      const vk_images      = self.vk_images_ptr[0..self.vk_images_count];
+      const vk_image_views = self.vk_image_views_ptr[0..self.vk_images_count];
 
+      for (vk_image_views) |vk_image_view| {
+         c.vkDestroyImageView(vk_device, vk_image_view, null);
+      }
+
+      allocator.free(vk_image_views);
       allocator.free(vk_images);
       c.vkDestroySwapchainKHR(vk_device, self.vk_swapchain, null);
       return;
@@ -174,5 +193,69 @@ fn _getSwapchainImages(allocator : std.mem.Allocator, vk_device : c.VkDevice, vk
    }
 
    return vk_images;
+}
+
+fn _createSwapchainImageViews(allocator : std.mem.Allocator, vk_device : c.VkDevice, vk_images : [] const c.VkImage, vk_format : c.VkFormat) Swapchain.CreateError![] c.VkImageView {
+   var vk_image_views = try allocator.alloc(c.VkImageView, vk_images.len);
+   errdefer allocator.free(vk_image_views);
+
+   for (vk_image_views, vk_images, 0..vk_images.len) |*vk_image_view_dest, vk_image, i| {
+      errdefer for (vk_image_views[0..i]) |vk_image_view_old| {
+         c.vkDestroyImageView(vk_device, vk_image_view_old, null);
+      };
+
+      const vk_image_view = try _createImageView(vk_device, vk_image, vk_format);
+      errdefer c.vkDestroyImageView(vk_device, vk_image_view, null);
+
+      vk_image_view_dest.* = vk_image_view;
+   }
+   errdefer for (vk_image_views) |vk_image_view| {
+      c.vkDestroyImageView(vk_device, vk_image_view, null);
+   };
+
+   return vk_image_views;
+}
+
+fn _createImageView(vk_device : c.VkDevice, vk_image : c.VkImage, vk_format : c.VkFormat) Swapchain.CreateError!c.VkImageView {
+   var vk_result : c.VkResult = undefined;
+
+   const vk_image_view_components = c.VkComponentMapping{
+      .r = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+      .g = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+      .b = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+      .a = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+   };
+
+   const vk_image_view_subresource_range = c.VkImageSubresourceRange{
+      .aspectMask       = c.VK_IMAGE_ASPECT_COLOR_BIT,
+      .baseMipLevel     = 0,
+      .levelCount       = 1,
+      .baseArrayLayer   = 0,
+      .layerCount       = 1,
+   };
+
+   const vk_info_create_image_view = c.VkImageViewCreateInfo{
+      .sType            = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+      .pNext            = null,
+      .flags            = 0x00000000,
+      .image            = vk_image,
+      .viewType         = c.VK_IMAGE_VIEW_TYPE_2D,
+      .format           = vk_format,
+      .components       = vk_image_view_components,
+      .subresourceRange = vk_image_view_subresource_range,
+   };
+
+   var vk_image_view : c.VkImageView = undefined;
+   vk_result = c.vkCreateImageView(vk_device, &vk_info_create_image_view, null, &vk_image_view);
+   switch (vk_result) {
+      c.VK_SUCCESS                                    => {},
+      c.VK_ERROR_OUT_OF_HOST_MEMORY                   => return error.OutOfMemory,
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY                 => return error.OutOfMemory,
+      c.VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR   => return error.Unknown,
+      else                                            => unreachable,
+   }
+   errdefer c.vkDestroyImageView(vk_device, vk_image_view, null);
+
+   return vk_image_view;
 }
 
