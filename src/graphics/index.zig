@@ -3,9 +3,13 @@ const builtin  = @import("builtin");
 const present  = @import("present");
 const vulkan   = @import("vulkan/index.zig");
 
+pub const types = vulkan.types;
+
 pub const RefreshMode = vulkan.RefreshMode;
 
 pub const ShaderSource = vulkan.ShaderSource;
+
+pub const ClearColor = vulkan.ClearColor;
 
 pub const Renderer = struct {
    _allocator                       : std.mem.Allocator,
@@ -15,6 +19,7 @@ pub const Renderer = struct {
    _vulkan_swapchain_configuration  : vulkan.SwapchainConfiguration,
    _vulkan_device                   : vulkan.Device,
    _vulkan_swapchain                : vulkan.Swapchain,
+   _vulkan_graphics_pipeline        : vulkan.GraphicsPipeline,
 
    pub const CreateInfo = struct {
       program_name      : ? [*:0] const u8,
@@ -22,6 +27,7 @@ pub const Renderer = struct {
       refresh_mode      : RefreshMode,
       shader_vertex     : ShaderSource,
       shader_fragment   : ShaderSource,
+      clear_color       : ClearColor,
    };
 
    pub const CreateError = error {
@@ -30,6 +36,7 @@ pub const Renderer = struct {
       VulkanPhysicalDeviceSelectError,
       VulkanDeviceCreateError,
       VulkanSwapchainCreateError,
+      VulkanGraphicsPipelineCreateError,
    };
 
    pub fn create(allocator : std.mem.Allocator, window : * present.Window, create_info : * const CreateInfo) CreateError!@This() {
@@ -86,7 +93,14 @@ pub const Renderer = struct {
       }) catch return error.VulkanSwapchainCreateError;
       errdefer vulkan_swapchain.destroy(allocator, vk_device);
 
-      // TODO: Graphics pipeline
+      const vulkan_graphics_pipeline = vulkan.GraphicsPipeline.create(allocator, &.{
+         .vk_device                 = vk_device,
+         .swapchain_configuration   = &vulkan_swapchain_configuration,
+         .shader_vertex             = create_info.shader_vertex,
+         .shader_fragment           = create_info.shader_fragment,
+         .clear_color               = create_info.clear_color,
+      }) catch return error.VulkanGraphicsPipelineCreateError;
+      errdefer vulkan_graphics_pipeline.destroy(vk_device);
 
       return @This(){
          ._allocator                      = allocator,
@@ -96,6 +110,7 @@ pub const Renderer = struct {
          ._vulkan_swapchain_configuration = vulkan_swapchain_configuration,
          ._vulkan_device                  = vulkan_device,
          ._vulkan_swapchain               = vulkan_swapchain,
+         ._vulkan_graphics_pipeline       = vulkan_graphics_pipeline,
       };
    }
 
@@ -104,6 +119,7 @@ pub const Renderer = struct {
       const vk_instance = self._vulkan_instance.vk_instance;
       const vk_device   = self._vulkan_device.vk_device;
 
+      self._vulkan_graphics_pipeline.destroy(vk_device);
       self._vulkan_swapchain.destroy(allocator, vk_device);
       self._vulkan_device.destroy();
       self._vulkan_surface.destroy(vk_instance);
