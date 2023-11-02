@@ -1,8 +1,24 @@
 const std   = @import("std");
 const bd    = @import("build/index.zig");
 
+const SHADER_SOURCE_PATH = struct {
+   pub const vertex     = "src/shaders/vertex.glsl";
+   pub const fragment   = "src/shaders/fragment.glsl";
+};
+
+const SHADER_IDENTIFIER = struct {
+   pub const vertex     = "vertex";
+   pub const fragment   = "fragment";
+};
+
+const SHADER_MAIN = struct {
+   pub const vertex     = "main";
+   pub const fragment   = "main";
+};
+
 const MODULE_NAME = struct {
    pub const options    = "options";
+   pub const shaders    = "shaders";
    pub const cimports   = "cimports";
    pub const present    = "present";
    pub const graphics   = "graphics";
@@ -33,7 +49,35 @@ pub fn build(b : * std.Build) void {
    const options = b.addOptions();
    options.addOption(bd.present.PresentBackend, "present_backend", opt_present_backend);
 
+   const shader_vertex = bd.shader.ShaderCompileStep.create(b, &.{
+      .input_file = .{.path = SHADER_SOURCE_PATH.vertex},
+      .optimize   = opt_optimize_mode,
+      .stage      = .vertex,
+   });
+
+   const shader_fragment = bd.shader.ShaderCompileStep.create(b, &.{
+      .input_file = .{.path = SHADER_SOURCE_PATH.fragment},
+      .optimize   = opt_optimize_mode,
+      .stage      = .fragment,
+   });
+
+   const shader_bundle = bd.shader.ShaderBundle.create(b);
+
+   shader_bundle.addShader(.{
+      .compile_step  = shader_vertex,
+      .identifier    = SHADER_IDENTIFIER.vertex,
+      .entrypoint    = SHADER_MAIN.vertex,
+   });
+
+   shader_bundle.addShader(.{
+      .compile_step  = shader_fragment,
+      .identifier    = SHADER_IDENTIFIER.fragment,
+      .entrypoint    = SHADER_MAIN.fragment,
+   });
+
    const module_options = options.createModule();
+
+   const module_shaders = shader_bundle.createModule();
 
    const module_cimports = b.addModule(MODULE_NAME.cimports, .{
       .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.cimports},
@@ -83,6 +127,10 @@ pub fn build(b : * std.Build) void {
          .{
             .name    = MODULE_NAME.options,
             .module  = module_options,
+         },
+         .{
+            .name    = MODULE_NAME.shaders,
+            .module  = module_shaders,
          },
          .{
             .name    = MODULE_NAME.graphics,
