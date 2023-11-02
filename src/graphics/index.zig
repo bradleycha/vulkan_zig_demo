@@ -93,12 +93,12 @@ pub const Renderer = struct {
       }) catch return error.VulkanSwapchainCreateError;
       errdefer vulkan_swapchain.destroy(allocator, vk_device);
 
-      const vulkan_graphics_pipeline = vulkan.GraphicsPipeline.create(allocator, &.{
+      const vulkan_graphics_pipeline = vulkan.GraphicsPipeline.create(&.{
          .vk_device                 = vk_device,
          .swapchain_configuration   = &vulkan_swapchain_configuration,
          .shader_vertex             = create_info.shader_vertex,
          .shader_fragment           = create_info.shader_fragment,
-         .clear_color               = create_info.clear_color,
+         .clear_mode                = create_info.clear_color,
       }) catch return error.VulkanGraphicsPipelineCreateError;
       errdefer vulkan_graphics_pipeline.destroy(vk_device);
 
