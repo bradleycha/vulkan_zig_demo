@@ -32,9 +32,11 @@ pub fn main() MainError!void {
    defer window.destroy(allocator);
 
    var renderer = graphics.Renderer.create(allocator, &window, &.{
-      .program_name  = PROGRAM_NAME,
-      .debugging     = builtin.mode == .Debug,
-      .refresh_mode  = .triple_buffered,
+      .program_name     = PROGRAM_NAME,
+      .debugging        = builtin.mode == .Debug,
+      .refresh_mode     = .triple_buffered,
+      .shader_vertex    = resources.shaders.VERTEX,
+      .shader_fragment  = resources.shaders.FRAGMENT,
    }) catch return error.RendererCreateError;
    defer renderer.destroy();
 

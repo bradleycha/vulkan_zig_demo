@@ -3,6 +3,12 @@ const std      = @import("std");
 const present  = @import("present");
 const c        = @import("cimports");
 
+pub const RefreshMode = enum(c.VkPresentModeKHR) {
+   single_buffered = c.VK_PRESENT_MODE_IMMEDIATE_KHR,
+   double_buffered = c.VK_PRESENT_MODE_FIFO_KHR,
+   triple_buffered = c.VK_PRESENT_MODE_MAILBOX_KHR,
+};
+
 pub const SwapchainConfiguration = struct {
    capabilities   : c.VkSurfaceCapabilitiesKHR,
    format         : c.VkSurfaceFormatKHR,

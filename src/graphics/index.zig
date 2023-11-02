@@ -2,13 +2,10 @@ const std      = @import("std");
 const builtin  = @import("builtin");
 const present  = @import("present");
 const vulkan   = @import("vulkan/index.zig");
-const c        = @import("cimports");
 
-pub const RefreshMode = enum(c.VkPresentModeKHR) {
-   single_buffered = c.VK_PRESENT_MODE_IMMEDIATE_KHR,
-   double_buffered = c.VK_PRESENT_MODE_FIFO_KHR,
-   triple_buffered = c.VK_PRESENT_MODE_MAILBOX_KHR,
-};
+pub const RefreshMode = vulkan.RefreshMode;
+
+pub const ShaderSource = vulkan.ShaderSource;
 
 pub const Renderer = struct {
    _allocator                       : std.mem.Allocator,
@@ -20,9 +17,11 @@ pub const Renderer = struct {
    _vulkan_swapchain                : vulkan.Swapchain,
 
    pub const CreateInfo = struct {
-      program_name   : ? [*:0] const u8,
-      debugging      : bool,
-      refresh_mode   : RefreshMode,
+      program_name      : ? [*:0] const u8,
+      debugging         : bool,
+      refresh_mode      : RefreshMode,
+      shader_vertex     : ShaderSource,
+      shader_fragment   : ShaderSource,
    };
 
    pub const CreateError = error {
@@ -86,6 +85,8 @@ pub const Renderer = struct {
          .swapchain_configuration   = &vulkan_swapchain_configuration,
       }) catch return error.VulkanSwapchainCreateError;
       errdefer vulkan_swapchain.destroy(allocator, vk_device);
+
+      // TODO: Graphics pipeline
 
       return @This(){
          ._allocator                      = allocator,

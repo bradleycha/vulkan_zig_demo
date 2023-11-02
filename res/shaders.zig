@@ -1,15 +1,13 @@
 const shaders  = @import("shaders");
 const graphics = @import("graphics");
 
-pub const VERTEX = graphics.ShaderModule{
-   .stage      = .vertex,
+pub const VERTEX = graphics.ShaderSource{
    .bytecode   = &shaders.vertex.bytecode,
-   .entrypoint = &shaders.vertex.entrypoint,
+   .entrypoint = shaders.vertex.entrypoint,
 };
 
-pub const FRAGMENT = graphics.ShaderModule{
-   .stage      = .fragment,
+pub const FRAGMENT = graphics.ShaderSource{
    .bytecode   = &shaders.fragment.bytecode,
-   .entrypoint = &shaders.fragment.entrypoint,
+   .entrypoint = shaders.fragment.entrypoint,
 };
 
