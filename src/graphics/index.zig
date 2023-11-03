@@ -21,6 +21,7 @@ pub const Renderer = struct {
    _vulkan_swapchain                : vulkan.Swapchain,
    _vulkan_graphics_pipeline        : vulkan.GraphicsPipeline,
    _vulkan_framebuffers             : vulkan.Framebuffers,
+   _vulkan_command_pools            : vulkan.CommandPools,
 
    pub const CreateInfo = struct {
       program_name      : ? [*:0] const u8,
@@ -39,6 +40,7 @@ pub const Renderer = struct {
       VulkanSwapchainCreateError,
       VulkanGraphicsPipelineCreateError,
       VulkanFramebuffersCreateError,
+      VulkanCommandPoolsCreateError,
    };
 
    pub fn create(allocator : std.mem.Allocator, window : * present.Window, create_info : * const CreateInfo) CreateError!@This() {
@@ -112,6 +114,12 @@ pub const Renderer = struct {
       }) catch return error.VulkanFramebuffersCreateError;
       errdefer vulkan_framebuffers.destroy(allocator, vk_device, &vulkan_swapchain);
 
+      const vulkan_command_pools = vulkan.CommandPools.create(
+         vk_device,
+         &vulkan_physical_device.queue_family_indices,
+      ) catch return error.VulkanCommandPoolsCreateError;
+      errdefer vulkan_command_pools.destroy();
+
       return @This(){
          ._allocator                      = allocator,
          ._vulkan_instance                = vulkan_instance,
@@ -122,6 +130,7 @@ pub const Renderer = struct {
          ._vulkan_swapchain               = vulkan_swapchain,
          ._vulkan_graphics_pipeline       = vulkan_graphics_pipeline,
          ._vulkan_framebuffers            = vulkan_framebuffers,
+         ._vulkan_command_pools           = vulkan_command_pools,
       };
    }
 
@@ -130,6 +139,7 @@ pub const Renderer = struct {
       const vk_instance = self._vulkan_instance.vk_instance;
       const vk_device   = self._vulkan_device.vk_device;
 
+      self._vulkan_command_pools.destroy(vk_device);
       self._vulkan_framebuffers.destroy(allocator, vk_device, &self._vulkan_swapchain);
       self._vulkan_graphics_pipeline.destroy(vk_device);
       self._vulkan_swapchain.destroy(allocator, vk_device);

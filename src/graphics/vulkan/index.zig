@@ -9,4 +9,5 @@ pub usingnamespace @import("swapchain_configuration.zig");
 pub usingnamespace @import("swapchain.zig");
 pub usingnamespace @import("graphics_pipeline.zig");
 pub usingnamespace @import("framebuffers.zig");
+pub usingnamespace @import("command_pools.zig");
 
