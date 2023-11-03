@@ -20,6 +20,7 @@ pub const Renderer = struct {
    _vulkan_device                   : vulkan.Device,
    _vulkan_swapchain                : vulkan.Swapchain,
    _vulkan_graphics_pipeline        : vulkan.GraphicsPipeline,
+   _vulkan_framebuffers             : vulkan.Framebuffers,
 
    pub const CreateInfo = struct {
       program_name      : ? [*:0] const u8,
@@ -37,6 +38,7 @@ pub const Renderer = struct {
       VulkanDeviceCreateError,
       VulkanSwapchainCreateError,
       VulkanGraphicsPipelineCreateError,
+      VulkanFramebuffersCreateError,
    };
 
    pub fn create(allocator : std.mem.Allocator, window : * present.Window, create_info : * const CreateInfo) CreateError!@This() {
@@ -102,6 +104,14 @@ pub const Renderer = struct {
       }) catch return error.VulkanGraphicsPipelineCreateError;
       errdefer vulkan_graphics_pipeline.destroy(vk_device);
 
+      const vulkan_framebuffers = vulkan.Framebuffers.create(allocator, &.{
+         .vk_device                 = vk_device,
+         .swapchain_configuration   = &vulkan_swapchain_configuration,
+         .swapchain                 = &vulkan_swapchain,
+         .graphics_pipeline         = &vulkan_graphics_pipeline,
+      }) catch return error.VulkanFramebuffersCreateError;
+      errdefer vulkan_framebuffers.destroy(allocator, vk_device, &vulkan_swapchain);
+
       return @This(){
          ._allocator                      = allocator,
          ._vulkan_instance                = vulkan_instance,
@@ -111,6 +121,7 @@ pub const Renderer = struct {
          ._vulkan_device                  = vulkan_device,
          ._vulkan_swapchain               = vulkan_swapchain,
          ._vulkan_graphics_pipeline       = vulkan_graphics_pipeline,
+         ._vulkan_framebuffers            = vulkan_framebuffers,
       };
    }
 
@@ -119,6 +130,7 @@ pub const Renderer = struct {
       const vk_instance = self._vulkan_instance.vk_instance;
       const vk_device   = self._vulkan_device.vk_device;
 
+      self._vulkan_framebuffers.destroy(allocator, vk_device, &self._vulkan_swapchain);
       self._vulkan_graphics_pipeline.destroy(vk_device);
       self._vulkan_swapchain.destroy(allocator, vk_device);
       self._vulkan_device.destroy();
