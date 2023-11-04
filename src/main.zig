@@ -63,14 +63,12 @@ pub fn main() MainError!void {
 
          const fps = 1.0 / time_delta;
 
-         // "In this situation, programmers usually apply..."computer science".
-         // And by..."computer science", I mean picking what seems like a
-         // reasonable buffer length and then doubling it for good measure"
-         //    - Dave Plumber 2021
-         const FORMAT_BUFFER_LENGTH = PROGRAM_NAME.len * 2;
-
-         var format_buffer : [FORMAT_BUFFER_LENGTH:0] u8 = undefined;
-         const title = std.fmt.bufPrintZ(&format_buffer, PROGRAM_NAME ++ " - {d:0.0} fps", .{fps}) catch PROGRAM_NAME;
+         // The allocations within the loop are fine since we only execute this
+         // code and re-allocate when the timer rolls over, which is to say
+         // very infrequently.  The added jank for guessing a reasonable buffer
+         // length isn't worth the microscopic performance gain.
+         const title = try std.fmt.allocPrintZ(allocator, PROGRAM_NAME ++ " - {d:0.0} fps", .{fps});
+         defer allocator.free(title);
 
          window.setTitle(title);
       }
