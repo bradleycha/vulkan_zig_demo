@@ -154,6 +154,18 @@ pub const Compositor = struct {
 pub const Window = struct {
    _container  : IMPLEMENTATION.containers.window,
 
+   pub const CreateInfo = f_shared.Window.CreateInfo;
+
+   pub const DisplayModeTag = f_shared.Window.DisplayModeTag;
+
+   pub const DisplayMode = f_shared.Window.DisplayMode;
+
+   pub const Resolution = f_shared.Window.Resolution;
+
+   pub const CreateError = f_shared.Window.CreateError;
+
+   pub const PollEventsError = f_shared.Window.PollEventsError;
+
    pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!@This() {
       return @This(){._container = try IMPLEMENTATION.pfn_window_create(&compositor._container, allocator, create_info)};
    }
