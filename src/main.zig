@@ -52,7 +52,9 @@ pub fn main() MainError!void {
          std.log.warn("failed to poll window events: {}", .{err});
       };
 
-      // TODO: Main rendering and input loop
+      renderer.drawFrame() catch |err| {
+         std.log.warn("failed to draw frame: {}", .{err});
+      };
    }
 
    return;

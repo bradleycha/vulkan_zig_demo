@@ -13,17 +13,20 @@ pub const ShaderSource = vulkan.ShaderSource;
 pub const ClearColor = vulkan.ClearColor;
 
 pub const Renderer = struct {
-   _allocator                       : std.mem.Allocator,
-   _vulkan_instance                 : vulkan.Instance,
-   _vulkan_surface                  : vulkan.Surface,
-   _vulkan_physical_device          : vulkan.PhysicalDevice,
-   _vulkan_swapchain_configuration  : vulkan.SwapchainConfiguration,
-   _vulkan_device                   : vulkan.Device,
-   _vulkan_swapchain                : vulkan.Swapchain,
-   _vulkan_graphics_pipeline        : vulkan.GraphicsPipeline,
-   _vulkan_framebuffers             : vulkan.Framebuffers,
-   _vulkan_command_pools            : vulkan.CommandPools,
-   _vulkan_command_buffers_draw     : vulkan.CommandBuffersDraw(FRAMES_IN_FLIGHT),
+   _allocator                          : std.mem.Allocator,
+   _vulkan_instance                    : vulkan.Instance,
+   _vulkan_surface                     : vulkan.Surface,
+   _vulkan_physical_device             : vulkan.PhysicalDevice,
+   _vulkan_swapchain_configuration     : vulkan.SwapchainConfiguration,
+   _vulkan_device                      : vulkan.Device,
+   _vulkan_swapchain                   : vulkan.Swapchain,
+   _vulkan_graphics_pipeline           : vulkan.GraphicsPipeline,
+   _vulkan_framebuffers                : vulkan.Framebuffers,
+   _vulkan_command_pools               : vulkan.CommandPools,
+   _vulkan_command_buffers_draw        : vulkan.CommandBuffersDraw(FRAMES_IN_FLIGHT),
+   _vulkan_semaphores_image_available  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
+   _vulkan_semaphores_render_finished  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
+   _vulkan_fences_in_flight            : vulkan.FenceList(FRAMES_IN_FLIGHT),
 
    const FRAMES_IN_FLIGHT = 1;
 
@@ -46,6 +49,9 @@ pub const Renderer = struct {
       VulkanFramebuffersCreateError,
       VulkanCommandPoolsCreateError,
       VulkanCommandBuffersDrawCreateError,
+      VulkanSemaphoresImageAvailableCreateError,
+      VulkanSemaphoresRenderFinishedCreateError,
+      VulkanFencesInFlightCreateError,
    };
 
    pub fn create(allocator : std.mem.Allocator, window : * present.Window, create_info : * const CreateInfo) CreateError!@This() {
@@ -131,18 +137,36 @@ pub const Renderer = struct {
       }) catch return error.VulkanCommandBuffersDrawCreateError;
       errdefer vulkan_command_buffers_draw.destroy(vk_device, vulkan_command_pools.graphics);
 
+      const vulkan_semaphores_image_available = vulkan.SemaphoreList(FRAMES_IN_FLIGHT).create(
+         vk_device,
+      ) catch return error.VulkanSemaphoresImageAvailableCreateError;
+      errdefer vulkan_semaphores_image_available.destroy(vk_device);
+
+      const vulkan_semaphores_render_finished = vulkan.SemaphoreList(FRAMES_IN_FLIGHT).create(
+         vk_device,
+      ) catch return error.VulkanSemaphoresRenderFinishedCreateError;
+      errdefer vulkan_semaphores_image_available.destroy(vk_device);
+
+      const vulkan_fences_in_flight = vulkan.FenceList(FRAMES_IN_FLIGHT).create(
+         vk_device,
+      ) catch return error.VulkanFencesInFlightCreateError;
+      errdefer vulkan_fences_in_flight.destroy(vk_device);
+
       return @This(){
-         ._allocator                      = allocator,
-         ._vulkan_instance                = vulkan_instance,
-         ._vulkan_surface                 = vulkan_surface,
-         ._vulkan_physical_device         = vulkan_physical_device,
-         ._vulkan_swapchain_configuration = vulkan_swapchain_configuration,
-         ._vulkan_device                  = vulkan_device,
-         ._vulkan_swapchain               = vulkan_swapchain,
-         ._vulkan_graphics_pipeline       = vulkan_graphics_pipeline,
-         ._vulkan_framebuffers            = vulkan_framebuffers,
-         ._vulkan_command_pools           = vulkan_command_pools,
-         ._vulkan_command_buffers_draw    = vulkan_command_buffers_draw,
+         ._allocator                         = allocator,
+         ._vulkan_instance                   = vulkan_instance,
+         ._vulkan_surface                    = vulkan_surface,
+         ._vulkan_physical_device            = vulkan_physical_device,
+         ._vulkan_swapchain_configuration    = vulkan_swapchain_configuration,
+         ._vulkan_device                     = vulkan_device,
+         ._vulkan_swapchain                  = vulkan_swapchain,
+         ._vulkan_graphics_pipeline          = vulkan_graphics_pipeline,
+         ._vulkan_framebuffers               = vulkan_framebuffers,
+         ._vulkan_command_pools              = vulkan_command_pools,
+         ._vulkan_command_buffers_draw       = vulkan_command_buffers_draw,
+         ._vulkan_semaphores_image_available = vulkan_semaphores_image_available,
+         ._vulkan_semaphores_render_finished = vulkan_semaphores_render_finished,
+         ._vulkan_fences_in_flight           = vulkan_fences_in_flight,
       };
    }
 
@@ -151,6 +175,9 @@ pub const Renderer = struct {
       const vk_instance = self._vulkan_instance.vk_instance;
       const vk_device   = self._vulkan_device.vk_device;
 
+      self._vulkan_fences_in_flight.destroy(vk_device);
+      self._vulkan_semaphores_render_finished.destroy(vk_device);
+      self._vulkan_semaphores_image_available.destroy(vk_device);
       self._vulkan_command_buffers_draw.destroy(vk_device, self._vulkan_command_pools.graphics);
       self._vulkan_command_pools.destroy(vk_device);
       self._vulkan_framebuffers.destroy(allocator, vk_device, &self._vulkan_swapchain);
@@ -166,7 +193,17 @@ pub const Renderer = struct {
       OutOfMemory,
       Unknown,
    };
+
+   pub fn drawFrame(self : * @This()) DrawError!void {
+      while (try _drawFrameWithSwapchainUpdates(self) == false) {}
+      return;
+   }
 };
+
+fn _drawFrameWithSwapchainUpdates(self : * Renderer) Renderer.DrawError!bool {
+   _ = self;
+   return true;
+}
 
 const RecordInfo = struct {
    vk_command_buffer       : c.VkCommandBuffer,
