@@ -100,7 +100,7 @@ pub fn FenceList(comptime count : u32) type {
          const vk_info_create_fence = c.VkFenceCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
             .pNext = null,
-            .flags = 0x00000000,
+            .flags = c.VK_FENCE_CREATE_SIGNALED_BIT,
          };
 
          var vk_fence : c.VkFence = undefined;

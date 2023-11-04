@@ -4,6 +4,8 @@ const present  = @import("present");
 const vulkan   = @import("vulkan/index.zig");
 const c        = @import("cimports");
 
+const FRAMES_IN_FLIGHT = 1;
+
 pub const types = vulkan.types;
 
 pub const RefreshMode = vulkan.RefreshMode;
@@ -27,8 +29,8 @@ pub const Renderer = struct {
    _vulkan_semaphores_image_available  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
    _vulkan_semaphores_render_finished  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
    _vulkan_fences_in_flight            : vulkan.FenceList(FRAMES_IN_FLIGHT),
-
-   const FRAMES_IN_FLIGHT = 1;
+   _clear_color                        : ClearColor,
+   _frame_index                        : u32,
 
    pub const CreateInfo = struct {
       program_name      : ? [*:0] const u8,
@@ -167,6 +169,8 @@ pub const Renderer = struct {
          ._vulkan_semaphores_image_available = vulkan_semaphores_image_available,
          ._vulkan_semaphores_render_finished = vulkan_semaphores_render_finished,
          ._vulkan_fences_in_flight           = vulkan_fences_in_flight,
+         ._clear_color                       = create_info.clear_color,
+         ._frame_index                       = 0,
       };
    }
 
@@ -174,6 +178,8 @@ pub const Renderer = struct {
       const allocator   = self._allocator;
       const vk_instance = self._vulkan_instance.vk_instance;
       const vk_device   = self._vulkan_device.vk_device;
+
+      _ = c.vkDeviceWaitIdle(vk_device);
 
       self._vulkan_fences_in_flight.destroy(vk_device);
       self._vulkan_semaphores_render_finished.destroy(vk_device);
@@ -192,6 +198,8 @@ pub const Renderer = struct {
    pub const DrawError = error {
       OutOfMemory,
       Unknown,
+      DeviceLost,
+      SurfaceLost,
    };
 
    pub fn drawFrame(self : * @This()) DrawError!void {
@@ -201,7 +209,117 @@ pub const Renderer = struct {
 };
 
 fn _drawFrameWithSwapchainUpdates(self : * Renderer) Renderer.DrawError!bool {
-   _ = self;
+   var vk_result : c.VkResult = undefined;
+
+   const frame_index = self._frame_index;
+
+   const vk_device                     = self._vulkan_device.vk_device;
+   const vk_swapchain                  = self._vulkan_swapchain.vk_swapchain;
+   const vk_command_buffer             = self._vulkan_command_buffers_draw.vk_command_buffers[frame_index];
+   const vk_render_pass                = self._vulkan_graphics_pipeline.vk_render_pass;
+   const vk_graphics_pipeline          = self._vulkan_graphics_pipeline.vk_pipeline;
+   const vk_semaphore_image_available  = self._vulkan_semaphores_image_available.vk_semaphores[frame_index];
+   const vk_semaphore_render_finished  = self._vulkan_semaphores_render_finished.vk_semaphores[frame_index];
+   const vk_fence_in_flight            = self._vulkan_fences_in_flight.vk_fences[frame_index];
+
+   vk_result = c.vkWaitForFences(vk_device, 1, &vk_fence_in_flight, c.VK_TRUE, std.math.maxInt(u64));
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_TIMEOUT                     => {},
+      c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+      c.VK_ERROR_DEVICE_LOST           => return error.DeviceLost,
+      else                             => unreachable,
+   }
+
+   vk_result = c.vkResetFences(vk_device, 1, &vk_fence_in_flight);
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+      else                             => unreachable,
+   }
+
+   var vk_swapchain_image_index : u32 = undefined;
+   vk_result = c.vkAcquireNextImageKHR(vk_device, vk_swapchain, std.math.maxInt(u64), vk_semaphore_image_available, @ptrCast(@alignCast(c.VK_NULL_HANDLE)), &vk_swapchain_image_index);
+   switch (vk_result) {
+      c.VK_SUCCESS                                    => {},
+      c.VK_TIMEOUT                                    => {},
+      c.VK_NOT_READY                                  => {},
+      c.VK_SUBOPTIMAL_KHR                             => {}, // TODO: Recreate swapchain
+      c.VK_ERROR_OUT_OF_HOST_MEMORY                   => return error.OutOfMemory,
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY                 => return error.OutOfMemory,
+      c.VK_ERROR_DEVICE_LOST                          => return error.DeviceLost,
+      c.VK_ERROR_OUT_OF_DATE_KHR                      => return error.Unknown, // TODO: Recreate swapchain
+      c.VK_ERROR_SURFACE_LOST_KHR                     => return error.SurfaceLost,
+      c.VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT  => return error.Unknown,
+      else                                            => unreachable,
+   }
+
+   const vk_framebuffer = self._vulkan_framebuffers.vk_framebuffers_ptr[vk_swapchain_image_index];
+
+   vk_result = c.vkResetCommandBuffer(vk_command_buffer, 0x00000000);
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+      else                             => unreachable,
+   }
+
+   try _recordRenderPass(&.{
+      .vk_command_buffer         = vk_command_buffer,
+      .vk_framebuffer            = vk_framebuffer,
+      .vk_render_pass            = vk_render_pass,
+      .vk_graphics_pipeline      = vk_graphics_pipeline,
+      .swapchain_configuration   = &self._vulkan_swapchain_configuration,
+      .clear_color               = &self._clear_color,
+   });
+
+   const vk_info_submit_render_pass = c.VkSubmitInfo{
+      .sType                  = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .pNext                  = null,
+      .waitSemaphoreCount     = 1,
+      .pWaitSemaphores        = &vk_semaphore_image_available,
+      .pWaitDstStageMask      = &([1] c.VkPipelineStageFlags {c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT}),
+      .commandBufferCount     = 1,
+      .pCommandBuffers        = &vk_command_buffer,
+      .signalSemaphoreCount   = 1,
+      .pSignalSemaphores      = &vk_semaphore_render_finished,
+   };
+
+   vk_result = c.vkQueueSubmit(self._vulkan_device.queues.graphics, 1, &vk_info_submit_render_pass, vk_fence_in_flight);
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+      c.VK_ERROR_DEVICE_LOST           => return error.DeviceLost,
+      else                             => unreachable,
+   }
+
+   const vk_info_present = c.VkPresentInfoKHR{
+      .sType               = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+      .pNext               = null,
+      .waitSemaphoreCount  = 1,
+      .pWaitSemaphores     = &vk_semaphore_render_finished,
+      .swapchainCount      = 1,
+      .pSwapchains         = &vk_swapchain,
+      .pImageIndices       = &vk_swapchain_image_index,
+      .pResults            = null,
+   };
+
+   vk_result = c.vkQueuePresentKHR(self._vulkan_device.queues.present, &vk_info_present);
+   switch (vk_result) {
+      c.VK_SUCCESS                                    => {},
+      c.VK_SUBOPTIMAL_KHR                             => {}, // TODO: Recreate swapchain
+      c.VK_ERROR_OUT_OF_HOST_MEMORY                   => return error.OutOfMemory,
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY                 => return error.OutOfMemory,
+      c.VK_ERROR_DEVICE_LOST                          => return error.DeviceLost,
+      c.VK_ERROR_OUT_OF_DATE_KHR                      => return error.Unknown, // TODO: Recreate swapchain
+      c.VK_ERROR_SURFACE_LOST_KHR                     => return error.SurfaceLost,
+      c.VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT  => return error.Unknown,
+      else                                            => unreachable,
+   }
+
+   self._frame_index = (frame_index + 1) % FRAMES_IN_FLIGHT;
+
    return true;
 }
 
@@ -211,7 +329,7 @@ const RecordInfo = struct {
    vk_render_pass          : c.VkRenderPass,
    vk_graphics_pipeline    : c.VkPipeline,
    swapchain_configuration : * const vulkan.SwapchainConfiguration,
-   clear_color             : ClearColor,
+   clear_color             : * const ClearColor,
 };
 
 fn _recordRenderPass(record_info : * const RecordInfo) Renderer.DrawError!void {
@@ -245,7 +363,7 @@ fn _recordRenderPass(record_info : * const RecordInfo) Renderer.DrawError!void {
       vector         : @Vector(4, f32),
    } = undefined;
 
-   switch (clear_color) {
+   switch (clear_color.*) {
       .none => {
          clear_color_count = 0;
       },

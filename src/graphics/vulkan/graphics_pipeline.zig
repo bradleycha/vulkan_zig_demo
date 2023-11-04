@@ -312,6 +312,16 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
       .pPreserveAttachments      = undefined,
    };
 
+   const vk_info_create_subpass_dependency = c.VkSubpassDependency{
+      .srcSubpass       = c.VK_SUBPASS_EXTERNAL,
+      .dstSubpass       = 0,
+      .srcStageMask     = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+      .dstStageMask     = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+      .srcAccessMask    = 0x00000000,
+      .dstAccessMask    = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      .dependencyFlags  = 0x00000000,
+   };
+
    const vk_info_create_render_pass = c.VkRenderPassCreateInfo{
       .sType            = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
       .pNext            = null,
@@ -320,8 +330,8 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
       .pAttachments     = &vk_attachment_descriptor,
       .subpassCount     = 1,
       .pSubpasses       = &vk_subpass_description,
-      .dependencyCount  = 0,
-      .pDependencies    = undefined,
+      .dependencyCount  = 1,
+      .pDependencies    = &vk_info_create_subpass_dependency,
    };
 
    var vk_render_pass : c.VkRenderPass = undefined;

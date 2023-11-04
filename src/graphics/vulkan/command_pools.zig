@@ -24,6 +24,7 @@ pub const CommandPools = struct {
    }
 
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      c.vkDestroyCommandPool(vk_device, self.transfer, null);
       c.vkDestroyCommandPool(vk_device, self.graphics, null);
       return;
    }
