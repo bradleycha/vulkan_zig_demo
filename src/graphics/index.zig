@@ -22,6 +22,9 @@ pub const Renderer = struct {
    _vulkan_graphics_pipeline        : vulkan.GraphicsPipeline,
    _vulkan_framebuffers             : vulkan.Framebuffers,
    _vulkan_command_pools            : vulkan.CommandPools,
+   _vulkan_command_buffers_draw     : vulkan.CommandBuffersDraw(FRAMES_IN_FLIGHT),
+
+   const FRAMES_IN_FLIGHT = 1;
 
    pub const CreateInfo = struct {
       program_name      : ? [*:0] const u8,
@@ -41,6 +44,7 @@ pub const Renderer = struct {
       VulkanGraphicsPipelineCreateError,
       VulkanFramebuffersCreateError,
       VulkanCommandPoolsCreateError,
+      VulkanCommandBuffersDrawCreateError,
    };
 
    pub fn create(allocator : std.mem.Allocator, window : * present.Window, create_info : * const CreateInfo) CreateError!@This() {
@@ -118,7 +122,13 @@ pub const Renderer = struct {
          vk_device,
          &vulkan_physical_device.queue_family_indices,
       ) catch return error.VulkanCommandPoolsCreateError;
-      errdefer vulkan_command_pools.destroy();
+      errdefer vulkan_command_pools.destroy(vk_device);
+
+      const vulkan_command_buffers_draw = vulkan.CommandBuffersDraw(FRAMES_IN_FLIGHT).create(&.{
+         .vk_device        = vk_device,
+         .vk_command_pool  = vulkan_command_pools.graphics,
+      }) catch return error.VulkanCommandBuffersDrawCreateError;
+      errdefer vulkan_command_buffers_draw.destroy(vk_device, vulkan_command_pools.graphics);
 
       return @This(){
          ._allocator                      = allocator,
@@ -131,6 +141,7 @@ pub const Renderer = struct {
          ._vulkan_graphics_pipeline       = vulkan_graphics_pipeline,
          ._vulkan_framebuffers            = vulkan_framebuffers,
          ._vulkan_command_pools           = vulkan_command_pools,
+         ._vulkan_command_buffers_draw    = vulkan_command_buffers_draw,
       };
    }
 
@@ -139,6 +150,7 @@ pub const Renderer = struct {
       const vk_instance = self._vulkan_instance.vk_instance;
       const vk_device   = self._vulkan_device.vk_device;
 
+      self._vulkan_command_buffers_draw.destroy(vk_device, self._vulkan_command_pools.graphics);
       self._vulkan_command_pools.destroy(vk_device);
       self._vulkan_framebuffers.destroy(allocator, vk_device, &self._vulkan_swapchain);
       self._vulkan_graphics_pipeline.destroy(vk_device);
