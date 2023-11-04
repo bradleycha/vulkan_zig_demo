@@ -2,6 +2,7 @@ const std      = @import("std");
 const builtin  = @import("builtin");
 const present  = @import("present");
 const vulkan   = @import("vulkan/index.zig");
+const c        = @import("cimports");
 
 pub const types = vulkan.types;
 
@@ -160,5 +161,107 @@ pub const Renderer = struct {
       self._vulkan_instance.destroy();
       return;
    }
+
+   pub const DrawError = error {
+      OutOfMemory,
+      Unknown,
+   };
 };
+
+const RecordInfo = struct {
+   vk_command_buffer       : c.VkCommandBuffer,
+   vk_framebuffer          : c.VkFramebuffer,
+   vk_render_pass          : c.VkRenderPass,
+   vk_graphics_pipeline    : c.VkPipeline,
+   swapchain_configuration : * const vulkan.SwapchainConfiguration,
+   clear_color             : ClearColor,
+};
+
+fn _recordRenderPass(record_info : * const RecordInfo) Renderer.DrawError!void {
+   var vk_result : c.VkResult = undefined;
+
+   const vk_command_buffer       = record_info.vk_command_buffer;
+   const vk_framebuffer          = record_info.vk_framebuffer;
+   const vk_render_pass          = record_info.vk_render_pass;
+   const vk_graphics_pipeline    = record_info.vk_graphics_pipeline;
+   const swapchain_configuration = record_info.swapchain_configuration;
+   const clear_color             = record_info.clear_color;
+
+   const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
+      .sType            = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .pNext            = null,
+      .flags            = 0x00000000,
+      .pInheritanceInfo = null,
+   };
+
+   vk_result = c.vkBeginCommandBuffer(vk_command_buffer, &vk_info_command_buffer_begin);
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+      else                             => unreachable,
+   }
+
+   var clear_color_count : u32 = undefined;
+   var clear_color_data  : extern union {
+      vk_clear_value : c.VkClearValue,
+      vector         : @Vector(4, f32),
+   } = undefined;
+
+   switch (clear_color) {
+      .none => {
+         clear_color_count = 0;
+      },
+      .color => |color| {
+         clear_color_count = 1;
+         clear_color_data.vector = color.vector;
+      },
+   }
+
+   const vk_info_render_pass_begin = c.VkRenderPassBeginInfo{
+      .sType            = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+      .pNext            = null,
+      .renderPass       = vk_render_pass,
+      .framebuffer      = vk_framebuffer,
+      .renderArea       = .{.offset = .{.x = 0, .y = 0}, .extent = swapchain_configuration.extent},
+      .clearValueCount  = clear_color_count,
+      .pClearValues     = &clear_color_data.vk_clear_value,
+   };
+
+   c.vkCmdBeginRenderPass(vk_command_buffer, &vk_info_render_pass_begin, c.VK_SUBPASS_CONTENTS_INLINE);
+
+   c.vkCmdBindPipeline(vk_command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, vk_graphics_pipeline);
+
+   const vk_viewport = c.VkViewport{
+      .x          = 0,
+      .y          = 0,
+      .width      = @floatFromInt(swapchain_configuration.extent.width),
+      .height     = @floatFromInt(swapchain_configuration.extent.height),
+      .minDepth   = 0.0,
+      .maxDepth   = 1.0,
+   };
+
+   c.vkCmdSetViewport(vk_command_buffer, 0, 1, &vk_viewport);
+
+   const vk_scissor = c.VkRect2D{
+      .offset  = .{.x = 0, .y = 0},
+      .extent  = swapchain_configuration.extent,
+   };
+
+   c.vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
+
+   c.vkCmdDraw(vk_command_buffer, 3, 1, 0, 0);
+
+   c.vkCmdEndRenderPass(vk_command_buffer);
+
+   vk_result = c.vkEndCommandBuffer(vk_command_buffer);
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+      else                             => return error.Unknown,
+   }
+
+   return;
+}
 
