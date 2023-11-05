@@ -225,10 +225,6 @@ pub const MemoryHeap = struct {
       alignment   : u32,
    };
 
-   pub const ReallocateInfo = struct {
-      bytes : u32,
-   };
-
    pub const AllocateError = error {
       OutOfMemory,
    };
@@ -262,15 +258,6 @@ pub const MemoryHeap = struct {
 
       // TODO: Actual block searching
       _ = alignment;
-      unreachable;
-   }
-
-   pub fn reallocate(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation, reallocate_info : * const ReallocateInfo) AllocateError!Allocation {
-      // TODO: Implement
-      _ = self;
-      _ = allocator;
-      _ = allocation;
-      _ = reallocate_info;
       unreachable;
    }
 
