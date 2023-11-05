@@ -86,14 +86,41 @@ pub const GraphicsPipeline = struct {
          c.VK_DYNAMIC_STATE_SCISSOR,
       };
 
+      const vk_vertex_binding_description = c.VkVertexInputBindingDescription{
+         .binding    = 0,
+         .stride     = @sizeOf(root.types.Vertex),
+         .inputRate  = c.VK_VERTEX_INPUT_RATE_VERTEX,
+      };
+
+      const vk_vertex_attribute_descriptions = [root.types.Vertex.INFO.Count] c.VkVertexInputAttributeDescription {
+         .{
+            .location   = root.types.Vertex.INFO.Index.Color,
+            .binding    = 0,
+            .format     = c.VK_FORMAT_R32G32B32A32_SFLOAT,
+            .offset     = @offsetOf(root.types.Vertex, "color"),
+         },
+         .{
+            .location   = root.types.Vertex.INFO.Index.Sample,
+            .binding    = 0,
+            .format     = c.VK_FORMAT_R32G32_SFLOAT,
+            .offset     = @offsetOf(root.types.Vertex, "sample"),
+         },
+         .{
+            .location   = root.types.Vertex.INFO.Index.Position,
+            .binding    = 0,
+            .format     = c.VK_FORMAT_R32G32B32_SFLOAT,
+            .offset     = @offsetOf(root.types.Vertex, "position"),
+         },
+      };
+
       const vk_info_create_vertex_input_state = c.VkPipelineVertexInputStateCreateInfo{
          .sType                           = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
          .pNext                           = null,
          .flags                           = 0x00000000,
-         .vertexBindingDescriptionCount   = 0,
-         .pVertexBindingDescriptions      = undefined,
-         .vertexAttributeDescriptionCount = 0,
-         .pVertexAttributeDescriptions    = undefined,
+         .vertexBindingDescriptionCount   = 1,
+         .pVertexBindingDescriptions      = &vk_vertex_binding_description,
+         .vertexAttributeDescriptionCount = @intCast(vk_vertex_attribute_descriptions.len),
+         .pVertexAttributeDescriptions    = &vk_vertex_attribute_descriptions,
       };
 
       const vk_info_create_dynamic_state = c.VkPipelineDynamicStateCreateInfo{
