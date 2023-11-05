@@ -1,11 +1,12 @@
-const root  = @import("index.zig");
-const std   = @import("std");
-const c     = @import("cimports");
+const root     = @import("index.zig");
+const std      = @import("std");
+const builtin  = @import("builtin");
+const c        = @import("cimports");
 
 pub const MemoryHeap = struct {
    vk_buffer               : c.VkBuffer,
    vk_device_memory        : c.VkDeviceMemory,
-   allocation_nodes        : std.ArrayListUnmanaged(AllocationNode),
+   allocation_nodes        : std.ArrayListUnmanaged(? AllocationNode),
    allocation_nodes_head   : u32,
    heap_size               : u32,
    
@@ -233,13 +234,35 @@ pub const MemoryHeap = struct {
    };
 
    pub fn allocate(self : * @This(), allocator : std.mem.Allocator, allocate_info : * const AllocateInfo) AllocateError!Allocation {
-      // TODO: Implement
-      _ = self;
-      _ = allocator;
-      return Allocation{
-         .offset  = 0,
-         .length  = allocate_info.bytes,
-      };
+      const bytes       = allocate_info.bytes;
+      const alignment   = allocate_info.alignment;
+
+      if (bytes > self.heap_size) {
+         return error.OutOfMemory;
+      }
+
+      const allocation_nodes_head = self.allocation_nodes_head;
+
+      // Is this the first allocation?
+      if (allocation_nodes_head == AllocationNode.NULL_INDEX) {
+         const allocation = Allocation{
+            .offset  = 0,
+            .length  = bytes,
+         };
+
+         try self.allocation_nodes.append(allocator, .{
+            .next       = AllocationNode.NULL_INDEX,
+            .allocation = allocation,
+         });
+
+         self.allocation_nodes_head = 0;
+
+         return allocation;
+      }
+
+      // TODO: Actual block searching
+      _ = alignment;
+      unreachable;
    }
 
    pub fn reallocate(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation, reallocate_info : * const ReallocateInfo) AllocateError!Allocation {
@@ -247,17 +270,48 @@ pub const MemoryHeap = struct {
       _ = self;
       _ = allocator;
       _ = allocation;
-      return Allocation{
-         .offset  = 0,
-         .length  = reallocate_info.bytes,
-      };
+      _ = reallocate_info;
+      unreachable;
    }
 
    pub fn free(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation) void {
-      // TODO: Implement
-      _ = self;
-      _ = allocator;
-      _ = allocation;
+      var allocation_node_index_prev : u32 = undefined;
+      var allocation_node_index = self.allocation_nodes_head;
+      while (allocation_node_index != AllocationNode.NULL_INDEX) {
+         const allocation_node = self.allocation_nodes.items[allocation_node_index] orelse unreachable;
+         
+         if (allocation_node.allocation.offset == allocation.offset) {
+            break;
+         }
+
+         allocation_node_index_prev = allocation_node_index;
+         allocation_node_index      = allocation_node.next;
+      }
+
+      // We assume an invalid block isn't used because remember...
+      // "If you just program well, you don't need safety checks" - Kaze Emanuar 2021
+      if (builtin.mode == .Debug and allocation_node_index == AllocationNode.NULL_INDEX) {
+         @panic("attempted to free a non-existant allocation");
+      }
+
+      // Do we stitch together the previous with the next or are we freeing the head?
+      if (allocation_node_index != self.allocation_nodes_head) {
+         (self.allocation_nodes.items[allocation_node_index_prev] orelse unreachable).next = (self.allocation_nodes.items[allocation_node_index] orelse unreachable).next;
+      } else {
+         @setCold(true);
+         self.allocation_nodes_head = (self.allocation_nodes.items[allocation_node_index] orelse unreachable).next;
+      }
+
+      // Remove from storage
+      self.allocation_nodes.items[allocation_node_index] = null;
+
+      // Trim off as many nulls off the end of the array as possible
+      var trimmed_length = self.allocation_nodes.items.len;
+      while (trimmed_length != 0 and self.allocation_nodes.items[trimmed_length - 1] == null) {
+         trimmed_length -= 1;
+      }
+      self.allocation_nodes.shrinkAndFree(allocator, trimmed_length);
+
       return;
    }
 };
