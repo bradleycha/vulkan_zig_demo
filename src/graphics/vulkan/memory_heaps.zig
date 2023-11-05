@@ -86,6 +86,15 @@ pub const MemoryHeap = struct {
       }
       errdefer c.vkFreeMemory(vk_device, vk_device_memory, null);
 
+      vk_result = c.vkBindBufferMemory(vk_device, vk_buffer, vk_device_memory, 0);
+      switch (vk_result) {
+         c.VK_SUCCESS                                    => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY                   => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY                 => return error.OutOfMemory,
+         c.VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR   => return error.Unknown,
+         else                                            => unreachable,
+      }
+
       _ = allocator;
 
       return @This(){
@@ -210,25 +219,32 @@ pub const MemoryHeap = struct {
    };
 
    pub fn allocate(self : * @This(), allocator : std.mem.Allocator, allocate_info : * const AllocateInfo) AllocateError!Allocation {
+      // TODO: Implement
       _ = self;
       _ = allocator;
-      _ = allocate_info;
-      unreachable;
+      return Allocation{
+         .offset  = 0,
+         .length  = allocate_info.bytes,
+      };
    }
 
    pub fn reallocate(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation, reallocate_info : * const ReallocateInfo) AllocateError!Allocation {
+      // TODO: Implement
       _ = self;
       _ = allocator;
       _ = allocation;
-      _ = reallocate_info;
-      unreachable;
+      return Allocation{
+         .offset  = 0,
+         .length  = reallocate_info.bytes,
+      };
    }
 
    pub fn free(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation) void {
+      // TODO: Implement
       _ = self;
       _ = allocator;
       _ = allocation;
-      unreachable;
+      return;
    }
 };
 

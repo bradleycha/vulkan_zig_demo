@@ -248,6 +248,7 @@ pub const Renderer = struct {
 
    pub const MeshHandle = struct {
       allocation  : vulkan.MemoryHeap.Allocation,
+      indices     : u32,
    };
 
    pub const MeshLoadError = error {
@@ -304,6 +305,7 @@ pub const Renderer = struct {
 
       return MeshHandle{
          .allocation = allocation_draw,
+         .indices    = @intCast(mesh.indices.len),
       };
    }
 
@@ -319,9 +321,6 @@ pub const Renderer = struct {
 };
 
 fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Renderer.MeshHandle) Renderer.DrawError!bool {
-   // TODO: Update command buffer recording
-   _ = mesh_handles;
-
    var vk_result : c.VkResult = undefined;
 
    const frame_index = self._frame_index;
@@ -391,14 +390,17 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
       else                             => unreachable,
    }
 
-   try _recordRenderPass(&.{
-      .vk_command_buffer         = vk_command_buffer,
-      .vk_framebuffer            = vk_framebuffer,
-      .vk_render_pass            = vk_render_pass,
-      .vk_graphics_pipeline      = vk_graphics_pipeline,
-      .swapchain_configuration   = &self._vulkan_swapchain_configuration,
-      .clear_color               = &self._clear_color,
-   });
+   for (mesh_handles) |mesh_handle| {
+      try _recordRenderPass(mesh_handle, &.{
+         .vk_command_buffer         = vk_command_buffer,
+         .vk_framebuffer            = vk_framebuffer,
+         .vk_render_pass            = vk_render_pass,
+         .vk_graphics_pipeline      = vk_graphics_pipeline,
+         .vk_buffer_draw            = self._vulkan_memory_heap_draw.memory_heap.vk_buffer,
+         .swapchain_configuration   = &self._vulkan_swapchain_configuration,
+         .clear_color               = &self._clear_color,
+      });
+   }
 
    const vk_info_submit_render_pass = c.VkSubmitInfo{
       .sType                  = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -521,17 +523,19 @@ const RecordInfo = struct {
    vk_framebuffer          : c.VkFramebuffer,
    vk_render_pass          : c.VkRenderPass,
    vk_graphics_pipeline    : c.VkPipeline,
+   vk_buffer_draw          : c.VkBuffer,
    swapchain_configuration : * const vulkan.SwapchainConfiguration,
    clear_color             : * const ClearColor,
 };
 
-fn _recordRenderPass(record_info : * const RecordInfo) Renderer.DrawError!void {
+fn _recordRenderPass(mesh_handle : Renderer.MeshHandle, record_info : * const RecordInfo) Renderer.DrawError!void {
    var vk_result : c.VkResult = undefined;
 
    const vk_command_buffer       = record_info.vk_command_buffer;
    const vk_framebuffer          = record_info.vk_framebuffer;
    const vk_render_pass          = record_info.vk_render_pass;
    const vk_graphics_pipeline    = record_info.vk_graphics_pipeline;
+   const vk_buffer_draw          = record_info.vk_buffer_draw;
    const swapchain_configuration = record_info.swapchain_configuration;
    const clear_color             = record_info.clear_color;
 
@@ -598,7 +602,14 @@ fn _recordRenderPass(record_info : * const RecordInfo) Renderer.DrawError!void {
 
    c.vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
 
-   c.vkCmdDraw(vk_command_buffer, 3, 1, 0, 0);
+   const vk_buffer_draw_offset_vertex  = @as(u64, mesh_handle.allocation.offset);
+   const vk_buffer_draw_offset_index   = @as(u64, mesh_handle.allocation.offset + mesh_handle.allocation.length - mesh_handle.indices * @sizeOf(types.Mesh.IndexElement));
+
+   c.vkCmdBindVertexBuffers(vk_command_buffer, 0, 1, &vk_buffer_draw, &vk_buffer_draw_offset_vertex);
+
+   c.vkCmdBindIndexBuffer(vk_command_buffer, vk_buffer_draw, vk_buffer_draw_offset_index, c.VK_INDEX_TYPE_UINT16);
+
+   c.vkCmdDrawIndexed(vk_command_buffer, mesh_handle.indices, 1, 0, 0, 0);
 
    c.vkCmdEndRenderPass(vk_command_buffer);
 
