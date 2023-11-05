@@ -56,8 +56,11 @@ pub fn main() MainError!void {
 
    std.log.info("loading resources", .{});
 
-   const mesh_handle = renderer.loadMesh(&resources.meshes.MESH_TEST_OCTAGON) catch return error.ResourceLoadError;
-   defer renderer.unloadMesh(mesh_handle);
+   const mesh_handle_test_triangle = renderer.loadMesh(&resources.meshes.MESH_TEST_TRIANGLE) catch return error.ResourceLoadError;
+   defer renderer.unloadMesh(mesh_handle_test_triangle);
+
+   const mesh_handle_test_octagon = renderer.loadMesh(&resources.meshes.MESH_TEST_OCTAGON) catch return error.ResourceLoadError;
+   defer renderer.unloadMesh(mesh_handle_test_octagon);
 
    std.log.info("initialization complete, entering main loop", .{});
    while (window.shouldClose() == false) {
@@ -83,7 +86,7 @@ pub fn main() MainError!void {
          std.log.warn("failed to poll window events: {}", .{err});
       };
 
-      renderer.drawFrame(&.{mesh_handle}) catch |err| {
+      renderer.drawFrame(&.{mesh_handle_test_triangle, mesh_handle_test_octagon}) catch |err| {
          std.log.warn("failed to draw frame: {}", .{err});
       };
    }
