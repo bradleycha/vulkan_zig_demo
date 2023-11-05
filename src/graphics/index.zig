@@ -6,6 +6,9 @@ const c        = @import("cimports");
 
 const FRAMES_IN_FLIGHT = 2;
 
+const MEMORY_HEAP_SIZE_DRAW      = 8 * 1024 * 1024;
+const MEMORY_HEAP_SIZE_TRANSFER  = 8 * 1024 * 1024;
+
 pub const types = vulkan.types;
 
 pub const RefreshMode = vulkan.RefreshMode;
@@ -29,6 +32,8 @@ pub const Renderer = struct {
    _vulkan_semaphores_image_available  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
    _vulkan_semaphores_render_finished  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
    _vulkan_fences_in_flight            : vulkan.FenceList(FRAMES_IN_FLIGHT),
+   _vulkan_memory_heap_draw            : vulkan.MemoryHeapDraw,
+   _vulkan_memory_heap_transfer        : vulkan.MemoryHeapTransfer,
    _window                             : * const present.Window,
    _refresh_mode                       : RefreshMode,
    _clear_color                        : ClearColor,
@@ -57,6 +62,8 @@ pub const Renderer = struct {
       VulkanSemaphoresImageAvailableCreateError,
       VulkanSemaphoresRenderFinishedCreateError,
       VulkanFencesInFlightCreateError,
+      VulkanMemoryHeapDrawCreateError,
+      VulkanMemoryHeapTransferCreateError,
    };
 
    pub fn create(allocator : std.mem.Allocator, window : * present.Window, create_info : * const CreateInfo) CreateError!@This() {
@@ -159,6 +166,20 @@ pub const Renderer = struct {
       ) catch return error.VulkanFencesInFlightCreateError;
       errdefer vulkan_fences_in_flight.destroy(vk_device);
 
+      const vulkan_memory_heap_draw = vulkan.MemoryHeapDraw.create(allocator, &.{
+         .physical_device  = &vulkan_physical_device,
+         .vk_device        = vk_device,
+         .heap_size        = MEMORY_HEAP_SIZE_DRAW,
+      }) catch return error.VulkanMemoryHeapDrawCreateError;
+      errdefer vulkan_memory_heap_draw.destroy(allocator, vk_device);
+
+      const vulkan_memory_heap_transfer = vulkan.MemoryHeapTransfer.create(allocator, &.{
+         .physical_device  = &vulkan_physical_device,
+         .vk_device        = vk_device,
+         .heap_size        = MEMORY_HEAP_SIZE_TRANSFER,
+      }) catch return error.VulkanMemoryHeapTransferCreateError;
+      errdefer vulkan_memory_heap_transfer.destroy(allocator, vk_device);
+
       return @This(){
          ._allocator                         = allocator,
          ._vulkan_instance                   = vulkan_instance,
@@ -174,6 +195,8 @@ pub const Renderer = struct {
          ._vulkan_semaphores_image_available = vulkan_semaphores_image_available,
          ._vulkan_semaphores_render_finished = vulkan_semaphores_render_finished,
          ._vulkan_fences_in_flight           = vulkan_fences_in_flight,
+         ._vulkan_memory_heap_draw           = vulkan_memory_heap_draw,
+         ._vulkan_memory_heap_transfer       = vulkan_memory_heap_transfer,
          ._window                            = window,
          ._refresh_mode                      = create_info.refresh_mode,
          ._clear_color                       = create_info.clear_color,
@@ -189,6 +212,8 @@ pub const Renderer = struct {
 
       _ = c.vkDeviceWaitIdle(vk_device);
 
+      self._vulkan_memory_heap_transfer.destroy(allocator, vk_device);
+      self._vulkan_memory_heap_draw.destroy(allocator, vk_device);
       self._vulkan_fences_in_flight.destroy(vk_device);
       self._vulkan_semaphores_render_finished.destroy(vk_device);
       self._vulkan_semaphores_image_available.destroy(vk_device);

@@ -93,3 +93,10 @@ pub const Vertex = packed struct {
    };
 };
 
+pub const Mesh = struct {
+   vertices : [] Vertex,
+   indices  : [] IndexElement,
+
+   pub const IndexElement = u16;
+};
+
