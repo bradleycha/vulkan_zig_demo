@@ -112,13 +112,88 @@ pub const MemoryHeap = struct {
    };
    
    pub const TransferError = error {
+      DestinationAllocationTooSmall,
       OutOfMemory,
       Unknown,
+      DeviceLost,
    };
 
    pub fn transferFromStaging(transfer_info : * const TransferInfo) TransferError!void {
-      _ = transfer_info;
-      unreachable;
+      var vk_result : c.VkResult = undefined;
+
+      const heap_source                = transfer_info.heap_source;
+      const heap_destination           = transfer_info.heap_destination;
+      const allocation_source          = transfer_info.allocation_source;
+      const allocation_destination     = transfer_info.allocation_destination;
+      const device                     = transfer_info.device;
+      const vk_command_buffer_transfer = transfer_info.vk_command_buffer_transfer;
+
+      if (allocation_source.length > allocation_destination.length) {
+         return error.DestinationAllocationTooSmall;
+      }
+
+      const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
+         .sType            = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+         .pNext            = null,
+         .flags            = 0x00000000,
+         .pInheritanceInfo = null,
+      };
+
+      vk_result = c.vkBeginCommandBuffer(vk_command_buffer_transfer, &vk_info_command_buffer_begin);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => unreachable,
+      }
+
+      const vk_buffer_copy = c.VkBufferCopy{
+         .srcOffset  = allocation_source.offset,
+         .dstOffset  = allocation_destination.offset,
+         .size       = allocation_source.length,
+      };
+
+      c.vkCmdCopyBuffer(vk_command_buffer_transfer, heap_source.vk_buffer, heap_destination.vk_buffer, 1, &vk_buffer_copy);
+
+      vk_result = c.vkEndCommandBuffer(vk_command_buffer_transfer);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         else                             => return error.Unknown,
+      }
+
+      const vk_info_submit = c.VkSubmitInfo{
+         .sType                  = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+         .pNext                  = null,
+         .waitSemaphoreCount     = 0,
+         .pWaitSemaphores        = undefined,
+         .pWaitDstStageMask      = null,
+         .commandBufferCount     = 1,
+         .pCommandBuffers        = &vk_command_buffer_transfer,
+         .signalSemaphoreCount   = 0,
+         .pSignalSemaphores      = undefined,
+      };
+
+      vk_result = c.vkQueueSubmit(device.queues.transfer, 1, &vk_info_submit, @ptrCast(@alignCast(c.VK_NULL_HANDLE)));
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_DEVICE_LOST           => return error.DeviceLost,
+         else                             => unreachable,        
+      }
+
+      vk_result = c.vkQueueWaitIdle(device.queues.transfer);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_DEVICE_LOST           => return error.DeviceLost,
+         else                             => unreachable,        
+      }
+
+      return;
    }
 
    pub const AllocateInfo = struct {
