@@ -5,6 +5,16 @@ const c     = @import("cimports");
 pub const MemoryHeap = struct {
    vk_buffer               : c.VkBuffer,
    vk_device_memory        : c.VkDeviceMemory,
+   allocation_nodes        : std.ArrayListUnmanaged(AllocationNode),
+   allocation_nodes_head   : u32,
+   heap_size               : u32,
+   
+   const AllocationNode = struct {
+      next        : u32,
+      allocation  : Allocation,
+
+      pub const NULL_INDEX = std.math.maxInt(u32);
+   };
 
    pub const Allocation = struct {
       offset   : u32,
@@ -98,14 +108,18 @@ pub const MemoryHeap = struct {
       _ = allocator;
 
       return @This(){
-         .vk_buffer        = vk_buffer,
-         .vk_device_memory = vk_device_memory,
+         .vk_buffer              = vk_buffer,
+         .vk_device_memory       = vk_device_memory,
+         .allocation_nodes       = .{},
+         .allocation_nodes_head  = AllocationNode.NULL_INDEX,
+         .heap_size              = heap_size,
       };
    }
 
    pub fn destroy(self : @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
-      _ = allocator;
+      var self_mut = self;
 
+      self_mut.allocation_nodes.deinit(allocator);
       c.vkFreeMemory(vk_device, self.vk_device_memory, null);
       c.vkDestroyBuffer(vk_device, self.vk_buffer, null);
       return;
