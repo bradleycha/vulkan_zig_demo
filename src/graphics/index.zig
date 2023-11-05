@@ -236,13 +236,38 @@ pub const Renderer = struct {
       VulkanSwapchainRecreateError,
    };
 
-   pub fn drawFrame(self : * @This()) DrawError!void {
-      while (try _drawFrameWithSwapchainUpdates(self) == false) {}
+   pub const MeshHandle = struct {
+      index : usize,
+
+      pub const NULL = 0;
+   };
+
+   pub const MeshLoadError = error {
+      OutOfMemory,
+      Unknown,
+   };
+
+   pub fn loadMesh(self : * @This()) MeshLoadError!MeshHandle {
+      _ = self;
+      unreachable;
+   }
+
+   pub fn unloadMesh(self : * @This(), mesh_handle : MeshHandle) void {
+      _ = self;
+      _ = mesh_handle;
+      unreachable;
+   }
+
+   pub fn drawFrame(self : * @This(), mesh_handles : [] const MeshHandle) DrawError!void {
+      while (try _drawFrameWithSwapchainUpdates(self, mesh_handles) == false) {}
       return;
    }
 };
 
-fn _drawFrameWithSwapchainUpdates(self : * Renderer) Renderer.DrawError!bool {
+fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Renderer.MeshHandle) Renderer.DrawError!bool {
+   // TODO: Update command buffer recording
+   _ = mesh_handles;
+
    var vk_result : c.VkResult = undefined;
 
    const frame_index = self._frame_index;

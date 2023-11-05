@@ -12,6 +12,7 @@ const MainError = error {
    CompositorConnectError,
    WindowCreateError,
    RendererCreateError,
+   ResourceLoadError,
 };
 
 const PROGRAM_NAME                     = "Learn Graphics Programming with Zig!";
@@ -53,6 +54,11 @@ pub fn main() MainError!void {
    }) catch return error.RendererCreateError;
    defer renderer.destroy();
 
+   std.log.info("loading resources", .{});
+
+   const mesh_handle = renderer.loadMesh() catch return error.ResourceLoadError;
+   defer renderer.unloadMesh(mesh_handle);
+
    std.log.info("initialization complete, entering main loop", .{});
    while (window.shouldClose() == false) {
       const time_delta        = @as(f64, @floatFromInt(timer_delta.lap())) / 1000000000.0;
@@ -77,7 +83,7 @@ pub fn main() MainError!void {
          std.log.warn("failed to poll window events: {}", .{err});
       };
 
-      renderer.drawFrame() catch |err| {
+      renderer.drawFrame(&.{mesh_handle}) catch |err| {
          std.log.warn("failed to draw frame: {}", .{err});
       };
    }
