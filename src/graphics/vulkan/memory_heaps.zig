@@ -101,6 +101,41 @@ pub const MemoryHeap = struct {
       c.vkDestroyBuffer(vk_device, self.vk_buffer, null);
       return;
    }
+
+   pub const AllocateInfo = struct {
+      bytes       : u32,
+      alignment   : u32,
+   };
+
+   pub const ReallocateInfo = struct {
+      bytes : u32,
+   };
+
+   pub const AllocateError = error {
+      OutOfMemory,
+   };
+
+   pub fn allocate(self : * @This(), allocator : std.mem.Allocator, allocate_info : * const AllocateInfo) AllocateError!Allocation {
+      _ = self;
+      _ = allocator;
+      _ = allocate_info;
+      unreachable;
+   }
+
+   pub fn reallocate(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation, reallocate_info : * const ReallocateInfo) AllocateError!Allocation {
+      _ = self;
+      _ = allocator;
+      _ = allocation;
+      _ = reallocate_info;
+      unreachable;
+   }
+
+   pub fn free(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation) void {
+      _ = self;
+      _ = allocator;
+      _ = allocation;
+      unreachable;
+   }
 };
 
 const _ConcurrencyMode = struct {
