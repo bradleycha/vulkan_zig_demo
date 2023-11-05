@@ -29,6 +29,7 @@ pub const Renderer = struct {
    _vulkan_framebuffers                : vulkan.Framebuffers,
    _vulkan_command_pools               : vulkan.CommandPools,
    _vulkan_command_buffers_draw        : vulkan.CommandBuffersDraw(FRAMES_IN_FLIGHT),
+   _vulkan_command_buffer_transfer     : vulkan.CommandBufferTransfer,
    _vulkan_semaphores_image_available  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
    _vulkan_semaphores_render_finished  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
    _vulkan_fences_in_flight            : vulkan.FenceList(FRAMES_IN_FLIGHT),
@@ -59,6 +60,7 @@ pub const Renderer = struct {
       VulkanFramebuffersCreateError,
       VulkanCommandPoolsCreateError,
       VulkanCommandBuffersDrawCreateError,
+      VulkanCommandBufferTransferCreateError,
       VulkanSemaphoresImageAvailableCreateError,
       VulkanSemaphoresRenderFinishedCreateError,
       VulkanFencesInFlightCreateError,
@@ -151,6 +153,12 @@ pub const Renderer = struct {
       }) catch return error.VulkanCommandBuffersDrawCreateError;
       errdefer vulkan_command_buffers_draw.destroy(vk_device, vulkan_command_pools.graphics);
 
+      const vulkan_command_buffer_transfer = vulkan.CommandBufferTransfer.create(&.{
+         .vk_device        = vk_device,
+         .vk_command_pool  = vulkan_command_pools.transfer,
+      }) catch return error.VulkanCommandBufferTransferCreateError;
+      errdefer vulkan_command_buffer_transfer.destroy(vk_device, vulkan_command_pools.transfer);
+
       const vulkan_semaphores_image_available = vulkan.SemaphoreList(FRAMES_IN_FLIGHT).create(
          vk_device,
       ) catch return error.VulkanSemaphoresImageAvailableCreateError;
@@ -173,7 +181,7 @@ pub const Renderer = struct {
       }) catch return error.VulkanMemoryHeapDrawCreateError;
       errdefer vulkan_memory_heap_draw.destroy(allocator, vk_device);
 
-      const vulkan_memory_heap_transfer = vulkan.MemoryHeapTransfer.create(allocator, &.{
+      const vulkan_memory_heap_transfer = vulkan.MemoryHeapTransfer.create(allocator, vk_device, &.{
          .physical_device  = &vulkan_physical_device,
          .vk_device        = vk_device,
          .heap_size        = MEMORY_HEAP_SIZE_TRANSFER,
@@ -192,6 +200,7 @@ pub const Renderer = struct {
          ._vulkan_framebuffers               = vulkan_framebuffers,
          ._vulkan_command_pools              = vulkan_command_pools,
          ._vulkan_command_buffers_draw       = vulkan_command_buffers_draw,
+         ._vulkan_command_buffer_transfer    = vulkan_command_buffer_transfer,
          ._vulkan_semaphores_image_available = vulkan_semaphores_image_available,
          ._vulkan_semaphores_render_finished = vulkan_semaphores_render_finished,
          ._vulkan_fences_in_flight           = vulkan_fences_in_flight,
@@ -217,6 +226,7 @@ pub const Renderer = struct {
       self._vulkan_fences_in_flight.destroy(vk_device);
       self._vulkan_semaphores_render_finished.destroy(vk_device);
       self._vulkan_semaphores_image_available.destroy(vk_device);
+      self._vulkan_command_buffer_transfer.destroy(vk_device, self._vulkan_command_pools.transfer);
       self._vulkan_command_buffers_draw.destroy(vk_device, self._vulkan_command_pools.graphics);
       self._vulkan_command_pools.destroy(vk_device);
       self._vulkan_framebuffers.destroy(allocator, vk_device, &self._vulkan_swapchain);
@@ -237,25 +247,69 @@ pub const Renderer = struct {
    };
 
    pub const MeshHandle = struct {
-      index : usize,
-
-      pub const NULL = 0;
+      allocation  : vulkan.MemoryHeap.Allocation,
    };
 
    pub const MeshLoadError = error {
       OutOfMemory,
       Unknown,
+      MapError,
+      TransferError,
    };
 
-   pub fn loadMesh(self : * @This()) MeshLoadError!MeshHandle {
-      _ = self;
-      unreachable;
+   pub fn loadMesh(self : * @This(), mesh : * const types.Mesh) MeshLoadError!MeshHandle {
+      const allocator      = self._allocator;
+      const heap_draw      = &self._vulkan_memory_heap_draw;
+      const heap_transfer  = &self._vulkan_memory_heap_transfer;
+
+      const bytes_vertices = mesh.vertices.len * @sizeOf(types.Vertex);
+      const bytes_indices  = mesh.indices.len * @sizeOf(types.Mesh.IndexElement);
+
+      // We store vertices first, then indices right after in memory. This will
+      // aid in memory cache usage, thus improve performance.  This is valid
+      // because our alignment of vertices is greater than alignment of
+      // indices, so we know our memory is aligned for indices after our
+      // vertices.
+      const bytes       = bytes_vertices + bytes_indices;
+      const alignment   = @alignOf(types.Vertex);
+
+      const allocate_info = vulkan.MemoryHeap.AllocateInfo{
+         .bytes      = @as(u32, @intCast(bytes)),
+         .alignment  = @as(u32, @intCast(alignment)),
+      };
+
+      const allocation_draw = try heap_draw.memory_heap.allocate(allocator, &allocate_info);
+      errdefer heap_draw.memory_heap.free(allocator, allocation_draw);
+
+      const allocation_transfer = try heap_transfer.memory_heap.allocate(allocator, &allocate_info);
+      defer heap_transfer.memory_heap.free(allocator, allocation_transfer);
+
+      const transfer_int_ptr_vertices  = @intFromPtr(heap_transfer.mapping);
+      const transfer_int_ptr_indices   = @intFromPtr(heap_transfer.mapping) + bytes_vertices;
+
+      const transfer_ptr_vertices   = @as([*] types.Vertex, @ptrFromInt(transfer_int_ptr_vertices));
+      const transfer_ptr_indices    = @as([*] types.Mesh.IndexElement, @ptrFromInt(transfer_int_ptr_indices));
+
+      @memcpy(transfer_ptr_vertices, mesh.vertices);
+      @memcpy(transfer_ptr_indices, mesh.indices);
+
+      vulkan.MemoryHeap.transferFromStaging(&.{
+         .heap_source                  = &heap_transfer.memory_heap,
+         .heap_destination             = &heap_draw.memory_heap,
+         .allocation_source            = allocation_transfer,
+         .allocation_destination       = allocation_draw,
+         .device                       = &self._vulkan_device,
+         .vk_command_buffer_transfer   = self._vulkan_command_buffer_transfer.vk_command_buffer,
+      }) catch return error.TransferError;
+
+      return MeshHandle{
+         .allocation = allocation_draw,
+      };
    }
 
    pub fn unloadMesh(self : * @This(), mesh_handle : MeshHandle) void {
-      _ = self;
-      _ = mesh_handle;
-      unreachable;
+      self._vulkan_memory_heap_draw.memory_heap.free(self._allocator, mesh_handle.allocation);
+      return;
    }
 
    pub fn drawFrame(self : * @This(), mesh_handles : [] const MeshHandle) DrawError!void {

@@ -56,7 +56,7 @@ pub fn main() MainError!void {
 
    std.log.info("loading resources", .{});
 
-   const mesh_handle = renderer.loadMesh() catch return error.ResourceLoadError;
+   const mesh_handle = renderer.loadMesh(&resources.meshes.MESH_TEST_TRIANGLE) catch return error.ResourceLoadError;
    defer renderer.unloadMesh(mesh_handle);
 
    std.log.info("initialization complete, entering main loop", .{});

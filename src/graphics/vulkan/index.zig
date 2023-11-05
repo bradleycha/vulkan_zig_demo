@@ -10,7 +10,7 @@ pub usingnamespace @import("swapchain.zig");
 pub usingnamespace @import("graphics_pipeline.zig");
 pub usingnamespace @import("framebuffers.zig");
 pub usingnamespace @import("command_pools.zig");
-pub usingnamespace @import("command_buffers_draw.zig");
+pub usingnamespace @import("command_buffers.zig");
 pub usingnamespace @import("synchronization.zig");
 pub usingnamespace @import("memory_heaps.zig");
 

@@ -102,6 +102,25 @@ pub const MemoryHeap = struct {
       return;
    }
 
+   pub const TransferInfo = struct {
+      heap_source                : * const MemoryHeap,
+      heap_destination           : * const MemoryHeap,
+      allocation_source          : Allocation,
+      allocation_destination     : Allocation,
+      device                     : * const root.Device,
+      vk_command_buffer_transfer : c.VkCommandBuffer,
+   };
+   
+   pub const TransferError = error {
+      OutOfMemory,
+      Unknown,
+   };
+
+   pub fn transferFromStaging(transfer_info : * const TransferInfo) TransferError!void {
+      _ = transfer_info;
+      unreachable;
+   }
+
    pub const AllocateInfo = struct {
       bytes       : u32,
       alignment   : u32,
@@ -217,16 +236,21 @@ pub const MemoryHeapDraw = struct {
       self.memory_heap.destroy(allocator, vk_device);
       return;
    }
+
+   
 };
 
 pub const MemoryHeapTransfer = struct {
    memory_heap : MemoryHeap,
+   mapping     : * anyopaque,
 
    pub const CreateInfo = MemoryHeap.CreateInfo;
 
    pub const CreateError = MemoryHeap.CreateError;
 
-   pub fn create(allocator : std.mem.Allocator, create_info : * const CreateInfo) CreateError!@This() {
+   pub fn create(allocator : std.mem.Allocator, vk_device : c.VkDevice, create_info : * const CreateInfo) CreateError!@This() {
+      var vk_result : c.VkResult = undefined;
+
       const MEMORY_INFO = MemoryHeap.MemoryInfo{
          .memory_flags  = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
          .usage_flags   = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -239,14 +263,36 @@ pub const MemoryHeapTransfer = struct {
       }, &MEMORY_INFO);
       errdefer memory_heap.destroy(allocator, create_info.vk_device);
 
+      var vk_mapping : ? * anyopaque = undefined;
+      vk_result = c.vkMapMemory(vk_device, memory_heap.vk_device_memory, 0, create_info.heap_size, 0, &vk_mapping);
+      switch (vk_result) {
+         c.VK_SUCCESS                     => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+         c.VK_ERROR_MEMORY_MAP_FAILED     => return error.Unknown,
+         else                             => unreachable,
+      }
+      errdefer c.vkUnmapMemory(vk_device, memory_heap.vk_device_memory);
+
       return @This(){
          .memory_heap   = memory_heap,
+         .mapping       = vk_mapping orelse unreachable,
       };
    }
 
    pub fn destroy(self : @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
+      c.vkUnmapMemory(vk_device, self.memory_heap.vk_device_memory);
       self.memory_heap.destroy(allocator, vk_device);
       return;
    }
+
+   pub const Mapping = struct {
+      ptr   : * anyopaque,
+   };
+
+   pub const MapError = error {
+      OutOfMemory,
+      Unknown,
+   };
 };
 
