@@ -159,7 +159,7 @@ pub const Renderer = struct {
       const vulkan_semaphores_render_finished = vulkan.SemaphoreList(FRAMES_IN_FLIGHT).create(
          vk_device,
       ) catch return error.VulkanSemaphoresRenderFinishedCreateError;
-      errdefer vulkan_semaphores_image_available.destroy(vk_device);
+      errdefer vulkan_semaphores_render_finished.destroy(vk_device);
 
       const vulkan_fences_in_flight = vulkan.FenceList(FRAMES_IN_FLIGHT).create(
          vk_device,
