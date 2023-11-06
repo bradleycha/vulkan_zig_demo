@@ -76,6 +76,12 @@ pub fn Vector4(comptime ty : type) type {
    };
 }
 
+pub fn Matrix4(comptime ty : type) type {
+   return struct {
+      elements : [4] [4] ty,
+   };
+}
+
 pub const Vertex = packed struct {
    // We order the fields in this strange way to ensure we can get proper
    // field alignment without any padding.  It's like a game of Tetris!

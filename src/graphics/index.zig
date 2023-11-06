@@ -35,11 +35,26 @@ pub const Renderer = struct {
    _vulkan_fences_in_flight            : vulkan.FenceList(FRAMES_IN_FLIGHT),
    _vulkan_memory_heap_draw            : vulkan.MemoryHeapDraw,
    _vulkan_memory_heap_transfer        : vulkan.MemoryHeapTransfer,
+   _loaded_meshes                      : std.ArrayListUnmanaged(MeshObject),
    _window                             : * const present.Window,
    _refresh_mode                       : RefreshMode,
    _clear_color                        : ClearColor,
    _frame_index                        : u32,
    _framebuffer_size                   : present.Window.Resolution,
+
+   const MeshObject = struct {
+      transform   : types.Matrix4(f32),
+      allocation  : vulkan.MemoryHeap.Allocation,
+      indices     : u32,
+
+      pub const NULL_OBJECT = std.math.maxInt(u32);
+
+      // Using magic value and function to help tightly pack model objects
+      // together in the array.
+      pub fn isNull(self : * const @This()) bool {
+         return self.indices == NULL_OBJECT;
+      }
+   };
 
    pub const CreateInfo = struct {
       program_name      : ? [*:0] const u8,
@@ -206,6 +221,7 @@ pub const Renderer = struct {
          ._vulkan_fences_in_flight           = vulkan_fences_in_flight,
          ._vulkan_memory_heap_draw           = vulkan_memory_heap_draw,
          ._vulkan_memory_heap_transfer       = vulkan_memory_heap_transfer,
+         ._loaded_meshes                     = .{},
          ._window                            = window,
          ._refresh_mode                      = create_info.refresh_mode,
          ._clear_color                       = create_info.clear_color,
@@ -215,12 +231,15 @@ pub const Renderer = struct {
    }
 
    pub fn destroy(self : @This()) void {
+      var self_mut = self;
+
       const allocator   = self._allocator;
       const vk_instance = self._vulkan_instance.vk_instance;
       const vk_device   = self._vulkan_device.vk_device;
 
       _ = c.vkDeviceWaitIdle(vk_device);
 
+      self_mut._loaded_meshes.deinit(allocator);
       self._vulkan_memory_heap_transfer.destroy(allocator, vk_device);
       self._vulkan_memory_heap_draw.destroy(allocator, vk_device);
       self._vulkan_fences_in_flight.destroy(vk_device);
@@ -247,8 +266,7 @@ pub const Renderer = struct {
    };
 
    pub const MeshHandle = struct {
-      allocation  : vulkan.MemoryHeap.Allocation,
-      indices     : u32,
+      index : usize,
    };
 
    pub const MeshLoadError = error {
@@ -262,6 +280,29 @@ pub const Renderer = struct {
       const allocator      = self._allocator;
       const heap_draw      = &self._vulkan_memory_heap_draw;
       const heap_transfer  = &self._vulkan_memory_heap_transfer;
+
+      var loaded_meshes_index_found : ? usize = null;
+      for (self._loaded_meshes.items, 0..self._loaded_meshes.items.len) |mesh_object, i| {
+         if (mesh_object.isNull()) {
+            loaded_meshes_index_found = i;
+            break;
+         }
+      }
+
+      const loaded_meshes_index = blk: {
+         if (loaded_meshes_index_found) |index| {
+            break :blk index;
+         } else {
+            break :blk self._loaded_meshes.items.len;
+         }
+      };
+
+      if (loaded_meshes_index_found == null) {
+         _ = try self._loaded_meshes.addOne(self._allocator);
+      }
+      errdefer if (loaded_meshes_index_found == null) {
+         self._loaded_meshes.shrinkAndFree(self._allocator, self._loaded_meshes.items.len - 1);
+      };
 
       const bytes_vertices = mesh.vertices.len * @sizeOf(types.Vertex);
       const bytes_indices  = mesh.indices.len * @sizeOf(types.Mesh.IndexElement);
@@ -303,15 +344,53 @@ pub const Renderer = struct {
          .vk_command_buffer_transfer   = self._vulkan_command_buffer_transfer.vk_command_buffer,
       }) catch return error.TransferError;
 
-      return MeshHandle{
+      const transform = types.Matrix4(f32){.elements = [4] [4] f32 {
+         [4] f32 {1.0, 0.0, 0.0, 0.0},
+         [4] f32 {0.0, 1.0, 0.0, 0.0},
+         [4] f32 {0.0, 0.0, 1.0, 0.0},
+         [4] f32 {0.0, 0.0, 0.0, 1.0},
+      }};
+
+      const mesh_object = MeshObject{
+         .transform  = transform,
          .allocation = allocation_draw,
          .indices    = @intCast(mesh.indices.len),
       };
+
+      const mesh_handle = MeshHandle{
+         .index   = loaded_meshes_index,
+      };
+
+      self._loaded_meshes.items[loaded_meshes_index] = mesh_object;
+      return mesh_handle;
    }
 
    pub fn unloadMesh(self : * @This(), mesh_handle : MeshHandle) void {
-      self._vulkan_memory_heap_draw.memory_heap.free(self._allocator, mesh_handle.allocation);
+      const mesh_object = &self._loaded_meshes.items[mesh_handle.index];
+
+      self._vulkan_memory_heap_draw.memory_heap.free(self._allocator, mesh_object.allocation);
+
+      if (self._loaded_meshes.items.len == 1) {
+         self._loaded_meshes.clearAndFree(self._allocator);
+         return;
+      }
+
+      var i : usize = self._loaded_meshes.items.len - 1;
+      while (self._loaded_meshes.items[i].isNull() == true and i != 0) {
+         i -= 1;
+      }
+
+      self._loaded_meshes.shrinkAndFree(self._allocator, i + 1);
+
       return;
+   }
+
+   pub fn meshTransform(self : * const @This(), mesh_handle : MeshHandle) * const types.Matrix4(f32) {
+      return &self._loaded_meshes.items[mesh_handle.index].transform;
+   }
+
+   pub fn meshTransformMut(self : * @This(), mesh_handle : MeshHandle) * types.Matrix4(f32) {
+      return &self._loaded_meshes.items[mesh_handle.index].transform;
    }
 
    pub fn drawFrame(self : * @This(), mesh_handles : [] const MeshHandle) DrawError!void {
@@ -398,6 +477,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
       .vk_buffer_draw            = self._vulkan_memory_heap_draw.memory_heap.vk_buffer,
       .swapchain_configuration   = &self._vulkan_swapchain_configuration,
       .clear_color               = &self._clear_color,
+      .loaded_meshes             = self._loaded_meshes.items,
    });
 
    const vk_info_submit_render_pass = c.VkSubmitInfo{
@@ -524,6 +604,7 @@ const RecordInfo = struct {
    vk_buffer_draw          : c.VkBuffer,
    swapchain_configuration : * const vulkan.SwapchainConfiguration,
    clear_color             : * const ClearColor,
+   loaded_meshes           : [] const Renderer.MeshObject,
 };
 
 fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : * const RecordInfo) Renderer.DrawError!void {
@@ -536,6 +617,7 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
    const vk_buffer_draw          = record_info.vk_buffer_draw;
    const swapchain_configuration = record_info.swapchain_configuration;
    const clear_color             = record_info.clear_color;
+   const loaded_meshes           = record_info.loaded_meshes;
 
    const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
       .sType            = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -601,14 +683,16 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
    c.vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
 
    for (mesh_handles) |mesh_handle| {
-      const vk_buffer_draw_offset_vertex  = @as(u64, mesh_handle.allocation.offset);
-      const vk_buffer_draw_offset_index   = @as(u64, mesh_handle.allocation.offset + mesh_handle.allocation.length - mesh_handle.indices * @sizeOf(types.Mesh.IndexElement));
+      const mesh_object = loaded_meshes[mesh_handle.index];
+
+      const vk_buffer_draw_offset_vertex  = @as(u64, mesh_object.allocation.offset);
+      const vk_buffer_draw_offset_index   = @as(u64, mesh_object.allocation.offset + mesh_object.allocation.length - mesh_object.indices * @sizeOf(types.Mesh.IndexElement));
 
       c.vkCmdBindVertexBuffers(vk_command_buffer, 0, 1, &vk_buffer_draw, &vk_buffer_draw_offset_vertex);
 
       c.vkCmdBindIndexBuffer(vk_command_buffer, vk_buffer_draw, vk_buffer_draw_offset_index, c.VK_INDEX_TYPE_UINT16);
 
-      c.vkCmdDrawIndexed(vk_command_buffer, mesh_handle.indices, 1, 0, 0, 0);
+      c.vkCmdDrawIndexed(vk_command_buffer, mesh_object.indices, 1, 0, 0, 0);
    }
 
    c.vkCmdEndRenderPass(vk_command_buffer);
