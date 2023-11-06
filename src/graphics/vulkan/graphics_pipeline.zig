@@ -276,14 +276,20 @@ fn _createShaderModule(vk_device : c.VkDevice, bytecode : [] align(@sizeOf(u32))
 fn _createPipelineLayout(vk_device : c.VkDevice) GraphicsPipeline.CreateError!c.VkPipelineLayout {
    var vk_result : c.VkResult = undefined;
 
+   const vk_push_constants_range = c.VkPushConstantRange{
+      .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
+      .offset     = 0,
+      .size       = @sizeOf(root.types.PushConstants),
+   };
+
    const vk_info_create_pipeline_layout = c.VkPipelineLayoutCreateInfo{
       .sType                  = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .pNext                  = null,
       .flags                  = 0x00000000,
       .setLayoutCount         = 0,
       .pSetLayouts            = undefined,
-      .pushConstantRangeCount = 0,
-      .pPushConstantRanges    = undefined,
+      .pushConstantRangeCount = 1,
+      .pPushConstantRanges    = &vk_push_constants_range,
    };
 
    var vk_pipeline_layout : c.VkPipelineLayout = undefined;

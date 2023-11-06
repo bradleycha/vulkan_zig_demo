@@ -478,6 +478,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
       .vk_framebuffer            = vk_framebuffer,
       .vk_render_pass            = vk_render_pass,
       .vk_graphics_pipeline      = vk_graphics_pipeline,
+      .vk_pipeline_layout        = self._vulkan_graphics_pipeline.vk_pipeline_layout,
       .vk_buffer_draw            = self._vulkan_memory_heap_draw.memory_heap.vk_buffer,
       .swapchain_configuration   = &self._vulkan_swapchain_configuration,
       .clear_color               = &self._clear_color,
@@ -605,6 +606,7 @@ const RecordInfo = struct {
    vk_framebuffer          : c.VkFramebuffer,
    vk_render_pass          : c.VkRenderPass,
    vk_graphics_pipeline    : c.VkPipeline,
+   vk_pipeline_layout      : c.VkPipelineLayout,
    vk_buffer_draw          : c.VkBuffer,
    swapchain_configuration : * const vulkan.SwapchainConfiguration,
    clear_color             : * const ClearColor,
@@ -618,6 +620,7 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
    const vk_framebuffer          = record_info.vk_framebuffer;
    const vk_render_pass          = record_info.vk_render_pass;
    const vk_graphics_pipeline    = record_info.vk_graphics_pipeline;
+   const vk_pipeline_layout      = record_info.vk_pipeline_layout;
    const vk_buffer_draw          = record_info.vk_buffer_draw;
    const swapchain_configuration = record_info.swapchain_configuration;
    const clear_color             = record_info.clear_color;
@@ -695,6 +698,8 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
       c.vkCmdBindVertexBuffers(vk_command_buffer, 0, 1, &vk_buffer_draw, &vk_buffer_draw_offset_vertex);
 
       c.vkCmdBindIndexBuffer(vk_command_buffer, vk_buffer_draw, vk_buffer_draw_offset_index, c.VK_INDEX_TYPE_UINT16);
+
+      c.vkCmdPushConstants(vk_command_buffer, vk_pipeline_layout, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(types.PushConstants), &mesh_object.push_constants);
 
       c.vkCmdDrawIndexed(vk_command_buffer, mesh_object.indices, 1, 0, 0, 0);
    }
