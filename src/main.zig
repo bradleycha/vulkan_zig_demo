@@ -86,7 +86,7 @@ pub fn main() MainError!void {
          std.log.warn("failed to poll window events: {}", .{err});
       };
 
-      renderer.drawFrame(&.{mesh_handle_test_triangle, mesh_handle_test_octagon}) catch |err| {
+      renderer.drawFrame(&.{mesh_handle_test_triangle}) catch |err| {
          std.log.warn("failed to draw frame: {}", .{err});
       };
    }

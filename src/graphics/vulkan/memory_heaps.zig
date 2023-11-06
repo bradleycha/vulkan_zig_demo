@@ -229,6 +229,16 @@ pub const MemoryHeap = struct {
       OutOfMemory,
    };
 
+   fn _getAllocationNode(self : * @This(), index : u32) * AllocationNode {
+      const allocation_node_fallible = &self.allocation_nodes.items[index];
+
+      if (builtin.mode == .Debug and allocation_node_fallible.* == null) {
+         @panic("attempted to access nonexistant allocation node");
+      }
+
+      return @ptrCast(allocation_node_fallible);
+   }
+
    pub fn allocate(self : * @This(), allocator : std.mem.Allocator, allocate_info : * const AllocateInfo) AllocateError!Allocation {
       const bytes       = allocate_info.bytes;
       const alignment   = allocate_info.alignment;
@@ -256,9 +266,89 @@ pub const MemoryHeap = struct {
          return allocation;
       }
 
-      // TODO: Actual block searching
-      _ = alignment;
-      unreachable;
+      // Search for a free block of memory in the middle of the heap
+      var allocation_node_curr_index = self.allocation_nodes_head;
+      var allocation_node_next_index = self._getAllocationNode(self.allocation_nodes_head).next;
+      while (allocation_node_next_index != AllocationNode.NULL_INDEX) {
+         const allocation_node_curr = self._getAllocationNode(allocation_node_curr_index);
+         const allocation_node_next = self._getAllocationNode(allocation_node_next_index);
+
+         const allocation_curr = &allocation_node_curr.allocation;
+         const allocation_next = &allocation_node_next.allocation;
+
+         const block_size_unaligned = allocation_next.offset - allocation_curr.offset - allocation_curr.length;
+         const block_size = block_size_unaligned - @rem(block_size_unaligned, alignment);
+
+         if (block_size >= bytes) {
+            break;
+         }
+
+         allocation_node_curr_index = allocation_node_next_index;
+         allocation_node_next_index = allocation_node_next.next;
+      }
+
+      const allocation_node_prev = self._getAllocationNode(allocation_node_curr_index);
+
+      // If we reached the end of the heap, make sure some memory is still available
+      if (allocation_node_next_index == AllocationNode.NULL_INDEX) {
+         const allocation_node   = self._getAllocationNode(allocation_node_curr_index);
+         const allocation        = &allocation_node.allocation;
+
+         const block_size_unaligned = self.heap_size - allocation.offset - allocation.length;
+         const block_size = block_size_unaligned - @rem(block_size_unaligned, alignment);
+
+         if (block_size < bytes) {
+            return error.OutOfMemory;
+         }
+      }
+
+      // Find the index into the allocation nodes storage to insert if available
+      var allocation_node_insert_index : ? u32 = null;
+      for (self.allocation_nodes.items, 0..self.allocation_nodes.items.len) |allocation_node, i| {
+         if (allocation_node == null) {
+            allocation_node_insert_index = @intCast(i);
+            break;
+         }
+      }
+
+      const allocation_node_new_index = blk: {
+         if (allocation_node_insert_index) |index| {
+            break :blk index;
+         } else {
+            break :blk @as(u32, @intCast(self.allocation_nodes.items.len));
+         }
+      };
+
+      if (allocation_node_insert_index == null) {
+         try self.allocation_nodes.resize(allocator, self.allocation_nodes.items.len + 1);
+      }
+
+      // Create the allocation
+      const offset_unaligned = allocation_node_prev.allocation.offset + allocation_node_prev.allocation.length;
+      const offset = offset_unaligned + (alignment - @rem(offset_unaligned, alignment));
+      const allocation = Allocation{
+         .offset  = offset,
+         .length  = bytes,
+      };
+
+      // Insert the allocation into the list
+      const next = blk: {
+         if (allocation_node_next_index == AllocationNode.NULL_INDEX) {
+            break :blk AllocationNode.NULL_INDEX;
+         } else {
+            break :blk self._getAllocationNode(allocation_node_next_index).next;
+         }
+      };
+
+      const allocation_node = AllocationNode{
+         .next       = next,
+         .allocation = allocation,
+      };
+
+      self.allocation_nodes.items[allocation_node_new_index] = allocation_node;
+      allocation_node_prev.next = allocation_node_new_index;
+
+      return allocation;
    }
 
    pub fn free(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation) void {

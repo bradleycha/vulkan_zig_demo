@@ -272,7 +272,7 @@ pub const Renderer = struct {
       // indices, so we know our memory is aligned for indices after our
       // vertices.
       const bytes       = bytes_vertices + bytes_indices;
-      const alignment   = @alignOf(types.Vertex);
+      const alignment   = @sizeOf(types.Vertex);
 
       const allocate_info = vulkan.MemoryHeap.AllocateInfo{
          .bytes      = @as(u32, @intCast(bytes)),
