@@ -43,9 +43,9 @@ pub const Renderer = struct {
    _framebuffer_size                   : present.Window.Resolution,
 
    const MeshObject = struct {
-      transform   : types.Matrix4(f32),
-      allocation  : vulkan.MemoryHeap.Allocation,
-      indices     : u32,
+      push_constants : vulkan.types.PushConstants,
+      allocation     : vulkan.MemoryHeap.Allocation,
+      indices        : u32,
 
       pub const NULL_OBJECT = std.math.maxInt(u32);
 
@@ -344,17 +344,21 @@ pub const Renderer = struct {
          .vk_command_buffer_transfer   = self._vulkan_command_buffer_transfer.vk_command_buffer,
       }) catch return error.TransferError;
 
-      const transform = types.Matrix4(f32){.elements = [4] [4] f32 {
-         [4] f32 {1.0, 0.0, 0.0, 0.0},
-         [4] f32 {0.0, 1.0, 0.0, 0.0},
-         [4] f32 {0.0, 0.0, 1.0, 0.0},
-         [4] f32 {0.0, 0.0, 0.0, 1.0},
+      const transform = types.Matrix4(f32){.items = .{
+         1.0, 0.0, 0.0, 0.0,
+         0.0, 1.0, 0.0, 0.0,
+         0.0, 0.0, 1.0, 0.0,
+         0.0, 0.0, 0.0, 1.0,
       }};
 
-      const mesh_object = MeshObject{
+      const push_constants = types.PushConstants{
          .transform  = transform,
-         .allocation = allocation_draw,
-         .indices    = @intCast(mesh.indices.len),
+      };
+
+      const mesh_object = MeshObject{
+         .push_constants   = push_constants,
+         .allocation       = allocation_draw,
+         .indices          = @intCast(mesh.indices.len),
       };
 
       const mesh_handle = MeshHandle{
@@ -386,11 +390,11 @@ pub const Renderer = struct {
    }
 
    pub fn meshTransform(self : * const @This(), mesh_handle : MeshHandle) * const types.Matrix4(f32) {
-      return &self._loaded_meshes.items[mesh_handle.index].transform;
+      return &self._loaded_meshes.items[mesh_handle.index].push_constants.transform;
    }
 
    pub fn meshTransformMut(self : * @This(), mesh_handle : MeshHandle) * types.Matrix4(f32) {
-      return &self._loaded_meshes.items[mesh_handle.index].transform;
+      return &self._loaded_meshes.items[mesh_handle.index].push_constants.transform;
    }
 
    pub fn drawFrame(self : * @This(), mesh_handles : [] const MeshHandle) DrawError!void {

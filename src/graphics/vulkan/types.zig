@@ -77,8 +77,8 @@ pub fn Vector4(comptime ty : type) type {
 }
 
 pub fn Matrix4(comptime ty : type) type {
-   return struct {
-      elements : [4] [4] ty,
+   return packed struct {
+      items : @Vector(16, ty),
    };
 }
 
@@ -104,5 +104,9 @@ pub const Mesh = struct {
    indices  : [] const IndexElement,
 
    pub const IndexElement = u16;
+};
+
+pub const PushConstants = packed struct {
+   transform   : Matrix4(f32),   // 64 bytes
 };
 
