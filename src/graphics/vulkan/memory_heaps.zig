@@ -521,14 +521,5 @@ pub const MemoryHeapTransfer = struct {
       self.memory_heap.destroy(allocator, vk_device);
       return;
    }
-
-   pub const Mapping = struct {
-      ptr   : * anyopaque,
-   };
-
-   pub const MapError = error {
-      OutOfMemory,
-      Unknown,
-   };
 };
 

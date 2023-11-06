@@ -50,7 +50,7 @@ pub fn main() MainError!void {
          .g = 1.0,
          .b = 1.0,
          .a = 1.0,
-      }}}
+      }}},
    }) catch return error.RendererCreateError;
    defer renderer.destroy();
 
