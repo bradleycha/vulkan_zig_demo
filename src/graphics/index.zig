@@ -390,17 +390,15 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
       else                             => unreachable,
    }
 
-   for (mesh_handles) |mesh_handle| {
-      try _recordRenderPass(mesh_handle, &.{
-         .vk_command_buffer         = vk_command_buffer,
-         .vk_framebuffer            = vk_framebuffer,
-         .vk_render_pass            = vk_render_pass,
-         .vk_graphics_pipeline      = vk_graphics_pipeline,
-         .vk_buffer_draw            = self._vulkan_memory_heap_draw.memory_heap.vk_buffer,
-         .swapchain_configuration   = &self._vulkan_swapchain_configuration,
-         .clear_color               = &self._clear_color,
-      });
-   }
+   try _recordRenderPass(mesh_handles, &.{
+      .vk_command_buffer         = vk_command_buffer,
+      .vk_framebuffer            = vk_framebuffer,
+      .vk_render_pass            = vk_render_pass,
+      .vk_graphics_pipeline      = vk_graphics_pipeline,
+      .vk_buffer_draw            = self._vulkan_memory_heap_draw.memory_heap.vk_buffer,
+      .swapchain_configuration   = &self._vulkan_swapchain_configuration,
+      .clear_color               = &self._clear_color,
+   });
 
    const vk_info_submit_render_pass = c.VkSubmitInfo{
       .sType                  = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -528,7 +526,7 @@ const RecordInfo = struct {
    clear_color             : * const ClearColor,
 };
 
-fn _recordRenderPass(mesh_handle : Renderer.MeshHandle, record_info : * const RecordInfo) Renderer.DrawError!void {
+fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : * const RecordInfo) Renderer.DrawError!void {
    var vk_result : c.VkResult = undefined;
 
    const vk_command_buffer       = record_info.vk_command_buffer;
@@ -602,14 +600,16 @@ fn _recordRenderPass(mesh_handle : Renderer.MeshHandle, record_info : * const Re
 
    c.vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
 
-   const vk_buffer_draw_offset_vertex  = @as(u64, mesh_handle.allocation.offset);
-   const vk_buffer_draw_offset_index   = @as(u64, mesh_handle.allocation.offset + mesh_handle.allocation.length - mesh_handle.indices * @sizeOf(types.Mesh.IndexElement));
+   for (mesh_handles) |mesh_handle| {
+      const vk_buffer_draw_offset_vertex  = @as(u64, mesh_handle.allocation.offset);
+      const vk_buffer_draw_offset_index   = @as(u64, mesh_handle.allocation.offset + mesh_handle.allocation.length - mesh_handle.indices * @sizeOf(types.Mesh.IndexElement));
 
-   c.vkCmdBindVertexBuffers(vk_command_buffer, 0, 1, &vk_buffer_draw, &vk_buffer_draw_offset_vertex);
+      c.vkCmdBindVertexBuffers(vk_command_buffer, 0, 1, &vk_buffer_draw, &vk_buffer_draw_offset_vertex);
 
-   c.vkCmdBindIndexBuffer(vk_command_buffer, vk_buffer_draw, vk_buffer_draw_offset_index, c.VK_INDEX_TYPE_UINT16);
+      c.vkCmdBindIndexBuffer(vk_command_buffer, vk_buffer_draw, vk_buffer_draw_offset_index, c.VK_INDEX_TYPE_UINT16);
 
-   c.vkCmdDrawIndexed(vk_command_buffer, mesh_handle.indices, 1, 0, 0, 0);
+      c.vkCmdDrawIndexed(vk_command_buffer, mesh_handle.indices, 1, 0, 0, 0);
+   }
 
    c.vkCmdEndRenderPass(vk_command_buffer);
 
