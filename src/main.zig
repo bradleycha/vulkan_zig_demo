@@ -17,7 +17,6 @@ const MainError = error {
 
 const PROGRAM_NAME                     = "Learn Graphics Programming with Zig!";
 const WINDOW_TITLE_UPDATE_TIME_SECONDS = 1.0;
-const ROTATE_SPEED                     = 2.0;
 
 pub fn main() MainError!void {
    var heap = chooseHeapSettings();
@@ -63,12 +62,7 @@ pub fn main() MainError!void {
    const mesh_handle_test_octagon = renderer.loadMesh(&resources.meshes.MESH_TEST_OCTAGON) catch return error.ResourceLoadError;
    defer renderer.unloadMesh(mesh_handle_test_octagon);
 
-   const mesh_transform_test_triangle  = renderer.meshTransformMut(mesh_handle_test_triangle);
-   const mesh_transform_test_octagon   = renderer.meshTransformMut(mesh_handle_test_octagon);
-
    std.log.info("initialization complete, entering main loop", .{});
-
-   var theta : f32 = 0.0;
    while (window.shouldClose() == false) {
       const time_delta        = @as(f64, @floatFromInt(timer_delta.lap())) / 1000000000.0;
       const time_window_title = @as(f64, @floatFromInt(timer_window_title.read())) / 1000000000.0;
@@ -87,13 +81,6 @@ pub fn main() MainError!void {
 
          window.setTitle(title);
       }
-
-      theta = @floatCast(@rem(theta + ROTATE_SPEED * time_delta, std.math.pi * 2.0));
-
-      // TODO: Improve math library to remove magic numbers
-      mesh_transform_test_triangle.items[14] = std.math.cos(theta);
-      mesh_transform_test_octagon.items[12] = std.math.cos(theta) * 0.5;
-      mesh_transform_test_octagon.items[13] = std.math.sin(theta) * 0.5 * -1.0;
 
       window.pollEvents() catch |err| {
          std.log.warn("failed to poll window events: {}", .{err});
