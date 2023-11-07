@@ -6,16 +6,6 @@ const c        = @import("cimports");
 pub const MemoryHeap = struct {
    vk_buffer               : c.VkBuffer,
    vk_device_memory        : c.VkDeviceMemory,
-   allocation_nodes        : std.ArrayListUnmanaged(? AllocationNode),
-   allocation_nodes_head   : u32,
-   heap_size               : u32,
-   
-   const AllocationNode = struct {
-      next        : u32,
-      allocation  : Allocation,
-
-      pub const NULL_INDEX = std.math.maxInt(u32);
-   };
 
    pub const Allocation = struct {
       offset   : u32,
@@ -109,18 +99,14 @@ pub const MemoryHeap = struct {
       _ = allocator;
 
       return @This(){
-         .vk_buffer              = vk_buffer,
-         .vk_device_memory       = vk_device_memory,
-         .allocation_nodes       = .{},
-         .allocation_nodes_head  = AllocationNode.NULL_INDEX,
-         .heap_size              = heap_size,
+         .vk_buffer        = vk_buffer,
+         .vk_device_memory = vk_device_memory,
       };
    }
 
    pub fn destroy(self : @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
-      var self_mut = self;
+      _ = allocator;
 
-      self_mut.allocation_nodes.deinit(allocator);
       c.vkFreeMemory(vk_device, self.vk_device_memory, null);
       c.vkDestroyBuffer(vk_device, self.vk_buffer, null);
       return;
@@ -229,167 +215,18 @@ pub const MemoryHeap = struct {
       OutOfMemory,
    };
 
-   fn _getAllocationNode(self : * @This(), index : u32) * AllocationNode {
-      const allocation_node_fallible = &self.allocation_nodes.items[index];
-
-      if (builtin.mode == .Debug and allocation_node_fallible.* == null) {
-         @panic("attempted to access nonexistant allocation node");
-      }
-
-      return @ptrCast(allocation_node_fallible);
-   }
-
    pub fn allocate(self : * @This(), allocator : std.mem.Allocator, allocate_info : * const AllocateInfo) AllocateError!Allocation {
-      const bytes       = allocate_info.bytes;
-      const alignment   = allocate_info.alignment;
-
-      if (bytes > self.heap_size) {
-         return error.OutOfMemory;
-      }
-
-      const allocation_nodes_head = self.allocation_nodes_head;
-
-      // Is this the first allocation?
-      if (allocation_nodes_head == AllocationNode.NULL_INDEX) {
-         const allocation = Allocation{
-            .offset  = 0,
-            .length  = bytes,
-         };
-
-         try self.allocation_nodes.append(allocator, .{
-            .next       = AllocationNode.NULL_INDEX,
-            .allocation = allocation,
-         });
-
-         self.allocation_nodes_head = 0;
-
-         return allocation;
-      }
-
-      // Search for a free block of memory in the middle of the heap
-      var allocation_node_curr_index = self.allocation_nodes_head;
-      var allocation_node_next_index = self._getAllocationNode(self.allocation_nodes_head).next;
-      while (allocation_node_next_index != AllocationNode.NULL_INDEX) {
-         const allocation_node_curr = self._getAllocationNode(allocation_node_curr_index);
-         const allocation_node_next = self._getAllocationNode(allocation_node_next_index);
-
-         const allocation_curr = &allocation_node_curr.allocation;
-         const allocation_next = &allocation_node_next.allocation;
-
-         const block_size_unaligned = allocation_next.offset - allocation_curr.offset - allocation_curr.length;
-         const block_size = block_size_unaligned - @rem(block_size_unaligned, alignment);
-
-         if (block_size >= bytes) {
-            break;
-         }
-
-         allocation_node_curr_index = allocation_node_next_index;
-         allocation_node_next_index = allocation_node_next.next;
-      }
-
-      const allocation_node_prev = self._getAllocationNode(allocation_node_curr_index);
-
-      // If we reached the end of the heap, make sure some memory is still available
-      if (allocation_node_next_index == AllocationNode.NULL_INDEX) {
-         const allocation_node   = self._getAllocationNode(allocation_node_curr_index);
-         const allocation        = &allocation_node.allocation;
-
-         const block_size_unaligned = self.heap_size - allocation.offset - allocation.length;
-         const block_size = block_size_unaligned - @rem(block_size_unaligned, alignment);
-
-         if (block_size < bytes) {
-            return error.OutOfMemory;
-         }
-      }
-
-      // Find the index into the allocation nodes storage to insert if available
-      var allocation_node_insert_index : ? u32 = null;
-      for (self.allocation_nodes.items, 0..self.allocation_nodes.items.len) |allocation_node, i| {
-         if (allocation_node == null) {
-            allocation_node_insert_index = @intCast(i);
-            break;
-         }
-      }
-
-      const allocation_node_new_index = blk: {
-         if (allocation_node_insert_index) |index| {
-            break :blk index;
-         } else {
-            break :blk @as(u32, @intCast(self.allocation_nodes.items.len));
-         }
-      };
-
-      if (allocation_node_insert_index == null) {
-         try self.allocation_nodes.resize(allocator, self.allocation_nodes.items.len + 1);
-      }
-
-      // Create the allocation
-      const offset_unaligned = allocation_node_prev.allocation.offset + allocation_node_prev.allocation.length;
-      const offset = offset_unaligned + (alignment - @rem(offset_unaligned, alignment));
-      const allocation = Allocation{
-         .offset  = offset,
-         .length  = bytes,
-      };
-
-      // Insert the allocation into the list
-      const next = blk: {
-         if (allocation_node_next_index == AllocationNode.NULL_INDEX) {
-            break :blk AllocationNode.NULL_INDEX;
-         } else {
-            break :blk self._getAllocationNode(allocation_node_next_index).next;
-         }
-      };
-
-      const allocation_node = AllocationNode{
-         .next       = next,
-         .allocation = allocation,
-      };
-
-      self.allocation_nodes.items[allocation_node_new_index] = allocation_node;
-      allocation_node_prev.next = allocation_node_new_index;
-
-      return allocation;
+      _ = self;
+      _ = allocator;
+      _ = allocate_info;
+      unreachable;
    }
 
    pub fn free(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation) void {
-      var allocation_node_index_prev : u32 = undefined;
-      var allocation_node_index = self.allocation_nodes_head;
-      while (allocation_node_index != AllocationNode.NULL_INDEX) {
-         const allocation_node = self.allocation_nodes.items[allocation_node_index] orelse unreachable;
-         
-         if (allocation_node.allocation.offset == allocation.offset) {
-            break;
-         }
-
-         allocation_node_index_prev = allocation_node_index;
-         allocation_node_index      = allocation_node.next;
-      }
-
-      // We assume an invalid block isn't used because remember...
-      // "If you just program well, you don't need safety checks" - Kaze Emanuar 2021
-      if (builtin.mode == .Debug and allocation_node_index == AllocationNode.NULL_INDEX) {
-         @panic("attempted to free a non-existant allocation");
-      }
-
-      // Do we stitch together the previous with the next or are we freeing the head?
-      if (allocation_node_index != self.allocation_nodes_head) {
-         (self.allocation_nodes.items[allocation_node_index_prev] orelse unreachable).next = (self.allocation_nodes.items[allocation_node_index] orelse unreachable).next;
-      } else {
-         @setCold(true);
-         self.allocation_nodes_head = (self.allocation_nodes.items[allocation_node_index] orelse unreachable).next;
-      }
-
-      // Remove from storage
-      self.allocation_nodes.items[allocation_node_index] = null;
-
-      // Trim off as many nulls off the end of the array as possible
-      var trimmed_length = self.allocation_nodes.items.len;
-      while (trimmed_length != 0 and self.allocation_nodes.items[trimmed_length - 1] == null) {
-         trimmed_length -= 1;
-      }
-      self.allocation_nodes.shrinkAndFree(allocator, trimmed_length);
-
-      return;
+      _ = self;
+      _ = allocator;
+      _ = allocation;
+      unreachable;
    }
 };
 
