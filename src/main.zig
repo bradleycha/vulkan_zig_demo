@@ -63,6 +63,9 @@ pub fn main() MainError!void {
    const mesh_handle_test_octagon = renderer.loadMesh(&resources.meshes.MESH_TEST_OCTAGON) catch return error.ResourceLoadError;
    defer renderer.unloadMesh(mesh_handle_test_octagon);
 
+   const mesh_transform_test_octagon   = renderer.meshTransformMut(mesh_handle_test_octagon);
+   const mesh_transform_test_triangle  = renderer.meshTransformMut(mesh_handle_test_triangle);
+
    std.log.info("initialization complete, entering main loop", .{});
 
    var theta : f32 = 0.0;
@@ -88,9 +91,9 @@ pub fn main() MainError!void {
       theta = @floatCast(@rem(theta + SPIN_SPEED * time_delta, std.math.pi * 2.0));
 
       // TODO: Abstract this in the math library
-      const transform = renderer.meshTransformMut(mesh_handle_test_octagon);
-      transform.items[12] = std.math.cos(theta) * 0.5;
-      transform.items[13] = std.math.sin(theta) * -0.5;
+      mesh_transform_test_octagon.items[12] = std.math.cos(theta) * 0.5;
+      mesh_transform_test_octagon.items[13] = std.math.sin(theta) * -0.5;
+      mesh_transform_test_triangle.items[14] = std.math.cos(theta);
 
       window.pollEvents() catch |err| {
          std.log.warn("failed to poll window events: {}", .{err});
