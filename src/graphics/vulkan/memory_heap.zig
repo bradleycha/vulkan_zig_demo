@@ -275,6 +275,10 @@ const _Heap = struct {
    pub fn deinit(self : @This(), allocator : std.mem.Allocator) void {
       var self_mut = self;
 
+      if (std.debug.runtime_safety == true) {
+         _checkForMemoryLeaks(&self_mut);
+      }
+
       self_mut.nodes.deinit(allocator);
       return;
    }
@@ -392,6 +396,7 @@ const _Heap = struct {
    }
 
    pub fn free(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation) void {
+      // TODO: Implement
       _ = self;
       _ = allocator;
       _ = allocation;
@@ -467,5 +472,26 @@ fn _findFirstNullNode(heap : * const _Heap) ? usize {
    }
 
    return null;
+}
+
+fn _checkForMemoryLeaks(heap : * _Heap) void {
+   var allocation_node_index = heap.head;
+   while (allocation_node_index != _nullAllocationNodeIndex()) {
+      const allocation_node   = _getAllocationNode(heap, allocation_node_index);
+      const allocation        = &allocation_node.allocation;
+
+      std.log.err("(vulkan memory heap) block 0x{x:0>8} - 0x{x:0>8} leaked", .{
+         allocation.offset,
+         allocation.offset + allocation.length,
+      });
+
+      allocation_node_index = allocation_node.next;
+   }
+
+   if (heap.head != _nullAllocationNodeIndex()) {
+      @panic("vulkan memory heap leaked memory");
+   }
+
+   return;
 }
 
