@@ -435,7 +435,7 @@ const _Heap = struct {
          @panic("attempted to free invalid block");
       }
 
-      allocation_node_prev.next = allocation_node_index_next;
+      allocation_node_prev.next = allocation_node_curr.next;
       _setAllocationNodeNull(allocation_node_curr);
 
       var nodes_new_size : usize = self.nodes.items.len;
