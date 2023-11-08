@@ -396,10 +396,61 @@ const _Heap = struct {
    }
 
    pub fn free(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation) void {
-      // TODO: Implement
-      _ = self;
-      _ = allocator;
-      _ = allocation;
+      if (std.debug.runtime_safety == true and self.head == _nullAllocationNodeIndex()) {
+         @panic("attempted to free block from empty heap");
+      }
+
+      const allocation_node_head = _getAllocationNode(self, self.head);
+
+      if (allocation_node_head.next == _nullAllocationNodeIndex()) {
+         if (std.debug.runtime_safety == true and allocation_node_head.allocation.offset != allocation.offset) {
+            @panic("attempted to free invalid block");
+         }
+
+         self.head = _nullAllocationNodeIndex();
+         self.nodes.clearAndFree(allocator);
+         return;
+      }
+
+      var allocation_node_index_prev = self.head;
+      var allocation_node_index_curr = allocation_node_head.next;
+      var allocation_node_index_next = _getAllocationNode(self, allocation_node_index_curr).next;
+      while (allocation_node_index_next != _nullAllocationNodeIndex()) {
+         const allocation_node_curr = _getAllocationNode(self, allocation_node_index_curr);
+         const allocation_curr      = &allocation_node_curr.allocation;
+
+         if (allocation_curr.offset == allocation.offset) {
+            break;
+         }
+
+         allocation_node_index_prev = allocation_node_index_curr;
+         allocation_node_index_curr = allocation_node_index_next;
+         allocation_node_index_next = allocation_node_curr.next;
+      }
+
+      const allocation_node_prev = _getAllocationNode(self, allocation_node_index_prev);
+      const allocation_node_curr = _getAllocationNode(self, allocation_node_index_curr);
+
+      if (std.debug.runtime_safety and allocation_node_curr.allocation.offset != allocation.offset) {
+         @panic("attempted to free invalid block");
+      }
+
+      allocation_node_prev.next = allocation_node_index_next;
+      _setAllocationNodeNull(allocation_node_curr);
+
+      var nodes_new_size : usize = self.nodes.items.len;
+      while (nodes_new_size != 0) {
+         const node = _getAllocationNodeOptional(self, nodes_new_size - 1);
+
+         if (_allocationNodeIsNull(node) == false) {
+            break;
+         }
+
+         nodes_new_size -= 1;
+      }
+
+      self.nodes.shrinkAndFree(allocator, nodes_new_size);
+
       return;
    }
 };
