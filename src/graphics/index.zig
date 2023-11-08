@@ -344,7 +344,7 @@ pub const Renderer = struct {
          .vk_command_buffer_transfer   = self._vulkan_command_buffer_transfer.vk_command_buffer,
       }) catch return error.TransferError;
 
-      const mesh_transform = types.Matrix4(f32){.items = .{
+      const transform_mesh = types.Matrix4(f32){.items = .{
          1.0, 0.0, 0.0, 0.0,
          0.0, 1.0, 0.0, 0.0,
          0.0, 0.0, 1.0, 0.0,
@@ -352,7 +352,7 @@ pub const Renderer = struct {
       }};
 
       const push_constants = types.PushConstants{
-         .mesh_transform   = mesh_transform,
+         .transform_mesh = transform_mesh,
       };
 
       const mesh_object = MeshObject{
@@ -390,11 +390,11 @@ pub const Renderer = struct {
    }
 
    pub fn meshTransform(self : * const @This(), mesh_handle : MeshHandle) * const types.Matrix4(f32) {
-      return &self._loaded_meshes.items[mesh_handle.index].push_constants.mesh_transform;
+      return &self._loaded_meshes.items[mesh_handle.index].push_constants.transform_mesh;
    }
 
    pub fn meshTransformMut(self : * @This(), mesh_handle : MeshHandle) * types.Matrix4(f32) {
-      return &self._loaded_meshes.items[mesh_handle.index].push_constants.mesh_transform;
+      return &self._loaded_meshes.items[mesh_handle.index].push_constants.transform_mesh;
    }
 
    pub fn drawFrame(self : * @This(), mesh_handles : [] const MeshHandle) DrawError!void {

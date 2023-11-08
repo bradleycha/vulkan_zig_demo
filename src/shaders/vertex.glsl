@@ -8,11 +8,11 @@ layout (location = 0) smooth out vec4 f_color;
 layout (location = 1) smooth out vec2 f_sample;
 
 layout (push_constant) uniform PushConstants {
-   mat4  mesh_transform;
+   mat4  transform_mesh;
 } push_constants;
 
 void main() {
-   vec4 v_position_world = push_constants.mesh_transform * vec4(v_position, 1.0);
+   vec4 v_position_world = push_constants.transform_mesh * vec4(v_position, 1.0);
 
    f_color     = v_color;
    f_sample    = v_sample;

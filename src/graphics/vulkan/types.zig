@@ -107,6 +107,11 @@ pub const Mesh = struct {
 };
 
 pub const PushConstants = packed struct {
-   mesh_transform   : Matrix4(f32), // 64 bytes
+   transform_mesh : Matrix4(f32), // 64 bytes   | offset +0
+};
+
+pub const UniformBufferObject = packed struct {
+   transform_camera     : Matrix4(f32),   // 64 bytes | offset +0
+   transform_projection : Matrix4(f32),   // 64 bytes | offset +64
 };
 
