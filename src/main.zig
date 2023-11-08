@@ -17,6 +17,7 @@ const MainError = error {
 
 const PROGRAM_NAME                     = "Learn Graphics Programming with Zig!";
 const WINDOW_TITLE_UPDATE_TIME_SECONDS = 1.0;
+const SPIN_SPEED                       = 2.0;
 
 pub fn main() MainError!void {
    var heap = chooseHeapSettings();
@@ -63,6 +64,8 @@ pub fn main() MainError!void {
    defer renderer.unloadMesh(mesh_handle_test_octagon);
 
    std.log.info("initialization complete, entering main loop", .{});
+
+   var theta : f32 = 0.0;
    while (window.shouldClose() == false) {
       const time_delta        = @as(f64, @floatFromInt(timer_delta.lap())) / 1000000000.0;
       const time_window_title = @as(f64, @floatFromInt(timer_window_title.read())) / 1000000000.0;
@@ -81,6 +84,13 @@ pub fn main() MainError!void {
 
          window.setTitle(title);
       }
+
+      theta = @floatCast(@rem(theta + SPIN_SPEED * time_delta, std.math.pi * 2.0));
+
+      // TODO: Abstract this in the math library
+      const transform = renderer.meshTransformMut(mesh_handle_test_octagon);
+      transform.items[12] = std.math.cos(theta) * 0.5;
+      transform.items[13] = std.math.sin(theta) * -0.5;
 
       window.pollEvents() catch |err| {
          std.log.warn("failed to poll window events: {}", .{err});

@@ -344,7 +344,7 @@ pub const Renderer = struct {
          .vk_command_buffer_transfer   = self._vulkan_command_buffer_transfer.vk_command_buffer,
       }) catch return error.TransferError;
 
-      const transform = types.Matrix4(f32){.items = .{
+      const mesh_transform = types.Matrix4(f32){.items = .{
          1.0, 0.0, 0.0, 0.0,
          0.0, 1.0, 0.0, 0.0,
          0.0, 0.0, 1.0, 0.0,
@@ -352,7 +352,7 @@ pub const Renderer = struct {
       }};
 
       const push_constants = types.PushConstants{
-         .transform  = transform,
+         .mesh_transform   = mesh_transform,
       };
 
       const mesh_object = MeshObject{
@@ -390,11 +390,11 @@ pub const Renderer = struct {
    }
 
    pub fn meshTransform(self : * const @This(), mesh_handle : MeshHandle) * const types.Matrix4(f32) {
-      return &self._loaded_meshes.items[mesh_handle.index].push_constants.transform;
+      return &self._loaded_meshes.items[mesh_handle.index].push_constants.mesh_transform;
    }
 
    pub fn meshTransformMut(self : * @This(), mesh_handle : MeshHandle) * types.Matrix4(f32) {
-      return &self._loaded_meshes.items[mesh_handle.index].push_constants.transform;
+      return &self._loaded_meshes.items[mesh_handle.index].push_constants.mesh_transform;
    }
 
    pub fn drawFrame(self : * @This(), mesh_handles : [] const MeshHandle) DrawError!void {
@@ -411,8 +411,6 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
    const vk_device                     = self._vulkan_device.vk_device;
    const vk_swapchain                  = self._vulkan_swapchain.vk_swapchain;
    const vk_command_buffer             = self._vulkan_command_buffers_draw.vk_command_buffers[frame_index];
-   const vk_render_pass                = self._vulkan_graphics_pipeline.vk_render_pass;
-   const vk_graphics_pipeline          = self._vulkan_graphics_pipeline.vk_pipeline;
    const vk_semaphore_image_available  = self._vulkan_semaphores_image_available.vk_semaphores[frame_index];
    const vk_semaphore_render_finished  = self._vulkan_semaphores_render_finished.vk_semaphores[frame_index];
    const vk_fence_in_flight            = self._vulkan_fences_in_flight.vk_fences[frame_index];
@@ -476,10 +474,9 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
    try _recordRenderPass(mesh_handles, &.{
       .vk_command_buffer         = vk_command_buffer,
       .vk_framebuffer            = vk_framebuffer,
-      .vk_render_pass            = vk_render_pass,
-      .vk_graphics_pipeline      = vk_graphics_pipeline,
       .vk_buffer_draw            = self._vulkan_memory_heap_draw.memory_heap.vk_buffer,
       .swapchain_configuration   = &self._vulkan_swapchain_configuration,
+      .graphics_pipeline         = &self._vulkan_graphics_pipeline,
       .clear_color               = &self._clear_color,
       .loaded_meshes             = self._loaded_meshes.items,
    });
@@ -603,10 +600,9 @@ fn _recreateSwapchain(self : * Renderer) SwapchainRecreateError!void {
 const RecordInfo = struct {
    vk_command_buffer       : c.VkCommandBuffer,
    vk_framebuffer          : c.VkFramebuffer,
-   vk_render_pass          : c.VkRenderPass,
-   vk_graphics_pipeline    : c.VkPipeline,
    vk_buffer_draw          : c.VkBuffer,
    swapchain_configuration : * const vulkan.SwapchainConfiguration,
+   graphics_pipeline       : * const vulkan.GraphicsPipeline,
    clear_color             : * const ClearColor,
    loaded_meshes           : [] const Renderer.MeshObject,
 };
@@ -616,8 +612,9 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
 
    const vk_command_buffer       = record_info.vk_command_buffer;
    const vk_framebuffer          = record_info.vk_framebuffer;
-   const vk_render_pass          = record_info.vk_render_pass;
-   const vk_graphics_pipeline    = record_info.vk_graphics_pipeline;
+   const vk_render_pass          = record_info.graphics_pipeline.vk_render_pass;
+   const vk_pipeline_layout      = record_info.graphics_pipeline.vk_pipeline_layout;
+   const vk_graphics_pipeline    = record_info.graphics_pipeline.vk_pipeline;
    const vk_buffer_draw          = record_info.vk_buffer_draw;
    const swapchain_configuration = record_info.swapchain_configuration;
    const clear_color             = record_info.clear_color;
@@ -691,6 +688,8 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
 
       const vk_buffer_draw_offset_vertex  = @as(u64, mesh_object.allocation.offset);
       const vk_buffer_draw_offset_index   = @as(u64, mesh_object.allocation.offset + mesh_object.allocation.length - mesh_object.indices * @sizeOf(types.Mesh.IndexElement));
+
+      c.vkCmdPushConstants(vk_command_buffer, vk_pipeline_layout, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(types.PushConstants), &mesh_object.push_constants);
 
       c.vkCmdBindVertexBuffers(vk_command_buffer, 0, 1, &vk_buffer_draw, &vk_buffer_draw_offset_vertex);
 

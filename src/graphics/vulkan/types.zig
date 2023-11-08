@@ -107,6 +107,6 @@ pub const Mesh = struct {
 };
 
 pub const PushConstants = packed struct {
-   transform   : Matrix4(f32),   // 64 bytes
+   mesh_transform   : Matrix4(f32), // 64 bytes
 };
 

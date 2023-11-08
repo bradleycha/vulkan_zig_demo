@@ -2,7 +2,6 @@
 
 layout (location = 0) in vec4 f_color;
 layout (location = 1) in vec2 f_sample;
-layout (location = 2) in vec3 f_position;
 
 layout (location = 0) out vec4 p_color;
 
