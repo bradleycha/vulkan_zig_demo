@@ -326,8 +326,8 @@ pub const Renderer = struct {
       const allocation_transfer = try heap_transfer.memory_heap.allocate(allocator, &allocate_info);
       defer heap_transfer.memory_heap.free(allocator, allocation_transfer);
 
-      const transfer_int_ptr_vertices  = @intFromPtr(heap_transfer.mapping);
-      const transfer_int_ptr_indices   = @intFromPtr(heap_transfer.mapping) + bytes_vertices;
+      const transfer_int_ptr_vertices  = @intFromPtr(heap_transfer.mapping) + allocation_transfer.offset;
+      const transfer_int_ptr_indices   = @intFromPtr(heap_transfer.mapping) + allocation_transfer.offset + bytes_vertices;
 
       const transfer_ptr_vertices   = @as([*] types.Vertex, @ptrFromInt(transfer_int_ptr_vertices));
       const transfer_ptr_indices    = @as([*] types.Mesh.IndexElement, @ptrFromInt(transfer_int_ptr_indices));
