@@ -687,7 +687,7 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
       const mesh_object = loaded_meshes[mesh_handle.index];
 
       const vk_buffer_draw_offset_vertex  = @as(u64, mesh_object.allocation.offset);
-      const vk_buffer_draw_offset_index   = @as(u64, mesh_object.allocation.offset + mesh_object.allocation.length - mesh_object.indices * @sizeOf(types.Mesh.IndexElement));
+      const vk_buffer_draw_offset_index   = @as(u64, mesh_object.allocation.offset + mesh_object.allocation.bytes - mesh_object.indices * @sizeOf(types.Mesh.IndexElement));
 
       c.vkCmdPushConstants(vk_command_buffer, vk_pipeline_layout, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(types.PushConstants), &mesh_object.push_constants);
 

@@ -1,12 +1,14 @@
-const root     = @import("index.zig");
-const std      = @import("std");
-const builtin  = @import("builtin");
-const c        = @import("cimports");
+const root        = @import("index.zig");
+const std         = @import("std");
+const c           = @import("cimports");
+const structures  = @import("structures");
 
 pub const MemoryHeap = struct {
    vk_buffer         : c.VkBuffer,
    vk_device_memory  : c.VkDeviceMemory,
-   _heap             : _Heap,
+   heap              : Heap,
+
+   const Heap = structures.Heap(u32);
 
    pub const CreateInfo = struct {
       physical_device   : * const root.PhysicalDevice,
@@ -97,12 +99,12 @@ pub const MemoryHeap = struct {
       return @This(){
          .vk_buffer        = vk_buffer,
          .vk_device_memory = vk_device_memory,
-         ._heap            = .{.size = heap_size},
+         .heap             = .{.size = heap_size},
       };
    }
 
    pub fn destroy(self : @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
-      self._heap.deinit(allocator);
+      self.heap.deinit(allocator);
       c.vkFreeMemory(vk_device, self.vk_device_memory, null);
       c.vkDestroyBuffer(vk_device, self.vk_buffer, null);
       return;
@@ -134,7 +136,7 @@ pub const MemoryHeap = struct {
       const device                     = transfer_info.device;
       const vk_command_buffer_transfer = transfer_info.vk_command_buffer_transfer;
 
-      if (allocation_source.length > allocation_destination.length) {
+      if (allocation_source.bytes > allocation_destination.bytes) {
          return error.DestinationAllocationTooSmall;
       }
 
@@ -156,7 +158,7 @@ pub const MemoryHeap = struct {
       const vk_buffer_copy = c.VkBufferCopy{
          .srcOffset  = allocation_source.offset,
          .dstOffset  = allocation_destination.offset,
-         .size       = allocation_source.length,
+         .size       = allocation_source.bytes,
       };
 
       c.vkCmdCopyBuffer(vk_command_buffer_transfer, heap_source.vk_buffer, heap_destination.vk_buffer, 1, &vk_buffer_copy);
@@ -202,18 +204,18 @@ pub const MemoryHeap = struct {
       return;
    }
 
-   pub const Allocation = _Heap.Allocation;
+   pub const Allocation = Heap.Allocation;
 
-   pub const AllocateInfo = _Heap.AllocateInfo;
+   pub const AllocateInfo = Heap.AllocateInfo;
 
-   pub const AllocateError = _Heap.AllocateError;
+   pub const AllocateError = Heap.AllocateError;
 
    pub fn allocate(self : * @This(), allocator : std.mem.Allocator, allocate_info : * const AllocateInfo) AllocateError!Allocation {
-      return self._heap.allocate(allocator, allocate_info);
+      return self.heap.allocate(allocator, allocate_info);
    }
 
    pub fn free(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation) void {
-      return self._heap.free(allocator, allocation);
+      return self.heap.free(allocator, allocation);
    }
 };
 
@@ -265,284 +267,5 @@ fn _chooseMemoryTypeIndex(vk_memory_property_flags : c.VkMemoryPropertyFlags, vk
    }
 
    return null;
-}
-
-const _Heap = struct {
-   nodes : std.ArrayListUnmanaged(AllocationNode) = .{},
-   head  : usize = _nullAllocationNodeIndex(),
-   size  : u32,
-
-   pub fn deinit(self : @This(), allocator : std.mem.Allocator) void {
-      var self_mut = self;
-
-      if (std.debug.runtime_safety == true) {
-         _checkForMemoryLeaks(&self_mut);
-      }
-
-      self_mut.nodes.deinit(allocator);
-      return;
-   }
-
-   pub const Allocation = struct {
-      offset   : u32,
-      length   : u32,
-   };
-
-   pub const AllocationNode = struct {
-      next        : usize,
-      allocation  : Allocation,
-   };
-
-   pub const AllocateInfo = struct {
-      alignment   : u32,
-      bytes       : u32,
-   };
-
-   pub const AllocateError = error {
-      OutOfMemory,
-   };
-
-   pub fn allocate(self : * @This(), allocator : std.mem.Allocator, allocate_info : * const AllocateInfo) AllocateError!Allocation {
-      if (allocate_info.bytes > self.size) {
-         return error.OutOfMemory;
-      }
-
-      if (self.head == _nullAllocationNodeIndex()) {
-         const allocation = Allocation{
-            .offset = 0,
-            .length = allocate_info.bytes,
-         };
-
-         const allocation_node = AllocationNode{
-            .next       = _nullAllocationNodeIndex(),
-            .allocation = allocation,
-         };
-
-         try self.nodes.append(allocator, allocation_node);
-         self.head = 0;
-
-         return allocation;
-      }
-
-      var offset_aligned : u32 = undefined;
-
-      var allocation_node_index_prev = self.head;
-      var allocation_node_index_curr = _getAllocationNode(self, self.head).next;
-      while (allocation_node_index_curr != _nullAllocationNodeIndex()) {
-         const allocation_node_prev = _getAllocationNode(self, allocation_node_index_prev);
-         const allocation_node_curr = _getAllocationNode(self, allocation_node_index_curr);
-
-         const allocation_prev = &allocation_node_prev.allocation;
-         const allocation_curr = &allocation_node_curr.allocation;
-
-         const block_start = allocation_prev.offset + allocation_prev.length;
-         const block_end   = allocation_curr.offset;
-
-         const block_size = _blockSizeAligned(block_start, block_end, allocate_info.alignment);
-
-         if (block_size >= allocate_info.bytes) {
-            offset_aligned = _alignForward(block_start, allocate_info.alignment);
-            break;
-         }
-
-         allocation_node_index_prev = allocation_node_index_curr;
-         allocation_node_index_curr = allocation_node_curr.next;
-      }
-
-      if (allocation_node_index_curr == _nullAllocationNodeIndex()) {
-         const allocation_node_prev = _getAllocationNode(self, allocation_node_index_prev);
-         const allocation_prev      = &allocation_node_prev.allocation;
-
-         const block_start = allocation_prev.offset + allocation_prev.length;
-         const block_end   = self.size;
-
-         const block_size = _blockSizeAligned(block_start, block_end, allocate_info.alignment);
-
-         if (block_size < allocate_info.bytes) {
-            return error.OutOfMemory;
-         }
-
-         offset_aligned = _alignForward(block_start, allocate_info.alignment);
-      }
-
-      const insert_index_found = _findFirstNullNode(self);
-
-      if (insert_index_found == null) {
-         try self.nodes.resize(allocator, self.nodes.items.len + 1);
-      }
-
-      const insert_index = blk: {
-         if (insert_index_found) |index| {
-            break :blk index;
-         } else {
-            break :blk self.nodes.items.len - 1;
-         }
-      };
-
-      const allocation = Allocation{
-         .offset  = offset_aligned,
-         .length  = allocate_info.bytes,
-      };
-
-      const allocation_node = AllocationNode{
-         .next       = allocation_node_index_curr,
-         .allocation = allocation,
-      };
-
-      self.nodes.items[insert_index] = allocation_node;
-      _getAllocationNode(self, allocation_node_index_prev).next = insert_index;
-
-      return allocation;
-   }
-
-   pub fn free(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation) void {
-      if (std.debug.runtime_safety == true and self.head == _nullAllocationNodeIndex()) {
-         @panic("attempted to free block from empty heap");
-      }
-
-      const allocation_node_head = _getAllocationNode(self, self.head);
-
-      if (allocation_node_head.next == _nullAllocationNodeIndex()) {
-         if (std.debug.runtime_safety == true and allocation_node_head.allocation.offset != allocation.offset) {
-            @panic("attempted to free invalid block");
-         }
-
-         self.head = _nullAllocationNodeIndex();
-         self.nodes.clearAndFree(allocator);
-         return;
-      }
-
-      var allocation_node_index_prev = self.head;
-      var allocation_node_index_curr = allocation_node_head.next;
-      var allocation_node_index_next = _getAllocationNode(self, allocation_node_index_curr).next;
-      while (allocation_node_index_next != _nullAllocationNodeIndex()) {
-         const allocation_node_curr = _getAllocationNode(self, allocation_node_index_curr);
-         const allocation_curr      = &allocation_node_curr.allocation;
-
-         if (allocation_curr.offset == allocation.offset) {
-            break;
-         }
-
-         allocation_node_index_prev = allocation_node_index_curr;
-         allocation_node_index_curr = allocation_node_index_next;
-         allocation_node_index_next = allocation_node_curr.next;
-      }
-
-      const allocation_node_prev = _getAllocationNode(self, allocation_node_index_prev);
-      const allocation_node_curr = _getAllocationNode(self, allocation_node_index_curr);
-
-      if (std.debug.runtime_safety and allocation_node_curr.allocation.offset != allocation.offset) {
-         @panic("attempted to free invalid block");
-      }
-
-      allocation_node_prev.next = allocation_node_curr.next;
-      _setAllocationNodeNull(allocation_node_curr);
-
-      var nodes_new_size : usize = self.nodes.items.len;
-      while (nodes_new_size != 0) {
-         const node = _getAllocationNodeOptional(self, nodes_new_size - 1);
-
-         if (_allocationNodeIsNull(node) == false) {
-            break;
-         }
-
-         nodes_new_size -= 1;
-      }
-
-      self.nodes.shrinkAndFree(allocator, nodes_new_size);
-
-      return;
-   }
-};
-
-// We use sentinel values instead of nullable types so we can save on memory
-// and also get around some annoying type stuff which result from nulls.
-
-const NULL_ALLOCATION_NODE_INDEX = std.math.maxInt(usize);
-
-const NULL_ALLOCATION_OFFSET = std.math.maxInt(u32);
-
-fn _nullAllocationNodeIndex() usize {
-   return NULL_ALLOCATION_NODE_INDEX;
-}
-
-fn _setAllocationNodeNull(node : * _Heap.AllocationNode) void {
-   node.allocation.offset = NULL_ALLOCATION_OFFSET;
-   return;
-}
-
-fn _allocationNodeIsNull(node : * _Heap.AllocationNode) bool {
-   return node.allocation.offset == NULL_ALLOCATION_OFFSET;
-}
-
-fn _getAllocationNodeOptional(heap : * _Heap, index : usize) * _Heap.AllocationNode {
-   if (std.debug.runtime_safety == true and index == _nullAllocationNodeIndex()) {
-      @panic("attempted to get allocation node with null index");
-   }
-
-   if (std.debug.runtime_safety == true and index >= heap.nodes.items.len) {
-      @panic("attempted to get allocation node with invalid index");
-   }
-
-   return &heap.nodes.items[index];
-}
-
-fn _getAllocationNode(heap : * _Heap, index : usize) * _Heap.AllocationNode {
-   const node = _getAllocationNodeOptional(heap, index);
-
-   if (std.debug.runtime_safety == true and _allocationNodeIsNull(node)) {
-      @panic("attempted to get null allocation node");
-   }
-
-   return node;
-}
-
-fn _alignForward(value : u32, alignment : u32) u32 {
-   return value + alignment - @rem(value, alignment);
-}
-
-fn _blockSizeAligned(start : u32, end : u32, alignment : u32) u32 {
-   const size_unaligned = end - start;
-
-   if (size_unaligned < alignment) {
-      return 0;
-   }
-
-   const start_aligned = _alignForward(start, alignment);
-
-   const size_aligned = end - start_aligned;
-
-   return size_aligned;
-}
-
-fn _findFirstNullNode(heap : * const _Heap) ? usize {
-   for (heap.nodes.items, 0..heap.nodes.items.len) |*node, i| {
-      if (_allocationNodeIsNull(node) == true) {
-         return i;
-      }
-   }
-
-   return null;
-}
-
-fn _checkForMemoryLeaks(heap : * _Heap) void {
-   var allocation_node_index = heap.head;
-   while (allocation_node_index != _nullAllocationNodeIndex()) {
-      const allocation_node   = _getAllocationNode(heap, allocation_node_index);
-      const allocation        = &allocation_node.allocation;
-
-      std.log.err("(vulkan memory heap) block 0x{x:0>8} - 0x{x:0>8} leaked", .{
-         allocation.offset,
-         allocation.offset + allocation.length,
-      });
-
-      allocation_node_index = allocation_node.next;
-   }
-
-   if (heap.head != _nullAllocationNodeIndex()) {
-      @panic("vulkan memory heap leaked memory");
-   }
-
-   return;
 }
 
