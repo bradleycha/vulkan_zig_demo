@@ -32,17 +32,96 @@ pub fn Heap(comptime memory_precision : type) type {
       }
 
       pub fn allocate(self : * @This(), allocator : std.mem.Allocator, allocate_info : * const AllocateInfo) AllocateError!Allocation {
-         _ = self;
-         _ = allocator;
-         _ = allocate_info;
-         unreachable;
+         // Start off checking if we can fit the allocation into an empty heap
+         // Note that the first allocation into an empty heap will always
+         // satisfy the required alignment since we start at address zero.
+         if (allocate_info.bytes > self.size) {
+            return error.OutOfMemory;
+         }
+
+         // If this is the first allocation, create it right away.
+         if (self.head == NULL_ALLOCATION_NODE_INDEX) {
+            const block = Allocation{
+               .offset  = 0,
+               .bytes   = allocate_info.bytes,
+            };
+
+            const allocation_node = AllocationNode{
+               .block   = block,
+               .next    = NULL_ALLOCATION_NODE_INDEX,
+            };
+
+            try self.nodes.append(allocator, allocation_node);            
+            self.head = self.nodes.items.len - 1;
+
+            return block;
+         }
+
+         // Attempt to find a free block in the middle of the heap
+         var node_index_prev = self.head;
+         var node_index_curr = self._getNode(self.head).next;
+         while (node_index_curr != NULL_ALLOCATION_NODE_INDEX) {
+            const node_prev = self._getNode(node_index_prev);
+            const node_curr = self._getNode(node_index_curr);
+
+            const block_prev = &node_prev.block;
+            const block_curr = &node_curr.block;
+
+            const free_block_start  = block_prev.offset + block_prev.bytes;
+            const free_block_end    = block_curr.offset;
+            const free_block_size   = _calculateAlignedBlockSize(free_block_start, free_block_end, allocate_info.alignment);
+
+            if (free_block_size >= allocate_info.bytes) {
+               break;
+            }
+
+            node_index_prev = node_index_curr;
+            node_index_curr = node_curr.next;
+         }
+
+         const node_prev   = self._getNodeMut(node_index_prev);
+         const block_prev  = &node_prev.block;
+
+         const free_block_start = block_prev.offset + block_prev.bytes;
+
+         // If we reached the end of the heap, make sure we have enough free memory
+         if (node_index_curr == NULL_ALLOCATION_NODE_INDEX) {
+            const free_block_end    = self.size;
+            const free_block_size   = _calculateAlignedBlockSize(free_block_start, free_block_end, allocate_info.alignment);
+
+            if (free_block_size < allocate_info.bytes) {
+               return error.OutOfMemory;
+            }
+         }
+
+         // Create a new index for our node
+         const node_index = try self._nextAvailableNodeIndex(allocator);
+
+         // Create the allocation block and node
+         const block_offset = _alignForward(free_block_start, allocate_info.alignment);
+         const block = Allocation{
+            .offset  = block_offset,
+            .bytes   = allocate_info.bytes,
+         };
+
+         const node = AllocationNode{
+            .block   = block,
+            .next    = node_index_curr,
+         };
+
+         // Insert the new node into the list
+         node_prev.next = node_index;
+         self.nodes.items[node_index] = node;
+
+         // Return the freshly baked allocation
+         return block;
       }
 
       pub fn free(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation) void {
          _ = self;
          _ = allocator;
          _ = allocation;
-         unreachable;
+         return;
       }
 
       const AllocationNode = struct {
@@ -122,13 +201,39 @@ pub fn Heap(comptime memory_precision : type) type {
          return node;
       }
 
+      fn _alignForward(value : memory_precision, alignment : memory_precision) memory_precision {
+         return value + alignment - @rem(value, alignment);
+      }
+
+      fn _calculateAlignedBlockSize(start : memory_precision, end : memory_precision, alignment : memory_precision) memory_precision {
+         const start_aligned = _alignForward(start, alignment);
+
+         if (start_aligned >= end) {
+            return 0;
+         }
+
+         return end - start_aligned;
+      }
+
+      fn _nextAvailableNodeIndex(self : * @This(), allocator : std.mem.Allocator) std.mem.Allocator.Error!usize {
+         for (self.nodes.items, 0..self.nodes.items.len) |*node, i| {
+            if (_allocationNodeIsNull(node) == true) {
+               return i;
+            }
+         }
+
+         try self.nodes.resize(allocator, self.nodes.items.len + 1);
+
+         return self.nodes.items.len - 1;
+      }
+
       fn _checkMemoryLeaks(self : * const @This()) void {
          var node_index_curr = self.head;
          while (node_index_curr != NULL_ALLOCATION_NODE_INDEX) {
             const node  = self._getNode(node_index_curr);
             const block = &node.block;
 
-            std.log.err("heap memory leaked at {x} - {x}", .{block.offset, block.offset + block.bytes});
+            std.log.err("heap memory leaked at block 0x{x} - 0x{x}", .{block.offset, block.offset + block.bytes});
 
             node_index_curr = node.next;
          }
@@ -137,6 +242,16 @@ pub fn Heap(comptime memory_precision : type) type {
             @panic("heap memory leaked");
          }
 
+         return;
+      }
+
+      fn _drainTrailingFreedNodes(self : * @This(), allocator : std.mem.Allocator) void {
+         var new_length : usize = self.nodes.items.len;
+         while (self._getNodeOptional(new_length - 1) == null) {
+            new_length -= 1;
+         }
+
+         self.nodes.shrinkAndFree(allocator, new_length);
          return;
       }
    };
