@@ -18,9 +18,10 @@ pub const ClearColor = union(ClearColorTag) {
 };
 
 pub const GraphicsPipeline = struct {
-   vk_render_pass       : c.VkRenderPass,
-   vk_pipeline_layout   : c.VkPipelineLayout,
-   vk_pipeline          : c.VkPipeline,
+   vk_render_pass             : c.VkRenderPass,
+   vk_descriptor_set_layout   : c.VkDescriptorSetLayout,
+   vk_pipeline_layout         : c.VkPipelineLayout,
+   vk_pipeline                : c.VkPipeline,
 
    pub const CreateInfo = struct {
       vk_device               : c.VkDevice,
@@ -53,7 +54,10 @@ pub const GraphicsPipeline = struct {
       const vk_render_pass = try _createRenderPass(vk_device, swapchain_configuration, clear_mode);
       errdefer c.vkDestroyRenderPass(vk_device, vk_render_pass, null);
 
-      const vk_pipeline_layout = try _createPipelineLayout(vk_device);
+      const vk_descriptor_set_layout = try _createDescriptorSetLayout(vk_device);
+      errdefer c.vkDestroyDescriptorSetLayout(vk_device, vk_descriptor_set_layout, null);
+
+      const vk_pipeline_layout = try _createPipelineLayout(vk_device, vk_descriptor_set_layout);
       errdefer c.vkDestroyPipelineLayout(vk_device, vk_pipeline_layout, null);
 
       const vk_info_create_shader_stage_vertex = c.VkPipelineShaderStageCreateInfo{
@@ -234,15 +238,17 @@ pub const GraphicsPipeline = struct {
       errdefer c.vkDestroyPipeline(vk_device, vk_pipeline, null);
 
       return @This(){
-         .vk_render_pass      = vk_render_pass,
-         .vk_pipeline_layout  = vk_pipeline_layout,
-         .vk_pipeline         = vk_pipeline,
+         .vk_render_pass            = vk_render_pass,
+         .vk_descriptor_set_layout  = vk_descriptor_set_layout,
+         .vk_pipeline_layout        = vk_pipeline_layout,
+         .vk_pipeline               = vk_pipeline,
       };
    }
 
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
       c.vkDestroyPipeline(vk_device, self.vk_pipeline, null);
       c.vkDestroyPipelineLayout(vk_device, self.vk_pipeline_layout, null);
+      c.vkDestroyDescriptorSetLayout(vk_device, self.vk_descriptor_set_layout, null);
       c.vkDestroyRenderPass(vk_device, self.vk_render_pass, null);
       return;
    }
@@ -273,7 +279,7 @@ fn _createShaderModule(vk_device : c.VkDevice, bytecode : [] align(@sizeOf(u32))
    return vk_shader_module;
 }
 
-fn _createPipelineLayout(vk_device : c.VkDevice) GraphicsPipeline.CreateError!c.VkPipelineLayout {
+fn _createPipelineLayout(vk_device : c.VkDevice, vk_descriptor_set_layout : c.VkDescriptorSetLayout) GraphicsPipeline.CreateError!c.VkPipelineLayout {
    var vk_result : c.VkResult = undefined;
 
    const vk_push_constants_range = c.VkPushConstantRange{
@@ -286,8 +292,8 @@ fn _createPipelineLayout(vk_device : c.VkDevice) GraphicsPipeline.CreateError!c.
       .sType                  = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .pNext                  = null,
       .flags                  = 0x00000000,
-      .setLayoutCount         = 0,
-      .pSetLayouts            = undefined,
+      .setLayoutCount         = 1,
+      .pSetLayouts            = &vk_descriptor_set_layout,
       .pushConstantRangeCount = 1,
       .pPushConstantRanges    = &vk_push_constants_range,
    };
@@ -378,5 +384,41 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
    errdefer c.vkDestroyRenderPass(vk_device, vk_render_pass, null);
 
    return vk_render_pass;
+}
+
+fn _createDescriptorSetLayout(vk_device : c.VkDevice) GraphicsPipeline.CreateError!c.VkDescriptorSetLayout {
+   var vk_result : c.VkResult = undefined;
+
+   const vk_info_descriptor_set_layout_binding_uniforms = c.VkDescriptorSetLayoutBinding{
+      .binding             = 0,
+      .descriptorType      = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+      .descriptorCount     = 1,
+      .stageFlags          = c.VK_SHADER_STAGE_VERTEX_BIT,
+      .pImmutableSamplers  = null,
+   };
+
+   const vk_infos_descriptor_set_layout_bindings = [_] c.VkDescriptorSetLayoutBinding{
+      vk_info_descriptor_set_layout_binding_uniforms,
+   };
+
+   const vk_info_create_descriptor_set_layout = c.VkDescriptorSetLayoutCreateInfo{
+      .sType         = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+      .pNext         = null,
+      .flags         = 0x00000000,
+      .bindingCount  = @intCast(vk_infos_descriptor_set_layout_bindings.len),
+      .pBindings     = &vk_infos_descriptor_set_layout_bindings,
+   };
+
+   var vk_descriptor_set_layout : c.VkDescriptorSetLayout = undefined;
+   vk_result = c.vkCreateDescriptorSetLayout(vk_device, &vk_info_create_descriptor_set_layout, null, &vk_descriptor_set_layout);
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+      else                             => unreachable,
+   }
+   errdefer c.vkDestroyDescriptorSetLayout(vk_device, vk_descriptor_set_layout, null);
+
+   return vk_descriptor_set_layout;
 }
 

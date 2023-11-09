@@ -11,12 +11,19 @@ layout (push_constant) uniform PushConstants {
    mat4  transform_mesh;
 } push_constants;
 
+layout (binding = 0) uniform UniformBufferObject {
+   mat4  transform_camera;
+   mat4  transform_projection;
+} uniforms;
+
 void main() {
-   vec4 v_position_world = push_constants.transform_mesh * vec4(v_position, 1.0);
+   vec4 v_position_world      = push_constants.transform_mesh  * vec4(v_position, 1.0);
+   vec4 v_position_camera     = uniforms.transform_camera      * v_position_world;
+   vec4 v_position_projected  = uniforms.transform_projection  * v_position_camera;
 
    f_color     = v_color;
    f_sample    = v_sample;
-   gl_Position = v_position_world;
+   gl_Position = v_position_projected;
    return;
 }
 
