@@ -35,6 +35,7 @@ pub const Renderer = struct {
    _vulkan_fences_in_flight            : vulkan.FenceList(FRAMES_IN_FLIGHT),
    _vulkan_memory_heap_draw            : vulkan.MemoryHeapDraw,
    _vulkan_memory_heap_transfer        : vulkan.MemoryHeapTransfer,
+   _vulkan_descriptor_sets             : vulkan.DescriptorSets(FRAMES_IN_FLIGHT),
    _loaded_meshes                      : std.ArrayListUnmanaged(MeshObject),
    _window                             : * const present.Window,
    _refresh_mode                       : RefreshMode,
@@ -81,6 +82,7 @@ pub const Renderer = struct {
       VulkanFencesInFlightCreateError,
       VulkanMemoryHeapDrawCreateError,
       VulkanMemoryHeapTransferCreateError,
+      VulkanDescriptorSetsCreateError,
    };
 
    pub fn create(allocator : std.mem.Allocator, window : * present.Window, create_info : * const CreateInfo) CreateError!@This() {
@@ -189,19 +191,27 @@ pub const Renderer = struct {
       ) catch return error.VulkanFencesInFlightCreateError;
       errdefer vulkan_fences_in_flight.destroy(vk_device);
 
-      const vulkan_memory_heap_draw = vulkan.MemoryHeapDraw.create(allocator, &.{
+      var vulkan_memory_heap_draw = vulkan.MemoryHeapDraw.create(allocator, &.{
          .physical_device  = &vulkan_physical_device,
          .vk_device        = vk_device,
          .heap_size        = MEMORY_HEAP_SIZE_DRAW,
       }) catch return error.VulkanMemoryHeapDrawCreateError;
       errdefer vulkan_memory_heap_draw.destroy(allocator, vk_device);
 
-      const vulkan_memory_heap_transfer = vulkan.MemoryHeapTransfer.create(allocator, vk_device, &.{
+      var vulkan_memory_heap_transfer = vulkan.MemoryHeapTransfer.create(allocator, vk_device, &.{
          .physical_device  = &vulkan_physical_device,
          .vk_device        = vk_device,
          .heap_size        = MEMORY_HEAP_SIZE_TRANSFER,
       }) catch return error.VulkanMemoryHeapTransferCreateError;
       errdefer vulkan_memory_heap_transfer.destroy(allocator, vk_device);
+
+      const vulkan_descriptor_sets = vulkan.DescriptorSets(FRAMES_IN_FLIGHT).create(&.{
+         .vk_device                 = vk_device,
+         .vk_descriptor_set_layout  = vulkan_graphics_pipeline.vk_descriptor_set_layout,
+         .vk_buffer                 = vulkan_memory_heap_draw.memory_heap.vk_buffer,
+         .allocations_uniforms      = unreachable,
+      }) catch return error.VulkanDescriptorSetsCreateError;
+      errdefer vulkan_descriptor_sets.destroy(vk_device);
 
       return @This(){
          ._allocator                         = allocator,
@@ -221,6 +231,7 @@ pub const Renderer = struct {
          ._vulkan_fences_in_flight           = vulkan_fences_in_flight,
          ._vulkan_memory_heap_draw           = vulkan_memory_heap_draw,
          ._vulkan_memory_heap_transfer       = vulkan_memory_heap_transfer,
+         ._vulkan_descriptor_sets            = vulkan_descriptor_sets,
          ._loaded_meshes                     = .{},
          ._window                            = window,
          ._refresh_mode                      = create_info.refresh_mode,
@@ -239,6 +250,7 @@ pub const Renderer = struct {
 
       _ = c.vkDeviceWaitIdle(vk_device);
 
+      self._vulkan_descriptor_sets.destroy(vk_device);
       self_mut._loaded_meshes.deinit(allocator);
       self._vulkan_memory_heap_transfer.destroy(allocator, vk_device);
       self._vulkan_memory_heap_draw.destroy(allocator, vk_device);
@@ -414,6 +426,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
    const vk_semaphore_image_available  = self._vulkan_semaphores_image_available.vk_semaphores[frame_index];
    const vk_semaphore_render_finished  = self._vulkan_semaphores_render_finished.vk_semaphores[frame_index];
    const vk_fence_in_flight            = self._vulkan_fences_in_flight.vk_fences[frame_index];
+   const vk_descriptor_set             = self._vulkan_descriptor_sets.vk_descriptor_sets[frame_index];
 
    vk_result = c.vkWaitForFences(vk_device, 1, &vk_fence_in_flight, c.VK_TRUE, std.math.maxInt(u64));
    switch (vk_result) {
@@ -475,6 +488,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
       .vk_command_buffer         = vk_command_buffer,
       .vk_framebuffer            = vk_framebuffer,
       .vk_buffer_draw            = self._vulkan_memory_heap_draw.memory_heap.vk_buffer,
+      .vk_descriptor_set         = vk_descriptor_set,
       .swapchain_configuration   = &self._vulkan_swapchain_configuration,
       .graphics_pipeline         = &self._vulkan_graphics_pipeline,
       .clear_color               = &self._clear_color,
@@ -601,6 +615,7 @@ const RecordInfo = struct {
    vk_command_buffer       : c.VkCommandBuffer,
    vk_framebuffer          : c.VkFramebuffer,
    vk_buffer_draw          : c.VkBuffer,
+   vk_descriptor_set       : c.VkDescriptorSet,
    swapchain_configuration : * const vulkan.SwapchainConfiguration,
    graphics_pipeline       : * const vulkan.GraphicsPipeline,
    clear_color             : * const ClearColor,
@@ -615,6 +630,7 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
    const vk_render_pass          = record_info.graphics_pipeline.vk_render_pass;
    const vk_pipeline_layout      = record_info.graphics_pipeline.vk_pipeline_layout;
    const vk_graphics_pipeline    = record_info.graphics_pipeline.vk_pipeline;
+   const vk_descriptor_set       = record_info.vk_descriptor_set;
    const vk_buffer_draw          = record_info.vk_buffer_draw;
    const swapchain_configuration = record_info.swapchain_configuration;
    const clear_color             = record_info.clear_color;
@@ -664,6 +680,8 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
    c.vkCmdBeginRenderPass(vk_command_buffer, &vk_info_render_pass_begin, c.VK_SUBPASS_CONTENTS_INLINE);
 
    c.vkCmdBindPipeline(vk_command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, vk_graphics_pipeline);
+
+   c.vkCmdBindDescriptorSets(vk_command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, vk_pipeline_layout, 0, 1, &vk_descriptor_set, 0, undefined);
 
    const vk_viewport = c.VkViewport{
       .x          = 0,

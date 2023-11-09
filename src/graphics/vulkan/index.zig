@@ -15,4 +15,5 @@ pub usingnamespace @import("synchronization.zig");
 pub usingnamespace @import("memory_heap.zig");
 pub usingnamespace @import("memory_heap_draw.zig");
 pub usingnamespace @import("memory_heap_transfer.zig");
+pub usingnamespace @import("descriptor_sets.zig");
 
