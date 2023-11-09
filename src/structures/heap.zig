@@ -94,11 +94,16 @@ pub fn Heap(comptime memory_precision : type) type {
             }
          }
 
+         // Calculate the block offset, checking against our special sentinel value
+         const block_offset = _alignForward(free_block_start, allocate_info.alignment);
+         if (block_offset == NULL_ALLOCATION_OFFSET) {
+            return error.OutOfMemory;
+         }
+
          // Create a new index for our node
          const node_index = try self._nextAvailableNodeIndex(allocator);
 
          // Create the allocation block and node
-         const block_offset = _alignForward(free_block_start, allocate_info.alignment);
          const block = Allocation{
             .offset  = block_offset,
             .bytes   = allocate_info.bytes,
@@ -118,9 +123,66 @@ pub fn Heap(comptime memory_precision : type) type {
       }
 
       pub fn free(self : * @This(), allocator : std.mem.Allocator, allocation : Allocation) void {
-         _ = self;
-         _ = allocator;
-         _ = allocation;
+         // Excess free calls can lead to freeing from an empty heap, probably a double-free
+         if (std.debug.runtime_safety == true and self.head == NULL_ALLOCATION_NODE_INDEX) {
+            @panic("attempted to free allocation from empty heap (double-free?)");
+         }
+
+         const node_head   = self._getNodeMut(self.head);
+         const block_head  = &node_head.block; // Stupid block-head implementor!
+
+         // We need special attention if we are freeing the head.
+         if (_equalBlocks(block_head, &allocation) == true) {
+            self.head = node_head.next;
+
+            if (node_head.next == NULL_ALLOCATION_NODE_INDEX) {
+               self.nodes.clearAndFree(allocator);
+            } else {
+               _allocationNodeSetNull(node_head);
+               self._drainTrailingFreeNodes(allocator);
+            }
+
+            return;
+         }
+
+         // If there are no other possible allocations other than the head, we
+         // know the allocation is invalid.
+         if (std.debug.runtime_safety == true and node_head.next == NULL_ALLOCATION_NODE_INDEX) {
+            @panic("attempted to free invalid block");
+         }
+
+         // Try to find the node which corresponds with the allocation
+         var node_index_prev = self.head;
+         var node_index_curr = node_head.next;
+         var node_index_next = self._getNode(node_index_curr).next;
+         while (node_index_next != NULL_ALLOCATION_NODE_INDEX) {
+            const node_curr = self._getNode(node_index_curr);
+            const node_next = self._getNode(node_index_next);
+
+            const block_curr = &node_curr.block;
+
+            if (_equalBlocks(block_curr, &allocation) == true) {
+               break;
+            }
+
+            node_index_prev = node_index_curr;
+            node_index_curr = node_index_next;
+            node_index_next = node_next.next;
+         }
+
+         const node_prev = self._getNodeMut(node_index_prev);
+         const node_curr = self._getNodeMut(node_index_curr);
+
+         // Make sure the block was actually found
+         if (std.debug.runtime_safety == true and _equalBlocks(&node_curr.block, &allocation) == false) {
+            @panic("attempted to free invalid block");
+         }
+
+         // Remove from the heap
+         _removeNode(node_prev, node_curr);
+         self._drainTrailingFreeNodes(allocator);
+
+         // Great success!
          return;
       }
 
@@ -227,6 +289,23 @@ pub fn Heap(comptime memory_precision : type) type {
          return self.nodes.items.len - 1;
       }
 
+      fn _equalBlocks(block_lhs : * const Allocation, block_rhs : * const Allocation) bool {
+         const comparison = block_lhs.offset == block_rhs.offset;
+
+         if (std.debug.runtime_safety == true and comparison == true and block_lhs.bytes != block_rhs.bytes) {
+            @panic("overlapping block detected, this is a bug!");
+         }
+
+         return comparison;
+      }
+
+      fn _removeNode(node_prev : * AllocationNode, node_curr : * AllocationNode) void {
+         node_prev.next = node_curr.next;
+         _allocationNodeSetNull(node_curr);
+
+         return;
+      }
+
       fn _checkMemoryLeaks(self : * const @This()) void {
          var node_index_curr = self.head;
          while (node_index_curr != NULL_ALLOCATION_NODE_INDEX) {
@@ -245,7 +324,7 @@ pub fn Heap(comptime memory_precision : type) type {
          return;
       }
 
-      fn _drainTrailingFreedNodes(self : * @This(), allocator : std.mem.Allocator) void {
+      fn _drainTrailingFreeNodes(self : * @This(), allocator : std.mem.Allocator) void {
          var new_length : usize = self.nodes.items.len;
          while (self._getNodeOptional(new_length - 1) == null) {
             new_length -= 1;
