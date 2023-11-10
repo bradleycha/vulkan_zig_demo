@@ -79,6 +79,20 @@ pub fn Vector4(comptime ty : type) type {
 pub fn Matrix4(comptime ty : type) type {
    return packed struct {
       items : @Vector(16, ty),
+
+      pub const IDENTITY = @This(){.items = .{
+         1, 0, 0, 0,
+         0, 1, 0, 0,
+         0, 0, 1, 0,
+         0, 0, 0, 1,
+      }};
+
+      pub const ZERO = @This(){.items = .{
+         0, 0, 0, 0,
+         0, 0, 0, 0,
+         0, 0, 0, 0,
+         0, 0, 0, 0,
+      }};
    };
 }
 
