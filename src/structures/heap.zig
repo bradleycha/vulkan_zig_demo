@@ -100,7 +100,9 @@ pub fn Heap(comptime memory_precision : type) type {
             return error.OutOfMemory;
          }
 
-         // Create a new index for our node
+         // Create a new index for our node.  Make sure to not use old memory
+         // pointers as they may be invalid after this call.  I spent an hour
+         // in GDB chasing a bug related to this.
          const node_index = try self._nextAvailableNodeIndex(allocator);
 
          // Create the allocation block and node
@@ -115,7 +117,7 @@ pub fn Heap(comptime memory_precision : type) type {
          };
 
          // Insert the new node into the list
-         node_prev.next = node_index;
+         _getNodeMut(self, node_index_prev).next = node_index;
          self.nodes.items[node_index] = node;
 
          // Return the freshly baked allocation
