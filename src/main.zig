@@ -55,6 +55,14 @@ pub fn main() MainError!void {
    }) catch return error.RendererCreateError;
    defer renderer.destroy();
 
+   // TODO: Implement freefly camera
+   renderer.cameraTransformMut().* = .{.items = .{
+      1.0, 0.0, 0.0, 0.0,
+      0.0, 1.0, 0.0, 0.0,
+      0.0, 0.0, 1.0, 0.0,
+      0.0, 0.0, 0.0, 1.0,
+   }};
+
    std.log.info("loading resources", .{});
 
    const mesh_handle_test_triangle = renderer.loadMesh(&resources.meshes.MESH_TEST_TRIANGLE) catch return error.ResourceLoadError;

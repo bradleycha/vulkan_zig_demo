@@ -9,6 +9,10 @@ const FRAMES_IN_FLIGHT = 2;
 const MEMORY_HEAP_SIZE_DRAW      = 8 * 1024 * 1024;
 const MEMORY_HEAP_SIZE_TRANSFER  = 8 * 1024 * 1024;
 
+const NEAR_PLANE     = 0.1;
+const FAR_PLANE      = 10000.0;
+const FIELD_OF_VIEW  = 90.0;
+
 pub const types = vulkan.types;
 
 pub const RefreshMode = vulkan.RefreshMode;
@@ -35,6 +39,7 @@ pub const Renderer = struct {
    _vulkan_fences_in_flight            : vulkan.FenceList(FRAMES_IN_FLIGHT),
    _vulkan_memory_heap_draw            : vulkan.MemoryHeapDraw,
    _vulkan_memory_heap_transfer        : vulkan.MemoryHeapTransfer,
+   _vulkan_uniform_allocations         : vulkan.UniformAllocations(FRAMES_IN_FLIGHT),
    _vulkan_descriptor_sets             : vulkan.DescriptorSets(FRAMES_IN_FLIGHT),
    _loaded_meshes                      : std.ArrayListUnmanaged(MeshObject),
    _window                             : * const present.Window,
@@ -82,6 +87,7 @@ pub const Renderer = struct {
       VulkanFencesInFlightCreateError,
       VulkanMemoryHeapDrawCreateError,
       VulkanMemoryHeapTransferCreateError,
+      VulkanUniformAllocationsCreateError,
       VulkanDescriptorSetsCreateError,
    };
 
@@ -205,11 +211,33 @@ pub const Renderer = struct {
       }) catch return error.VulkanMemoryHeapTransferCreateError;
       errdefer vulkan_memory_heap_transfer.destroy(allocator, vk_device);
 
+      var vulkan_uniform_allocations = vulkan.UniformAllocations(FRAMES_IN_FLIGHT).create(allocator, &.{
+         .memory_heap_transfer   = &vulkan_memory_heap_transfer,
+         .memory_heap_draw       = &vulkan_memory_heap_draw,
+      }) catch return error.VulkanUniformAllocationsCreateError;
+      errdefer vulkan_uniform_allocations.destroy(allocator, &vulkan_memory_heap_transfer, &vulkan_memory_heap_draw);
+
+      const transform_camera = types.Matrix4(f32){.items = .{
+         1.0, 0.0, 0.0, 0.0,
+         0.0, 1.0, 0.0, 0.0,
+         0.0, 0.0, 1.0, 0.0,
+         0.0, 0.0, 0.0, 1.0,
+      }};
+
+      const transform_projection = _createProjectionTransform(window_framebuffer_size.width, window_framebuffer_size.height, NEAR_PLANE, FAR_PLANE, FIELD_OF_VIEW);
+
+      const uniform_buffer_object = types.UniformBufferObject{
+         .transform_camera       = transform_camera,
+         .transform_projection   = transform_projection,
+      };
+
+      vulkan_uniform_allocations.getUniformBufferObjectMut(&vulkan_memory_heap_transfer).* = uniform_buffer_object;
+
       const vulkan_descriptor_sets = vulkan.DescriptorSets(FRAMES_IN_FLIGHT).create(&.{
          .vk_device                 = vk_device,
          .vk_descriptor_set_layout  = vulkan_graphics_pipeline.vk_descriptor_set_layout,
          .vk_buffer                 = vulkan_memory_heap_draw.memory_heap.vk_buffer,
-         .allocations_uniforms      = unreachable,
+         .allocations_uniforms      = &vulkan_uniform_allocations.allocations_draw,
       }) catch return error.VulkanDescriptorSetsCreateError;
       errdefer vulkan_descriptor_sets.destroy(vk_device);
 
@@ -231,6 +259,7 @@ pub const Renderer = struct {
          ._vulkan_fences_in_flight           = vulkan_fences_in_flight,
          ._vulkan_memory_heap_draw           = vulkan_memory_heap_draw,
          ._vulkan_memory_heap_transfer       = vulkan_memory_heap_transfer,
+         ._vulkan_uniform_allocations        = vulkan_uniform_allocations,
          ._vulkan_descriptor_sets            = vulkan_descriptor_sets,
          ._loaded_meshes                     = .{},
          ._window                            = window,
@@ -250,8 +279,9 @@ pub const Renderer = struct {
 
       _ = c.vkDeviceWaitIdle(vk_device);
 
-      self._vulkan_descriptor_sets.destroy(vk_device);
       self_mut._loaded_meshes.deinit(allocator);
+      self._vulkan_descriptor_sets.destroy(vk_device);
+      self._vulkan_uniform_allocations.destroy(allocator, &self_mut._vulkan_memory_heap_transfer, &self_mut._vulkan_memory_heap_draw);
       self._vulkan_memory_heap_transfer.destroy(allocator, vk_device);
       self._vulkan_memory_heap_draw.destroy(allocator, vk_device);
       self._vulkan_fences_in_flight.destroy(vk_device);
@@ -268,14 +298,6 @@ pub const Renderer = struct {
       self._vulkan_instance.destroy();
       return;
    }
-
-   pub const DrawError = error {
-      OutOfMemory,
-      Unknown,
-      DeviceLost,
-      SurfaceLost,
-      VulkanSwapchainRecreateError,
-   };
 
    pub const MeshHandle = struct {
       index : usize,
@@ -409,6 +431,23 @@ pub const Renderer = struct {
       return &self._loaded_meshes.items[mesh_handle.index].push_constants.transform_mesh;
    }
 
+   pub fn cameraTransform(self : * const @This()) * const types.Matrix4(f32) {
+      return &self._vulkan_uniform_allocations.getUniformBufferObject(&self._vulkan_memory_heap_transfer).transform_camera;
+   }
+
+   pub fn cameraTransformMut(self : * @This()) * types.Matrix4(f32) {
+      return &self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer).transform_camera;
+   }
+
+   pub const DrawError = error {
+      OutOfMemory,
+      Unknown,
+      DeviceLost,
+      SurfaceLost,
+      VulkanSwapchainRecreateError,
+      VulkanUniformsTransferError,
+   };
+
    pub fn drawFrame(self : * @This(), mesh_handles : [] const MeshHandle) DrawError!void {
       while (try _drawFrameWithSwapchainUpdates(self, mesh_handles) == false) {}
       return;
@@ -426,6 +465,8 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
    const vk_semaphore_image_available  = self._vulkan_semaphores_image_available.vk_semaphores[frame_index];
    const vk_semaphore_render_finished  = self._vulkan_semaphores_render_finished.vk_semaphores[frame_index];
    const vk_fence_in_flight            = self._vulkan_fences_in_flight.vk_fences[frame_index];
+   const allocation_uniform_transfer   = self._vulkan_uniform_allocations.allocation_transfer;
+   const allocation_uniform_draw       = self._vulkan_uniform_allocations.allocations_draw[frame_index];
    const vk_descriptor_set             = self._vulkan_descriptor_sets.vk_descriptor_sets[frame_index];
 
    vk_result = c.vkWaitForFences(vk_device, 1, &vk_fence_in_flight, c.VK_TRUE, std.math.maxInt(u64));
@@ -444,6 +485,15 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
       _recreateSwapchain(self) catch return error.VulkanSwapchainRecreateError;
       return false;
    }
+
+   vulkan.MemoryHeap.transferFromStaging(&.{
+      .heap_source                  = &self._vulkan_memory_heap_transfer.memory_heap,
+      .heap_destination             = &self._vulkan_memory_heap_draw.memory_heap,
+      .allocation_source            = allocation_uniform_transfer,
+      .allocation_destination       = allocation_uniform_draw,
+      .device                       = &self._vulkan_device,
+      .vk_command_buffer_transfer   = self._vulkan_command_buffer_transfer.vk_command_buffer,
+   }) catch return error.VulkanUniformsTransferError;
 
    var recreate_swapchain = false;
 
@@ -600,6 +650,10 @@ fn _recreateSwapchain(self : * Renderer) SwapchainRecreateError!void {
    });
    errdefer vulkan_framebuffers.destroy(allocator, vk_device);
 
+   const transform_projection = _createProjectionTransform(framebuffer_size.width, framebuffer_size.height, NEAR_PLANE, FAR_PLANE, FIELD_OF_VIEW);
+
+   self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer).transform_projection = transform_projection;
+
    self._vulkan_framebuffers.destroy(allocator, vk_device, &vulkan_swapchain);
    self._vulkan_swapchain.destroy(allocator, vk_device);
 
@@ -727,5 +781,21 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
    }
 
    return;
+}
+
+fn _createProjectionTransform(width : u32, height : u32, near_plane : f32, far_plane : f32, field_of_view : f32) types.Matrix4(f32) {
+   // TODO: Implement
+   _ = width;
+   _ = height;
+   _ = near_plane;
+   _ = far_plane;
+   _ = field_of_view;
+
+   return .{.items = .{
+      1.0, 0.0, 0.0, 0.0,
+      0.0, 1.0, 0.0, 0.0,
+      0.0, 0.0, 1.0, 0.0,
+      0.0, 0.0, 0.0, 1.0,
+   }};
 }
 

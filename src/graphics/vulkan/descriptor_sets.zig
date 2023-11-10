@@ -11,7 +11,7 @@ pub fn DescriptorSets(comptime descriptor_count : comptime_int) type {
          vk_device                  : c.VkDevice,
          vk_descriptor_set_layout   : c.VkDescriptorSetLayout,
          vk_buffer                  : c.VkBuffer,
-         allocations_uniforms       : [descriptor_count] root.MemoryHeap.Allocation,
+         allocations_uniforms       : * const [descriptor_count] root.MemoryHeap.Allocation,
       };
 
       pub const CreateError = error {
@@ -30,7 +30,7 @@ pub fn DescriptorSets(comptime descriptor_count : comptime_int) type {
 
          const vk_descriptor_sets = try _createDescriptorSets(vk_device, vk_descriptor_set_layout, vk_descriptor_pool);
 
-         for (&vk_descriptor_sets, &allocations_uniforms) |vk_descriptor_set, allocation_uniform| {
+         for (&vk_descriptor_sets, allocations_uniforms) |vk_descriptor_set, allocation_uniform| {
             _writeDescriptorSet(vk_device, vk_descriptor_set, vk_buffer, allocation_uniform);
          }
 
