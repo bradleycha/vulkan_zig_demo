@@ -486,15 +486,6 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
       return false;
    }
 
-   vulkan.MemoryHeap.transferFromStaging(&.{
-      .heap_source                  = &self._vulkan_memory_heap_transfer.memory_heap,
-      .heap_destination             = &self._vulkan_memory_heap_draw.memory_heap,
-      .allocation_source            = allocation_uniform_transfer,
-      .allocation_destination       = allocation_uniform_draw,
-      .device                       = &self._vulkan_device,
-      .vk_command_buffer_transfer   = self._vulkan_command_buffer_transfer.vk_command_buffer,
-   }) catch return error.VulkanUniformsTransferError;
-
    var recreate_swapchain = false;
 
    var vk_swapchain_image_index : u32 = undefined;
@@ -535,14 +526,17 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
    }
 
    try _recordRenderPass(mesh_handles, &.{
-      .vk_command_buffer         = vk_command_buffer,
-      .vk_framebuffer            = vk_framebuffer,
-      .vk_buffer_draw            = self._vulkan_memory_heap_draw.memory_heap.vk_buffer,
-      .vk_descriptor_set         = vk_descriptor_set,
-      .swapchain_configuration   = &self._vulkan_swapchain_configuration,
-      .graphics_pipeline         = &self._vulkan_graphics_pipeline,
-      .clear_color               = &self._clear_color,
-      .loaded_meshes             = self._loaded_meshes.items,
+      .vk_command_buffer            = vk_command_buffer,
+      .vk_framebuffer               = vk_framebuffer,
+      .vk_buffer_transfer           = self._vulkan_memory_heap_transfer.memory_heap.vk_buffer,
+      .vk_buffer_draw               = self._vulkan_memory_heap_draw.memory_heap.vk_buffer,
+      .vk_descriptor_set            = vk_descriptor_set,
+      .swapchain_configuration      = &self._vulkan_swapchain_configuration,
+      .graphics_pipeline            = &self._vulkan_graphics_pipeline,
+      .allocation_uniform_transfer  = allocation_uniform_transfer,
+      .allocation_uniform_draw      = allocation_uniform_draw,
+      .clear_color                  = &self._clear_color,
+      .loaded_meshes                = self._loaded_meshes.items,
    });
 
    const vk_info_submit_render_pass = c.VkSubmitInfo{
@@ -666,29 +660,35 @@ fn _recreateSwapchain(self : * Renderer) SwapchainRecreateError!void {
 }
 
 const RecordInfo = struct {
-   vk_command_buffer       : c.VkCommandBuffer,
-   vk_framebuffer          : c.VkFramebuffer,
-   vk_buffer_draw          : c.VkBuffer,
-   vk_descriptor_set       : c.VkDescriptorSet,
-   swapchain_configuration : * const vulkan.SwapchainConfiguration,
-   graphics_pipeline       : * const vulkan.GraphicsPipeline,
-   clear_color             : * const ClearColor,
-   loaded_meshes           : [] const Renderer.MeshObject,
+   vk_command_buffer             : c.VkCommandBuffer,
+   vk_framebuffer                : c.VkFramebuffer,
+   vk_buffer_transfer            : c.VkBuffer,
+   vk_buffer_draw                : c.VkBuffer,
+   vk_descriptor_set             : c.VkDescriptorSet,
+   swapchain_configuration       : * const vulkan.SwapchainConfiguration,
+   graphics_pipeline             : * const vulkan.GraphicsPipeline,
+   allocation_uniform_transfer   : vulkan.MemoryHeap.Allocation,
+   allocation_uniform_draw       : vulkan.MemoryHeap.Allocation,
+   clear_color                   : * const ClearColor,
+   loaded_meshes                 : [] const Renderer.MeshObject,
 };
 
 fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : * const RecordInfo) Renderer.DrawError!void {
    var vk_result : c.VkResult = undefined;
 
-   const vk_command_buffer       = record_info.vk_command_buffer;
-   const vk_framebuffer          = record_info.vk_framebuffer;
-   const vk_render_pass          = record_info.graphics_pipeline.vk_render_pass;
-   const vk_pipeline_layout      = record_info.graphics_pipeline.vk_pipeline_layout;
-   const vk_graphics_pipeline    = record_info.graphics_pipeline.vk_pipeline;
-   const vk_descriptor_set       = record_info.vk_descriptor_set;
-   const vk_buffer_draw          = record_info.vk_buffer_draw;
-   const swapchain_configuration = record_info.swapchain_configuration;
-   const clear_color             = record_info.clear_color;
-   const loaded_meshes           = record_info.loaded_meshes;
+   const vk_command_buffer             = record_info.vk_command_buffer;
+   const vk_framebuffer                = record_info.vk_framebuffer;
+   const vk_render_pass                = record_info.graphics_pipeline.vk_render_pass;
+   const vk_pipeline_layout            = record_info.graphics_pipeline.vk_pipeline_layout;
+   const vk_graphics_pipeline          = record_info.graphics_pipeline.vk_pipeline;
+   const vk_descriptor_set             = record_info.vk_descriptor_set;
+   const vk_buffer_transfer            = record_info.vk_buffer_transfer;
+   const vk_buffer_draw                = record_info.vk_buffer_draw;
+   const swapchain_configuration       = record_info.swapchain_configuration;
+   const allocation_uniform_transfer   = record_info.allocation_uniform_transfer;
+   const allocation_uniform_draw       = record_info.allocation_uniform_draw;
+   const clear_color                   = record_info.clear_color;
+   const loaded_meshes                 = record_info.loaded_meshes;
 
    const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
       .sType            = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -704,6 +704,14 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
       c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
       else                             => unreachable,
    }
+
+   const vk_buffer_copy_uniform = c.VkBufferCopy{
+      .srcOffset  = allocation_uniform_transfer.offset,
+      .dstOffset  = allocation_uniform_draw.offset,
+      .size       = @sizeOf(types.UniformBufferObject),
+   };
+
+   c.vkCmdCopyBuffer(vk_command_buffer, vk_buffer_transfer, vk_buffer_draw, 1, &vk_buffer_copy_uniform);
 
    var clear_color_count : u32 = undefined;
    var clear_color_data  : extern union {

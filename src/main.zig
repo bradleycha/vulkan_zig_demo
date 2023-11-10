@@ -55,13 +55,7 @@ pub fn main() MainError!void {
    }) catch return error.RendererCreateError;
    defer renderer.destroy();
 
-   // TODO: Implement freefly camera
-   renderer.cameraTransformMut().* = .{.items = .{
-      1.0, 0.0, 0.0, 0.0,
-      0.0, 1.0, 0.0, 0.0,
-      0.0, 0.0, 1.0, 0.0,
-      0.0, 0.0, 0.0, 1.0,
-   }};
+   const camera_transform = renderer.cameraTransformMut();
 
    std.log.info("loading resources", .{});
 
@@ -102,6 +96,9 @@ pub fn main() MainError!void {
       mesh_transform_test_octagon.items[12] = std.math.cos(theta) * 0.5;
       mesh_transform_test_octagon.items[13] = std.math.sin(theta) * -0.5;
       mesh_transform_test_triangle.items[14] = std.math.cos(theta);
+
+      // TODO: Freefly camera
+      camera_transform.items[12] = std.math.cos(theta) * 0.25;
 
       window.pollEvents() catch |err| {
          std.log.warn("failed to poll window events: {}", .{err});
