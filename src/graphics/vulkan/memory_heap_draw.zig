@@ -27,7 +27,7 @@ pub const MemoryHeapDraw = struct {
       };
    }
 
-   pub fn destroy(self : @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
+   pub fn destroy(self : * @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
       self.memory_heap.destroy(allocator, vk_device);
       return;
    }

@@ -18,7 +18,7 @@ pub const MemoryHeapTransfer = struct {
          .usage_flags   = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
       };
 
-      const memory_heap = try root.MemoryHeap.create(allocator, &.{
+      var memory_heap = try root.MemoryHeap.create(allocator, &.{
          .physical_device  = create_info.physical_device,
          .vk_device        = create_info.vk_device,
          .heap_size        = create_info.heap_size,
@@ -42,7 +42,7 @@ pub const MemoryHeapTransfer = struct {
       };
    }
 
-   pub fn destroy(self : @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
+   pub fn destroy(self : * @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
       c.vkUnmapMemory(vk_device, self.memory_heap.vk_device_memory);
       self.memory_heap.destroy(allocator, vk_device);
       return;

@@ -103,7 +103,7 @@ pub const MemoryHeap = struct {
       };
    }
 
-   pub fn destroy(self : @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
+   pub fn destroy(self : * @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
       self.heap.deinit(allocator);
       c.vkFreeMemory(vk_device, self.vk_device_memory, null);
       c.vkDestroyBuffer(vk_device, self.vk_buffer, null);

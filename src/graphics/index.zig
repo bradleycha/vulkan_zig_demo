@@ -271,7 +271,7 @@ pub const Renderer = struct {
    }
 
    pub fn destroy(self : @This()) void {
-      var self_mut = self;
+      var self_mut = @constCast(&self); // :(
 
       const allocator   = self._allocator;
       const vk_instance = self._vulkan_instance.vk_instance;
@@ -282,8 +282,8 @@ pub const Renderer = struct {
       self_mut._loaded_meshes.deinit(allocator);
       self._vulkan_descriptor_sets.destroy(vk_device);
       self._vulkan_uniform_allocations.destroy(allocator, &self_mut._vulkan_memory_heap_transfer, &self_mut._vulkan_memory_heap_draw);
-      self._vulkan_memory_heap_transfer.destroy(allocator, vk_device);
-      self._vulkan_memory_heap_draw.destroy(allocator, vk_device);
+      self_mut._vulkan_memory_heap_transfer.destroy(allocator, vk_device);
+      self_mut._vulkan_memory_heap_draw.destroy(allocator, vk_device);
       self._vulkan_fences_in_flight.destroy(vk_device);
       self._vulkan_semaphores_render_finished.destroy(vk_device);
       self._vulkan_semaphores_image_available.destroy(vk_device);

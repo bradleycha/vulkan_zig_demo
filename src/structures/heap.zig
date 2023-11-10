@@ -21,13 +21,12 @@ pub fn Heap(comptime memory_precision : type) type {
          OutOfMemory,
       };
 
-      pub fn deinit(self : @This(), allocator : std.mem.Allocator) void {
+      pub fn deinit(self : * @This(), allocator : std.mem.Allocator) void {
          if (std.debug.runtime_safety == true) {
             self._checkMemoryLeaks();
          }
 
-         var self_mut = self;
-         self_mut.nodes.deinit(allocator);
+         self.nodes.deinit(allocator);
          return;
       }
 
