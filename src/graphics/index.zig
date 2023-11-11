@@ -10,7 +10,7 @@ const MEMORY_HEAP_SIZE_DRAW      = 8 * 1024 * 1024;
 const MEMORY_HEAP_SIZE_TRANSFER  = 8 * 1024 * 1024;
 
 const NEAR_PLANE     = 0.1;
-const FAR_PLANE      = 10000.0;
+const FAR_PLANE      = 10.0;
 const FIELD_OF_VIEW  = 90.0;
 
 pub const types = vulkan.types;

@@ -60,10 +60,10 @@ pub fn main() MainError!void {
    const mesh_handle_test_triangle = renderer.loadMesh(&resources.meshes.MESH_TEST_TRIANGLE) catch return error.ResourceLoadError;
    defer renderer.unloadMesh(mesh_handle_test_triangle);
 
-   const mesh_handle_test_octagon = renderer.loadMesh(&resources.meshes.MESH_TEST_OCTAGON) catch return error.ResourceLoadError;
-   defer renderer.unloadMesh(mesh_handle_test_octagon);
+   const mesh_handle_test_cube = renderer.loadMesh(&resources.meshes.MESH_TEST_CUBE) catch return error.ResourceLoadError;
+   defer renderer.unloadMesh(mesh_handle_test_cube);
 
-   const mesh_transform_test_octagon   = renderer.meshTransformMut(mesh_handle_test_octagon);
+   const mesh_transform_test_cube      = renderer.meshTransformMut(mesh_handle_test_cube);
    const mesh_transform_test_triangle  = renderer.meshTransformMut(mesh_handle_test_triangle);
 
    std.log.info("initialization complete, entering main loop", .{});
@@ -90,11 +90,21 @@ pub fn main() MainError!void {
 
       theta = @floatCast(@rem(theta + SPIN_SPEED * time_delta, std.math.pi * 2.0));
 
-      mesh_transform_test_octagon.* = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
+      const mesh_transform_test_cube_scale = graphics.types.Matrix4(f32).createScale(&.{.xyz = .{
+         .x = 0.25,
+         .y = 0.25,
+         .z = 0.25,
+      }});
+
+      const mesh_transform_test_cube_translation = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
          .x = std.math.cos(theta) * 0.5,
          .y = std.math.sin(theta) * -0.5,
          .z = 0.0,
       }});
+
+      const mesh_transform_test_cube_final = mesh_transform_test_cube_translation.multiplyMatrix(&mesh_transform_test_cube_scale);
+
+      mesh_transform_test_cube.* = mesh_transform_test_cube_final;
 
       mesh_transform_test_triangle.* = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
          .x = 0.0,
@@ -106,7 +116,7 @@ pub fn main() MainError!void {
          std.log.warn("failed to poll window events: {}", .{err});
       };
 
-      renderer.drawFrame(&.{mesh_handle_test_triangle, mesh_handle_test_octagon}) catch |err| {
+      renderer.drawFrame(&.{mesh_handle_test_triangle, mesh_handle_test_cube}) catch |err| {
          std.log.warn("failed to draw frame: {}", .{err});
       };
    }

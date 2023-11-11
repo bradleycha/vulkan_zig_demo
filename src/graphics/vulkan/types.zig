@@ -158,21 +158,21 @@ pub fn Matrix4(comptime ty : type) type {
       }
 
       pub fn createPerspectiveProjection(width : u32, height : u32, near_plane : f32, far_plane : f32, field_of_view : f32) @This() {
-         var mtx = @This().ZERO;
-
          if (width == 0 or height == 0) {
-            return mtx;
+            return @This().ZERO;
          }
 
-         const ratio    = @as(f32, @floatFromInt(height)) / @as(f32, @floatFromInt(width));
-         const cot      = 1.0 / @tan(field_of_view * std.math.pi / 360.0);
-         const rplane   = far_plane / (far_plane - near_plane);
+         const ratio = @as(f32, @floatFromInt(height)) / @as(f32, @floatFromInt(width));
 
-         mtx.items[0][0] = ratio * cot;
-         mtx.items[1][1] = cot;
-         mtx.items[2][2] = rplane;
-         mtx.items[2][3] = rplane * near_plane * -1.0;
-         mtx.items[3][2] = 1.0;
+         // TODO: Actual perspective
+
+         var mtx = @This().IDENTITY;
+         mtx.items[0][0] = ratio;
+         mtx.items[2][2] = 0.0;
+
+         _ = near_plane;
+         _ = far_plane;
+         _ = field_of_view;
 
          return mtx;
       }
