@@ -55,8 +55,6 @@ pub fn main() MainError!void {
    }) catch return error.RendererCreateError;
    defer renderer.destroy();
 
-   const camera_transform = renderer.cameraTransformMut();
-
    std.log.info("loading resources", .{});
 
    const mesh_handle_test_triangle = renderer.loadMesh(&resources.meshes.MESH_TEST_TRIANGLE) catch return error.ResourceLoadError;
@@ -92,13 +90,17 @@ pub fn main() MainError!void {
 
       theta = @floatCast(@rem(theta + SPIN_SPEED * time_delta, std.math.pi * 2.0));
 
-      // TODO: Abstract this in the math library
-      mesh_transform_test_octagon.items[12] = std.math.cos(theta) * 0.5;
-      mesh_transform_test_octagon.items[13] = std.math.sin(theta) * -0.5;
-      mesh_transform_test_triangle.items[14] = std.math.cos(theta);
+      mesh_transform_test_octagon.* = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
+         .x = std.math.cos(theta) * 0.5,
+         .y = std.math.sin(theta) * -0.5,
+         .z = 0.0,
+      }});
 
-      // TODO: Freefly camera
-      camera_transform.items[12] = std.math.cos(theta) * 0.25;
+      mesh_transform_test_triangle.* = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
+         .x = 0.0,
+         .y = 0.0,
+         .z = std.math.cos(theta),
+      }});
 
       window.pollEvents() catch |err| {
          std.log.warn("failed to poll window events: {}", .{err});

@@ -9,6 +9,10 @@ const FRAMES_IN_FLIGHT = 2;
 const MEMORY_HEAP_SIZE_DRAW      = 8 * 1024 * 1024;
 const MEMORY_HEAP_SIZE_TRANSFER  = 8 * 1024 * 1024;
 
+const NEAR_PLANE     = 0.1;
+const FAR_PLANE      = 10000.0;
+const FIELD_OF_VIEW  = 90.0;
+
 pub const types = vulkan.types;
 
 pub const RefreshMode = vulkan.RefreshMode;
@@ -215,7 +219,13 @@ pub const Renderer = struct {
 
       const transform_camera = types.Matrix4(f32).IDENTITY;
 
-      const transform_projection = _createOrthographicTransform(window_framebuffer_size.width, window_framebuffer_size.height);
+      const transform_projection = types.Matrix4(f32).createPerspectiveProjection(
+         window_framebuffer_size.width,
+         window_framebuffer_size.height,
+         NEAR_PLANE,
+         FAR_PLANE,
+         FIELD_OF_VIEW,
+      );
 
       const uniform_buffer_object = types.UniformBufferObject{
          .transform_camera       = transform_camera,
@@ -630,7 +640,13 @@ fn _recreateSwapchain(self : * Renderer) SwapchainRecreateError!void {
    });
    errdefer vulkan_framebuffers.destroy(allocator, vk_device);
 
-   const transform_projection = _createOrthographicTransform(framebuffer_size.width, framebuffer_size.height);
+   const transform_projection = types.Matrix4(f32).createPerspectiveProjection(
+      framebuffer_size.width,
+      framebuffer_size.height,
+      NEAR_PLANE,
+      FAR_PLANE,
+      FIELD_OF_VIEW,
+   );
 
    self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer).transform_projection = transform_projection;
 
@@ -775,18 +791,5 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
    }
 
    return;
-}
-
-fn _createOrthographicTransform(width : u32, height : u32) types.Matrix4(f32) {
-   if (width == 0 or height == 0) {
-      return types.Matrix4(f32).ZERO;
-   }
-
-   const ratio = @as(f32, @floatFromInt(height)) / @as(f32, @floatFromInt(width));
-
-   var mtx = types.Matrix4(f32).IDENTITY;
-   mtx.items[0] = ratio;
-
-   return mtx;
 }
 

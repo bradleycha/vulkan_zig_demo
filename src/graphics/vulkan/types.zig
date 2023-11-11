@@ -77,22 +77,139 @@ pub fn Vector4(comptime ty : type) type {
 }
 
 pub fn Matrix4(comptime ty : type) type {
-   return packed struct {
-      items : @Vector(16, ty),
+   return struct {
+      items : [4] @Vector(4, ty),
 
       pub const IDENTITY = @This(){.items = .{
-         1, 0, 0, 0,
-         0, 1, 0, 0,
-         0, 0, 1, 0,
-         0, 0, 0, 1,
+         [4] ty {1, 0, 0, 0},
+         [4] ty {0, 1, 0, 0},
+         [4] ty {0, 0, 1, 0},
+         [4] ty {0, 0, 0, 1},
       }};
 
       pub const ZERO = @This(){.items = .{
-         0, 0, 0, 0,
-         0, 0, 0, 0,
-         0, 0, 0, 0,
-         0, 0, 0, 0,
+         [4] ty {0, 0, 0, 0},
+         [4] ty {0, 0, 0, 0},
+         [4] ty {0, 0, 0, 0},
+         [4] ty {0, 0, 0, 0},
       }};
+
+      pub fn createTranslation(value : * const Vector3(ty)) @This() {
+         var mtx = @This().IDENTITY;
+
+         mtx.items[3][0] = value.vector[0];
+         mtx.items[3][1] = value.vector[1];
+         mtx.items[3][2] = value.vector[2];
+         
+         return mtx;
+      }
+
+      pub fn createScale(value : * const Vector3(ty)) @This() {
+         var mtx = @This().IDENTITY;
+
+         mtx.items[0][0] = value.vector[0];
+         mtx.items[1][1] = value.vector[1];
+         mtx.items[2][2] = value.vector[2];
+
+         return mtx;
+      }
+
+      pub fn createRotationX(theta : ty) @This() {
+         var mtx = @This().IDENTITY;
+
+         const sin = @sin(theta);
+         const cos = @cos(theta);
+
+         mtx.items[1][1] = cos;
+         mtx.items[1][2] = sin;
+         mtx.items[2][1] = sin * -1.0;
+         mtx.items[2][2] = cos;
+
+         return mtx;
+      }
+
+      pub fn createRotationY(theta : ty) @This() {
+         var mtx = @This().IDENTITY;
+
+         const sin = @sin(theta);
+         const cos = @cos(theta);
+
+         mtx.items[0][0] = cos;
+         mtx.items[0][2] = sin * -1.0;
+         mtx.items[2][0] = sin;
+         mtx.items[2][2] = cos;
+
+         return mtx;
+      }
+
+      pub fn createRotationZ(theta : ty) @This() {
+         var mtx = @This().IDENTITY;
+
+         const sin = @sin(theta);
+         const cos = @cos(theta);
+
+         mtx.items[0][0] = cos;
+         mtx.items[0][1] = sin;
+         mtx.items[1][0] = sin * -1.0;
+         mtx.items[1][1] = cos;
+         mtx.items[2][2] = 0.0;
+
+         return mtx;
+      }
+
+      pub fn createPerspectiveProjection(width : u32, height : u32, near_plane : f32, far_plane : f32, field_of_view : f32) @This() {
+         var mtx = @This().ZERO;
+
+         if (width == 0 or height == 0) {
+            return mtx;
+         }
+
+         const ratio    = @as(f32, @floatFromInt(height)) / @as(f32, @floatFromInt(width));
+         const cot      = 1.0 / @tan(field_of_view * std.math.pi / 360.0);
+         const rplane   = far_plane / (far_plane - near_plane);
+
+         mtx.items[0][0] = ratio * cot;
+         mtx.items[1][1] = cot;
+         mtx.items[2][2] = rplane;
+         mtx.items[2][3] = rplane * near_plane * -1.0;
+         mtx.items[3][2] = 1.0;
+
+         return mtx;
+      }
+
+      pub fn multiplyVector(self : * const @This(), rhs : * const Vector4(ty)) Vector4(ty) {
+         return .{.vector = _multiplyVectorRaw(&self.items, &rhs.vector)};
+      }
+
+      pub fn multiplyMatrix(self : * const @This(), rhs : * const @This()) @This() {
+         return .{.items = _multiplyMatrixRaw(&self.items, &rhs.items)};
+      }
+
+      fn _multiplyVectorRaw(lhs_matrix : * const [4] @Vector(4, ty), rhs_vector : * const @Vector(4, ty)) @Vector(4, ty) {
+         var result_vector : @Vector(4, ty) = .{0, 0, 0, 0};
+
+         for (0..4) |i| {
+            const multiply : @Vector(4, ty) = @splat(rhs_vector[i]);
+            const column   : @Vector(4, ty) = lhs_matrix[i];
+
+            result_vector += multiply * column;
+         }
+
+         return result_vector;
+      }
+
+      fn _multiplyMatrixRaw(lhs_matrix : * const [4] @Vector(4, ty), rhs_matrix : * const [4] @Vector(4, ty)) [4] @Vector(4, ty) {
+         var result_matrix : [4] @Vector(4, ty) = undefined;
+
+         for (0..4) |i| {
+            const vector = &rhs_matrix[i];
+            const column = _multiplyVectorRaw(lhs_matrix, vector);
+
+            result_matrix[i] = column;
+         }
+
+         return result_matrix;
+      }
    };
 }
 
@@ -120,11 +237,11 @@ pub const Mesh = struct {
    pub const IndexElement = u16;
 };
 
-pub const PushConstants = packed struct {
+pub const PushConstants = struct {
    transform_mesh : Matrix4(f32), // 64 bytes   | offset +0
 };
 
-pub const UniformBufferObject = packed struct {
+pub const UniformBufferObject = struct {
    transform_camera     : Matrix4(f32),   // 64 bytes | offset +0
    transform_projection : Matrix4(f32),   // 64 bytes | offset +64
 };
