@@ -55,6 +55,20 @@ pub fn main() MainError!void {
    }) catch return error.RendererCreateError;
    defer renderer.destroy();
 
+   const camera_transform = renderer.cameraTransformMut();
+
+   const camera_transform_translation = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
+      .x =  0.0,
+      .y =  0.0,
+      .z = -2.5,
+   }});
+
+   const camera_transform_rotation_yaw = graphics.types.Matrix4(f32).createRotationY(std.math.pi / 10.0);
+
+   const camera_transform_final = camera_transform_translation.multiplyMatrix(&camera_transform_rotation_yaw);
+
+   camera_transform.* = camera_transform_final;
+
    std.log.info("loading resources", .{});
 
    const mesh_handle_test_triangle = renderer.loadMesh(&resources.meshes.MESH_TEST_TRIANGLE) catch return error.ResourceLoadError;
@@ -91,15 +105,15 @@ pub fn main() MainError!void {
       theta = @floatCast(@rem(theta + SPIN_SPEED * time_delta, std.math.pi * 2.0));
 
       const mesh_transform_test_cube_scale = graphics.types.Matrix4(f32).createScale(&.{.xyz = .{
-         .x = 0.25,
-         .y = 0.25,
-         .z = 0.25,
+         .x = 0.35,
+         .y = 0.35,
+         .z = 0.35,
       }});
 
       const mesh_transform_test_cube_translation = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
-         .x = std.math.cos(theta) * 0.5,
-         .y = std.math.sin(theta) * -0.5,
-         .z = -1.0,
+         .x = std.math.cos(theta),
+         .y = std.math.sin(theta),
+         .z = 0.0,
       }});
 
       const mesh_transform_test_cube_final = mesh_transform_test_cube_translation.multiplyMatrix(&mesh_transform_test_cube_scale);
