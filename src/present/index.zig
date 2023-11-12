@@ -53,7 +53,7 @@ fn _platformImplementation(comptime containers : PlatformContainers) type {
 
       pfn_window_set_title : * const fn (
          container   : * containers.window,
-         title       : [*:0] const u8,
+         title       : [:0] const u8,
       ) void,
 
       pfn_window_should_close : * const fn (
@@ -179,7 +179,7 @@ pub const Window = struct {
       return IMPLEMENTATION.pfn_window_get_resolution(&self._container);
    }
 
-   pub fn setTitle(self : * @This(), title : [*:0] const u8) void {
+   pub fn setTitle(self : * @This(), title : [:0] const u8) void {
       IMPLEMENTATION.pfn_window_set_title(&self._container, title);
       return;
    }

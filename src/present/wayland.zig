@@ -198,8 +198,8 @@ pub const Window = struct {
 
       // TODO: Initial size and fullscreen mode
 
-      c.xdg_toplevel_set_title(xdg_toplevel, create_info.title);
-      c.xdg_toplevel_set_app_id(xdg_toplevel, create_info.title);
+      c.xdg_toplevel_set_title(xdg_toplevel, create_info.title.ptr);
+      c.xdg_toplevel_set_app_id(xdg_toplevel, create_info.title.ptr);
 
       _ = c.wl_surface_commit(wl_surface);
       _ = c.wl_display_roundtrip(compositor._wl_display);
@@ -268,9 +268,9 @@ pub const Window = struct {
       return self._callbacks.current_resolution;
    }
 
-   pub fn setTitle(self : * @This(), title : [*:0] const u8) void {
-      c.xdg_toplevel_set_title(self._xdg_toplevel, title);
-      c.xdg_toplevel_set_app_id(self._xdg_toplevel, title);
+   pub fn setTitle(self : * @This(), title : [:0] const u8) void {
+      c.xdg_toplevel_set_title(self._xdg_toplevel, title.ptr);
+      c.xdg_toplevel_set_app_id(self._xdg_toplevel, title.ptr);
       return;
    }
 
@@ -283,7 +283,6 @@ pub const Window = struct {
 
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       _ = c.wl_display_roundtrip(self._compositor._wl_display);
-      _ = c.wl_surface_commit(self._wl_surface);
       return;
    }
 

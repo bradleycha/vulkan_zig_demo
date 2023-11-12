@@ -8,7 +8,7 @@ pub const Compositor = struct {
 
 pub const Window = struct {
    pub const CreateInfo = struct {
-      title          : [*:0] const u8,
+      title          : [:0] const u8,
       display_mode   : DisplayMode,
    };
 
