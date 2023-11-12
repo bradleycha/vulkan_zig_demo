@@ -14,9 +14,9 @@ pub const MESH_TEST_TRIANGLE = graphics.types.Mesh{
             .v = 1.0,
          }},
          .position = .{.xyz = .{
-            .x = 0.0,
-            .y = -0.5,
-            .z = 0.0,
+            .x =  0.0,
+            .y =  0.5,
+            .z =  0.0,
          }},
       },
       .{
@@ -31,9 +31,9 @@ pub const MESH_TEST_TRIANGLE = graphics.types.Mesh{
             .v = 0.0,
          }},
          .position = .{.xyz = .{
-            .x = 0.5,
-            .y = 0.5,
-            .z = 0.0,
+            .x =  0.5,
+            .y = -0.5,
+            .z =  0.0,
          }},
       },
       .{
@@ -49,8 +49,8 @@ pub const MESH_TEST_TRIANGLE = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x = -0.5,
-            .y = 0.5,
-            .z = 0.0,
+            .y = -0.5,
+            .z =  0.0,
          }},
       },
    },
@@ -91,7 +91,7 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x =  0.2071067,
-            .y = -0.5000000,
+            .y =  0.5000000,
             .z =  0.0,
          }}
       },
@@ -108,7 +108,7 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x =  0.5000000,
-            .y = -0.2071067,
+            .y =  0.2071067,
             .z =  0.0,
          }}
       },
@@ -125,7 +125,7 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x =  0.5000000,
-            .y =  0.2071067,
+            .y = -0.2071067,
             .z =  0.0,
          }}
       },
@@ -142,7 +142,7 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x =  0.2071067,
-            .y =  0.5000000,
+            .y = -0.5000000,
             .z =  0.0,
          }}
       },
@@ -159,7 +159,7 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x = -0.2071067,
-            .y =  0.5000000,
+            .y = -0.5000000,
             .z =  0.0,
          }}
       },
@@ -176,7 +176,7 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x = -0.5000000,
-            .y =  0.2071067,
+            .y = -0.2071067,
             .z =  0.0,
          }}
       },
@@ -193,7 +193,7 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x = -0.5000000,
-            .y = -0.2071067,
+            .y =  0.2071067,
             .z =  0.0,
          }}
       },
@@ -210,7 +210,7 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x = -0.2071067,
-            .y = -0.5000000,
+            .y =  0.5000000,
             .z =  0.0,
          }}
       },
@@ -241,9 +241,9 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .v = 1.0,
          }},
          .position = .{.xyz = .{
-            .x =  1.0,
-            .y =  1.0,
-            .z = -1.0,
+            .x =  0.5,
+            .y = -0.5,
+            .z = -0.5,
          }},
       },
       .{
@@ -258,9 +258,9 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .v = 0.0,
          }},
          .position = .{.xyz = .{
-            .x =  1.0,
-            .y = -1.0,
-            .z = -1.0,
+            .x =  0.5,
+            .y =  0.5,
+            .z = -0.5,
          }},
       },
       .{
@@ -275,9 +275,9 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .v = 0.0,
          }},
          .position = .{.xyz = .{
-            .x = -1.0,
-            .y = -1.0,
-            .z = -1.0,
+            .x = -0.5,
+            .y =  0.5,
+            .z = -0.5,
          }},
       },
       .{
@@ -292,9 +292,9 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .v = 1.0,
          }},
          .position = .{.xyz = .{
-            .x = -1.0,
-            .y =  1.0,
-            .z = -1.0,
+            .x = -0.5,
+            .y = -0.5,
+            .z = -0.5,
          }},
       },
       .{
@@ -309,9 +309,9 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .v = 1.0,
          }},
          .position = .{.xyz = .{
-            .x =  1.0,
-            .y =  1.0,
-            .z =  1.0,
+            .x =  0.5,
+            .y = -0.5,
+            .z =  0.5,
          }},
       },
       .{
@@ -326,9 +326,9 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .v = 0.0,
          }},
          .position = .{.xyz = .{
-            .x =  1.0,
-            .y = -1.0,
-            .z =  1.0,
+            .x =  0.5,
+            .y =  0.5,
+            .z =  0.5,
          }},
       },
       .{
@@ -343,9 +343,9 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .v = 0.0,
          }},
          .position = .{.xyz = .{
-            .x = -1.0,
-            .y = -1.0,
-            .z =  1.0,
+            .x = -0.5,
+            .y =  0.5,
+            .z =  0.5,
          }},
       },
       .{
@@ -360,9 +360,9 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .v = 1.0,
          }},
          .position = .{.xyz = .{
-            .x = -1.0,
-            .y =  1.0,
-            .z =  1.0,
+            .x = -0.5,
+            .y = -0.5,
+            .z =  0.5,
          }},
       },
    },
@@ -397,7 +397,7 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x =  0.0,
-            .y = -0.5,
+            .y =  0.5,
             .z =  0.0,
          }},
       },
@@ -414,7 +414,7 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x =  0.5,
-            .y =  0.5,
+            .y = -0.5,
             .z =  0.5,
          }},
       },
@@ -431,7 +431,7 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x =  0.5,
-            .y =  0.5,
+            .y = -0.5,
             .z = -0.5,
          }},
       },
@@ -448,7 +448,7 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x = -0.5,
-            .y =  0.5,
+            .y = -0.5,
             .z = -0.5,
          }},
       },
@@ -465,7 +465,7 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x = -0.5,
-            .y =  0.5,
+            .y = -0.5,
             .z =  0.5,
          }},
       },

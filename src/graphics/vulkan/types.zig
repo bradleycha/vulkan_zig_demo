@@ -168,7 +168,7 @@ pub fn Matrix4(comptime ty : type) type {
 
          var mtx = @This().ZERO;
          mtx.items[0][0] = ratio * cot;
-         mtx.items[1][1] = cot;
+         mtx.items[1][1] = -1.0 * cot;
          mtx.items[2][2] = (near_plane + far_plane) * rpdif;
          mtx.items[3][2] = 2.0 * far_plane * near_plane * rpdif;
          mtx.items[2][3] = -1.0;
