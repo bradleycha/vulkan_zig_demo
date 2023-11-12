@@ -64,12 +64,15 @@ pub const Compositor = struct {
 };
 
 pub const Window = struct {
-   _compositor    : * const Compositor,
-   _x_window      : c.xcb_window_t,
-   _should_close  : bool,
+   _compositor                : * const Compositor,
+   _x_window                  : c.xcb_window_t,
+   _x_atom_wm_delete_window   : c.xcb_atom_t,
+   _should_close              : bool,
 
    pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!@This() {
       _ = allocator;
+
+      var x_generic_error : ? * c.xcb_generic_error_t = undefined;
 
       const x_connection   = compositor._x_connection;
       const x_screen       = compositor._x_screen;
@@ -125,6 +128,23 @@ pub const Window = struct {
 
       // TODO: Set fullscreen mode
 
+      const WM_PROTOCOLS      = "WM_PROTOCOLS";
+      const WM_DELETE_WINDOW  = "WM_DELETE_WINDOW";
+
+      const x_cookie_intern_atom_wm_protocols = c.xcb_intern_atom(
+         x_connection,
+         1,
+         WM_PROTOCOLS.len,
+         WM_PROTOCOLS,
+      );
+
+      const x_cookie_intern_atom_wm_delete_window = c.xcb_intern_atom(
+         x_connection,
+         1,
+         WM_DELETE_WINDOW.len,
+         WM_DELETE_WINDOW,
+      );
+
       if (c.xcb_request_check(x_connection, x_cookie_window_create) != null) {
          return error.PlatformError;
       }
@@ -137,10 +157,55 @@ pub const Window = struct {
          return error.PlatformError;
       }
 
+      const x_intern_atom_wm_protocols = c.xcb_intern_atom_reply(
+         x_connection,
+         x_cookie_intern_atom_wm_protocols,
+         &x_generic_error,
+      );
+
+      if (x_generic_error != null) {
+         c.free(x_generic_error orelse unreachable);
+         return error.PlatformError;
+      }
+
+      defer c.free(x_intern_atom_wm_protocols orelse unreachable);
+
+      const x_intern_atom_wm_delete_window = c.xcb_intern_atom_reply(
+         x_connection,
+         x_cookie_intern_atom_wm_delete_window,
+         &x_generic_error,
+      );
+
+      if (x_generic_error != null) {
+         c.free(x_generic_error orelse unreachable);
+         return error.PlatformError;
+      }
+
+      defer c.free(x_intern_atom_wm_delete_window orelse unreachable);
+
+      const x_atom_wm_protocols     = (x_intern_atom_wm_protocols orelse unreachable).*.atom;
+      const x_atom_wm_delete_window = (x_intern_atom_wm_delete_window orelse unreachable).*.atom;
+
+      const x_cookie_change_property_wm_handle_delete_window = c.xcb_change_property(
+         x_connection,
+         c.XCB_PROP_MODE_REPLACE,
+         x_window,
+         x_atom_wm_protocols,
+         4,
+         32,
+         1,
+         &x_atom_wm_delete_window,
+      );
+
+      if (c.xcb_request_check(x_connection, x_cookie_change_property_wm_handle_delete_window) != null) {
+         return error.PlatformError;
+      }
+
       return @This(){
-         ._compositor   = compositor,
-         ._x_window     = x_window,
-         ._should_close = false,
+         ._compositor               = compositor,
+         ._x_window                 = x_window,
+         ._x_atom_wm_delete_window  = x_atom_wm_delete_window,
+         ._should_close             = false,
       };
    }
 
@@ -211,13 +276,19 @@ pub const Window = struct {
    }
 
    fn _handleXEvent(self : * @This(), x_generic_event : * const c.xcb_generic_event_t) f_shared.Window.PollEventsError!void {
-      // TODO: Implement, specifically WM_DELETE client message
-      // https://stackoverflow.com/questions/8776300/how-to-exit-program-with-close-button-in-xcb
-      // https://stackoverflow.com/questions/69197575/how-to-handle-xcb-client-messages-properly
-      // https://stackoverflow.com/questions/10792361/how-do-i-gracefully-exit-an-x11-event-loop
+      switch (x_generic_event.response_type & 0x7f) {
+         c.XCB_CLIENT_MESSAGE => try _handleXClientMessage(self, @ptrCast(@alignCast(x_generic_event))),
+         else                 => {},
+      }
 
-      _ = self;
-      _ = x_generic_event;
+      return;
+   }
+
+   fn _handleXClientMessage(self : * @This(), x_client_message_event : * const c.xcb_client_message_event_t) f_shared.Window.PollEventsError!void {
+      if (x_client_message_event.data.data32[0] == self._x_atom_wm_delete_window) {
+         self._should_close = true;
+      }
+
       return;
    }
 
