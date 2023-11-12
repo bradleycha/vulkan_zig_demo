@@ -99,7 +99,7 @@ pub fn main() MainError!void {
       const mesh_transform_test_cube_translation = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
          .x = std.math.cos(theta) * 0.5,
          .y = std.math.sin(theta) * -0.5,
-         .z = 0.0,
+         .z = -1.0,
       }});
 
       const mesh_transform_test_cube_final = mesh_transform_test_cube_translation.multiplyMatrix(&mesh_transform_test_cube_scale);
