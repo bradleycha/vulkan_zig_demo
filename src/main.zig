@@ -110,7 +110,7 @@ pub fn main() MainError!void {
          .z = 0.35,
       }});
 
-      const mesh_transform_test_cube_rotation = graphics.types.Matrix4(f32).createRotationY(theta);
+      const mesh_transform_test_cube_rotation = graphics.types.Matrix4(f32).createRotationX(theta);
 
       const mesh_transform_test_cube_translation = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
          .x = std.math.cos(theta),
@@ -122,11 +122,17 @@ pub fn main() MainError!void {
 
       mesh_transform_test_cube.* = mesh_transform_test_cube_final;
 
-      mesh_transform_test_pyramid.* = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
+      const mesh_transform_test_pyramid_rotation = graphics.types.Matrix4(f32).createRotationY(theta);
+
+      const mesh_transform_test_pyramid_translation = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
          .x = 0.0,
          .y = 0.0,
          .z = std.math.cos(theta),
       }});
+
+      const mesh_transform_test_pyramid_final = mesh_transform_test_pyramid_translation.multiplyMatrix(&mesh_transform_test_pyramid_rotation);
+
+      mesh_transform_test_pyramid.* = mesh_transform_test_pyramid_final;
 
       window.pollEvents() catch |err| {
          std.log.warn("failed to poll window events: {}", .{err});

@@ -386,7 +386,7 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
    .vertices = &.{
       .{
          .color = .{.channels = .{
-            .r = 0.25,
+            .r = 1.0,
             .g = 0.0,
             .b = 0.0,
             .a = 1.0,
@@ -403,9 +403,9 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
       },
       .{
          .color = .{.channels = .{
-            .r = 0.025,
-            .g = 0.025,
-            .b = 0.025,
+            .r = 0.0,
+            .g = 1.0,
+            .b = 0.0,
             .a = 1.0,
          }},
          .sample = .{.uv = .{
@@ -420,9 +420,9 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
       },
       .{
          .color = .{.channels = .{
-            .r = 0.025,
-            .g = 0.025,
-            .b = 0.025,
+            .r = 0.0,
+            .g = 0.0,
+            .b = 1.0,
             .a = 1.0,
          }},
          .sample = .{.uv = .{
@@ -437,9 +437,9 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
       },
       .{
          .color = .{.channels = .{
-            .r = 0.025,
-            .g = 0.025,
-            .b = 0.025,
+            .r = 1.0,
+            .g = 0.0,
+            .b = 1.0,
             .a = 1.0,
          }},
          .sample = .{.uv = .{
@@ -454,9 +454,9 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
       },
       .{
          .color = .{.channels = .{
-            .r = 0.025,
-            .g = 0.025,
-            .b = 0.025,
+            .r = 1.0,
+            .g = 1.0,
+            .b = 0.0,
             .a = 1.0,
          }},
          .sample = .{.uv = .{
