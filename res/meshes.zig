@@ -242,7 +242,7 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x =  1.0,
-            .y = -1.0,
+            .y =  1.0,
             .z = -1.0,
          }},
       },
@@ -259,7 +259,7 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x =  1.0,
-            .y =  1.0,
+            .y = -1.0,
             .z = -1.0,
          }},
       },
@@ -276,7 +276,7 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x = -1.0,
-            .y =  1.0,
+            .y = -1.0,
             .z = -1.0,
          }},
       },
@@ -293,7 +293,7 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x = -1.0,
-            .y = -1.0,
+            .y =  1.0,
             .z = -1.0,
          }},
       },
@@ -310,7 +310,7 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x =  1.0,
-            .y = -1.0,
+            .y =  1.0,
             .z =  1.0,
          }},
       },
@@ -327,7 +327,7 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x =  1.0,
-            .y =  1.0,
+            .y = -1.0,
             .z =  1.0,
          }},
       },
@@ -344,7 +344,7 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x = -1.0,
-            .y =  1.0,
+            .y = -1.0,
             .z =  1.0,
          }},
       },
@@ -361,7 +361,7 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
          }},
          .position = .{.xyz = .{
             .x = -1.0,
-            .y = -1.0,
+            .y =  1.0,
             .z =  1.0,
          }},
       },
