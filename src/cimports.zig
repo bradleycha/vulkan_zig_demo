@@ -9,6 +9,7 @@ const options  = @import("options");
 // to technically be different and create annoying compile errors.
 
 pub usingnamespace @cImport({
+   @cInclude("stdlib.h");
    @cInclude("string.h");
 
    switch (options.present_backend) {
@@ -19,6 +20,7 @@ pub usingnamespace @cImport({
       },
       .xcb     => {
          @cInclude("xcb/xcb.h");
+         @cInclude("xcb/xproto.h");
          @cDefine("VK_USE_PLATFORM_XCB_KHR", {});
       },
    }

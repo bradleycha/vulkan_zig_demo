@@ -64,46 +64,173 @@ pub const Compositor = struct {
 };
 
 pub const Window = struct {
+   _compositor    : * const Compositor,
+   _x_window      : c.xcb_window_t,
+   _should_close  : bool,
+
    pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!@This() {
-      _ = compositor;
       _ = allocator;
-      _ = create_info;
-      unreachable;
+
+      const x_connection   = compositor._x_connection;
+      const x_screen       = compositor._x_screen;
+
+      const x_window = c.xcb_generate_id(x_connection);
+      errdefer _ = c.xcb_destroy_window(x_connection, x_window);
+
+      var width   : u16 = undefined;
+      var height  : u16 = undefined;
+      switch (create_info.display_mode) {
+         .windowed   => |*resolution| {
+            width    = @intCast(resolution.width);
+            height   = @intCast(resolution.height);
+         },
+         .fullscreen => {
+            width    = x_screen.width_in_pixels;
+            height   = x_screen.height_in_pixels;
+         },
+      }
+
+      const x_value_mask = c.XCB_CW_EVENT_MASK;
+      const x_value_list = c.XCB_EVENT_MASK_EXPOSURE | c.XCB_EVENT_MASK_STRUCTURE_NOTIFY;
+
+      const x_cookie_window_create = c.xcb_create_window_checked(
+         x_connection,                       // connection
+         c.XCB_COPY_FROM_PARENT,             // depth
+         x_window,                           // wid
+         x_screen.root,                      // parent
+         0,                                  // x
+         0,                                  // y
+         width,                              // width
+         height,                             // height
+         1,                                  // border_width
+         c.XCB_WINDOW_CLASS_INPUT_OUTPUT,    // class
+         x_screen.root_visual,               // visual
+         x_value_mask,                       // value_mask
+         &x_value_list,                      // value_list
+      );
+
+      const x_cookie_window_map = c.xcb_map_window_checked(x_connection, x_window);
+      errdefer _ = c.xcb_unmap_window(x_connection, x_window);
+
+      const x_cookie_set_title = c.xcb_change_property_checked(
+         x_connection,
+         c.XCB_PROP_MODE_REPLACE,
+         x_window,
+         c.XCB_ATOM_WM_NAME,
+         c.XCB_ATOM_STRING,
+         8,
+         @intCast(create_info.title.len),
+         create_info.title.ptr,
+      );
+
+      // TODO: Set fullscreen mode
+
+      if (c.xcb_request_check(x_connection, x_cookie_window_create) != null) {
+         return error.PlatformError;
+      }
+
+      if (c.xcb_request_check(x_connection, x_cookie_window_map) != null) {
+         return error.PlatformError;
+      }
+
+      if (c.xcb_request_check(x_connection, x_cookie_set_title) != null) {
+         return error.PlatformError;
+      }
+
+      return @This(){
+         ._compositor   = compositor,
+         ._x_window     = x_window,
+         ._should_close = false,
+      };
    }
 
    pub fn destroy(self : @This(), allocator : std.mem.Allocator) void {
-      _ = self;
       _ = allocator;
-      unreachable;
+
+      const x_connection   = self._compositor._x_connection;
+      const x_window       = self._x_window;
+
+      _ = c.xcb_unmap_window(x_connection, x_window);
+      _ = c.xcb_destroy_window(x_connection, x_window);
+      return;
    }
 
    pub fn getResolution(self : * const @This()) f_shared.Window.Resolution {
-      _ = self;
-      unreachable;
+      const x_connection   = self._compositor._x_connection;
+      const x_window       = self._x_window;
+
+      const x_cookie_window_geometry = c.xcb_get_geometry(
+         x_connection,
+         x_window,
+      );
+
+      const x_window_geometry = c.xcb_get_geometry_reply(
+         x_connection,
+         x_cookie_window_geometry,
+         null,
+      ) orelse return .{.width = 0, .height = 0}; // Oh crap!
+      defer c.free(x_window_geometry);
+
+      return .{
+         .width   = @as(u32, x_window_geometry.*.width),
+         .height  = @as(u32, x_window_geometry.*.height),
+      };
    }
 
-   pub fn setTitle(self : * @This(), title : [*:0] const u8) void {
-      _ = self;
-      _ = title;
-      unreachable;
+   pub fn setTitle(self : * @This(), title : [:0] const u8) void {
+      _ = c.xcb_change_property(
+         self._compositor._x_connection,
+         c.XCB_PROP_MODE_REPLACE,
+         self._x_window,
+         c.XCB_ATOM_WM_NAME,
+         c.XCB_ATOM_STRING,
+         8,
+         @intCast(title.len),
+         title.ptr,
+      );
+
+      return;
    }
 
    pub fn shouldClose(self : * const @This()) bool {
-      _ = self;
-      unreachable;
+      return self._should_close;
    }
 
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
+      const x_connection = self._compositor._x_connection;
+
+      var x_generic_event_iterator = c.xcb_poll_for_event(x_connection);
+      while (x_generic_event_iterator) |x_generic_event| {
+         try self._handleXEvent(x_generic_event);
+
+         c.free(x_generic_event);
+         x_generic_event_iterator = c.xcb_poll_for_event(x_connection);
+      }
+
+      return;
+   }
+
+   fn _handleXEvent(self : * @This(), x_generic_event : * const c.xcb_generic_event_t) f_shared.Window.PollEventsError!void {
+      // TODO: Implement, specifically WM_DELETE client message
+      // https://stackoverflow.com/questions/8776300/how-to-exit-program-with-close-button-in-xcb
+      // https://stackoverflow.com/questions/69197575/how-to-handle-xcb-client-messages-properly
+      // https://stackoverflow.com/questions/10792361/how-do-i-gracefully-exit-an-x11-event-loop
+
       _ = self;
-      unreachable;
+      _ = x_generic_event;
+      return;
    }
 
    pub fn vulkanCreateSurface(self : * @This(), vk_instance : c.VkInstance, vk_allocator : ? * const c.VkAllocationCallbacks, vk_surface : * c.VkSurfaceKHR) c.VkResult {
-      _ = self;
-      _ = vk_instance;
-      _ = vk_allocator;
-      _ = vk_surface;
-      unreachable;
+      const vk_info_create_xcb_surface = c.VkXcbSurfaceCreateInfoKHR{
+         .sType      = c.VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+         .pNext      = null,
+         .flags      = 0x00000000,
+         .connection = self._compositor._x_connection,
+         .window     = self._x_window,
+      };
+
+      return c.vkCreateXcbSurfaceKHR(vk_instance, &vk_info_create_xcb_surface, vk_allocator, vk_surface);
    }
 };
 
