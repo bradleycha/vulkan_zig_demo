@@ -382,3 +382,101 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
    },
 };
 
+pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
+   .vertices = &.{
+      .{
+         .color = .{.channels = .{
+            .r = 0.25,
+            .g = 0.0,
+            .b = 0.0,
+            .a = 1.0,
+         }},
+         .sample = .{.uv = .{
+            .u = 0.5,
+            .v = 1.0,
+         }},
+         .position = .{.xyz = .{
+            .x =  0.0,
+            .y = -0.5,
+            .z =  0.0,
+         }},
+      },
+      .{
+         .color = .{.channels = .{
+            .r = 0.025,
+            .g = 0.025,
+            .b = 0.025,
+            .a = 1.0,
+         }},
+         .sample = .{.uv = .{
+            .u = 1.0,
+            .v = 0.0,
+         }},
+         .position = .{.xyz = .{
+            .x =  0.5,
+            .y =  0.5,
+            .z =  0.5,
+         }},
+      },
+      .{
+         .color = .{.channels = .{
+            .r = 0.025,
+            .g = 0.025,
+            .b = 0.025,
+            .a = 1.0,
+         }},
+         .sample = .{.uv = .{
+            .u = 0.0,
+            .v = 0.0,
+         }},
+         .position = .{.xyz = .{
+            .x =  0.5,
+            .y =  0.5,
+            .z = -0.5,
+         }},
+      },
+      .{
+         .color = .{.channels = .{
+            .r = 0.025,
+            .g = 0.025,
+            .b = 0.025,
+            .a = 1.0,
+         }},
+         .sample = .{.uv = .{
+            .u = 1.0,
+            .v = 0.0,
+         }},
+         .position = .{.xyz = .{
+            .x = -0.5,
+            .y =  0.5,
+            .z = -0.5,
+         }},
+      },
+      .{
+         .color = .{.channels = .{
+            .r = 0.025,
+            .g = 0.025,
+            .b = 0.025,
+            .a = 1.0,
+         }},
+         .sample = .{.uv = .{
+            .u = 0.0,
+            .v = 0.0,
+         }},
+         .position = .{.xyz = .{
+            .x = -0.5,
+            .y =  0.5,
+            .z =  0.5,
+         }},
+      },
+   },
+   .indices = &.{
+      0, 2, 1,
+      0, 3, 2,
+      0, 4, 3,
+      0, 1, 4,
+      1, 2, 4,
+      4, 2, 3,
+   },
+};
+

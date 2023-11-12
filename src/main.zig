@@ -71,14 +71,14 @@ pub fn main() MainError!void {
 
    std.log.info("loading resources", .{});
 
-   const mesh_handle_test_triangle = renderer.loadMesh(&resources.meshes.MESH_TEST_TRIANGLE) catch return error.ResourceLoadError;
-   defer renderer.unloadMesh(mesh_handle_test_triangle);
+   const mesh_handle_test_pyramid = renderer.loadMesh(&resources.meshes.MESH_TEST_PYRAMID) catch return error.ResourceLoadError;
+   defer renderer.unloadMesh(mesh_handle_test_pyramid);
 
    const mesh_handle_test_cube = renderer.loadMesh(&resources.meshes.MESH_TEST_CUBE) catch return error.ResourceLoadError;
    defer renderer.unloadMesh(mesh_handle_test_cube);
 
    const mesh_transform_test_cube      = renderer.meshTransformMut(mesh_handle_test_cube);
-   const mesh_transform_test_triangle  = renderer.meshTransformMut(mesh_handle_test_triangle);
+   const mesh_transform_test_pyramid   = renderer.meshTransformMut(mesh_handle_test_pyramid);
 
    std.log.info("initialization complete, entering main loop", .{});
 
@@ -110,17 +110,19 @@ pub fn main() MainError!void {
          .z = 0.35,
       }});
 
+      const mesh_transform_test_cube_rotation = graphics.types.Matrix4(f32).createRotationY(theta);
+
       const mesh_transform_test_cube_translation = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
          .x = std.math.cos(theta),
          .y = std.math.sin(theta),
          .z = 0.0,
       }});
 
-      const mesh_transform_test_cube_final = mesh_transform_test_cube_translation.multiplyMatrix(&mesh_transform_test_cube_scale);
+      const mesh_transform_test_cube_final = mesh_transform_test_cube_translation.multiplyMatrix(&mesh_transform_test_cube_rotation.multiplyMatrix(&mesh_transform_test_cube_scale));
 
       mesh_transform_test_cube.* = mesh_transform_test_cube_final;
 
-      mesh_transform_test_triangle.* = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
+      mesh_transform_test_pyramid.* = graphics.types.Matrix4(f32).createTranslation(&.{.xyz = .{
          .x = 0.0,
          .y = 0.0,
          .z = std.math.cos(theta),
@@ -130,7 +132,7 @@ pub fn main() MainError!void {
          std.log.warn("failed to poll window events: {}", .{err});
       };
 
-      renderer.drawFrame(&.{mesh_handle_test_triangle, mesh_handle_test_cube}) catch |err| {
+      renderer.drawFrame(&.{mesh_handle_test_pyramid, mesh_handle_test_cube}) catch |err| {
          std.log.warn("failed to draw frame: {}", .{err});
       };
    }
