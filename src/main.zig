@@ -40,7 +40,7 @@ pub fn main() MainError!void {
    }) catch return error.WindowCreateError;
    defer window.destroy(allocator);
 
-   const input = window.inputState();
+   const input_state = window.inputState();
 
    var renderer = graphics.Renderer.create(allocator, &window, &.{
       .program_name     = PROGRAM_NAME,
@@ -57,7 +57,24 @@ pub fn main() MainError!void {
    }) catch return error.RendererCreateError;
    defer renderer.destroy();
 
-   renderer.cameraTransformMut().* = graphics.types.Transform(f32).toMatrix(&.{
+   const camera_matrix = renderer.cameraTransformMatrixMut();
+
+   std.log.info("loading resources", .{});
+
+   const mesh_handle_test_pyramid = renderer.loadMesh(&resources.meshes.MESH_TEST_PYRAMID) catch return error.ResourceLoadError;
+   defer renderer.unloadMesh(mesh_handle_test_pyramid);
+
+   const mesh_handle_test_cube = renderer.loadMesh(&resources.meshes.MESH_TEST_CUBE) catch return error.ResourceLoadError;
+   defer renderer.unloadMesh(mesh_handle_test_cube);
+
+   const mesh_matrix_test_pyramid   = renderer.meshTransformMatrixMut(mesh_handle_test_pyramid);
+   const mesh_matrix_test_cube      = renderer.meshTransformMatrixMut(mesh_handle_test_cube);
+
+   std.log.info("initialization complete, entering main loop", .{});
+
+   var theta : f32 = 0.0;
+
+   var camera_transform = graphics.types.Transform(f32){
       .translation = .{.xyz = .{
          .x =  0.0,
          .y =  0.0,
@@ -73,22 +90,44 @@ pub fn main() MainError!void {
          .y = 1.0,
          .z = 1.0,
       }},
-   });
+   };
 
-   std.log.info("loading resources", .{});
+   var mesh_transform_test_pyramid = graphics.types.Transform(f32){
+      .translation = .{.xyz = .{
+         .x = 0.0,
+         .y = 0.0,
+         .z = undefined,
+      }},
+      .rotation = .{.angles = .{
+         .pitch   = 0.0,
+         .yaw     = undefined,
+         .roll    = 0.0,
+      }},
+      .scale = .{.xyz = .{
+         .x = 1.0,
+         .y = 1.0,
+         .z = 1.0,
+      }},
+   };
 
-   const mesh_handle_test_pyramid = renderer.loadMesh(&resources.meshes.MESH_TEST_PYRAMID) catch return error.ResourceLoadError;
-   defer renderer.unloadMesh(mesh_handle_test_pyramid);
+   var mesh_transform_test_cube = graphics.types.Transform(f32){
+      .translation = .{.xyz = .{
+         .x = undefined,
+         .y = undefined,
+         .z = 0.0,
+      }},
+      .rotation = .{.angles = .{
+         .pitch   = undefined,
+         .yaw     = 0.0,
+         .roll    = 0.0,
+      }},
+      .scale = .{.xyz = .{
+         .x = 0.70,
+         .y = 0.70,
+         .z = 0.70,
+      }},
+   };
 
-   const mesh_handle_test_cube = renderer.loadMesh(&resources.meshes.MESH_TEST_CUBE) catch return error.ResourceLoadError;
-   defer renderer.unloadMesh(mesh_handle_test_cube);
-
-   const mesh_transform_test_pyramid   = renderer.meshTransformMut(mesh_handle_test_pyramid);
-   const mesh_transform_test_cube      = renderer.meshTransformMut(mesh_handle_test_cube);
-
-   std.log.info("initialization complete, entering main loop", .{});
-
-   var theta : f32 = 0.0;
    while (window.shouldClose() == false) {
       const time_delta        = @as(f64, @floatFromInt(timer_delta.lap())) / 1000000000.0;
       const time_window_title = @as(f64, @floatFromInt(timer_window_title.read())) / 1000000000.0;
@@ -108,46 +147,19 @@ pub fn main() MainError!void {
          window.setTitle(title);
       }
 
-      theta = @floatCast(@rem(theta + SPIN_SPEED * time_delta, std.math.pi * 2.0));
-
-      mesh_transform_test_pyramid.* = graphics.types.Transform(f32).toMatrix(&.{
-          .translation = .{.xyz = .{
-            .x = 0.0,
-            .y = 0.0,
-            .z = std.math.cos(theta),
-         }},
-         .rotation = .{.angles = .{
-            .pitch   = 0.0,
-            .yaw     = theta,
-            .roll    = 0.0,
-         }},
-         .scale = .{.xyz = .{
-            .x = 1.0,
-            .y = 1.0,
-            .z = 1.0,
-         }},
-      });
-
-      mesh_transform_test_cube.* = graphics.types.Transform(f32).toMatrix(&.{
-         .translation = .{.xyz = .{
-            .x = std.math.cos(theta),
-            .y = std.math.sin(theta),
-            .z = 0.0,
-         }},
-         .rotation = .{.angles = .{
-            .pitch   = theta,
-            .yaw     = 0.0,
-            .roll    = 0.0,
-         }},
-         .scale = .{.xyz = .{
-            .x = 0.70,
-            .y = 0.70,
-            .z = 0.70,
-         }},
-      });
-
       // TODO: Freefly camera
-      _ = input;
+      _ = input_state;
+
+      mesh_transform_test_pyramid.translation.xyz.z   = std.math.cos(theta);
+      mesh_transform_test_pyramid.rotation.angles.yaw = theta;
+
+      mesh_transform_test_cube.translation.xyz.x      = std.math.cos(theta);
+      mesh_transform_test_cube.translation.xyz.y      = std.math.sin(theta);
+      mesh_transform_test_cube.rotation.angles.pitch  = theta;
+
+      camera_matrix.*            = camera_transform.toMatrix();
+      mesh_matrix_test_pyramid.* = mesh_transform_test_pyramid.toMatrix();
+      mesh_matrix_test_cube.*    = mesh_transform_test_cube.toMatrix();
 
       renderer.drawFrame(&.{mesh_handle_test_pyramid, mesh_handle_test_cube}) catch |err| {
          std.log.warn("failed to draw frame: {}", .{err});
@@ -156,6 +168,8 @@ pub fn main() MainError!void {
       window.pollEvents() catch |err| {
          std.log.warn("failed to poll window events: {}", .{err});
       };
+
+      theta = @floatCast(@rem(theta + SPIN_SPEED * time_delta, std.math.pi * 2.0));
    }
 
    return;

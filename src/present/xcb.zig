@@ -205,6 +205,7 @@ pub const Window = struct {
 
       return @This(){
          ._compositor               = compositor,
+         ._input_state              = .{},
          ._x_window                 = x_window,
          ._x_atom_wm_delete_window  = x_atom_wm_delete_window,
          ._should_close             = false,

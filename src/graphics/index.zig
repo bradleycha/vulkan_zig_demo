@@ -419,25 +419,25 @@ pub const Renderer = struct {
       return;
    }
 
-   pub fn meshTransform(self : * const @This(), mesh_handle : MeshHandle) * const types.Matrix4(f32) {
+   pub fn meshTransformMatrix(self : * const @This(), mesh_handle : MeshHandle) * const types.Matrix4(f32) {
       const mesh_object = &self._loaded_meshes.items[mesh_handle.index];
 
       return &mesh_object.push_constants.transform_mesh;
    }
 
-   pub fn meshTransformMut(self : * @This(), mesh_handle : MeshHandle) * types.Matrix4(f32) {
+   pub fn meshTransformMatrixMut(self : * @This(), mesh_handle : MeshHandle) * types.Matrix4(f32) {
       const mesh_object = &self._loaded_meshes.items[mesh_handle.index];
 
       return &mesh_object.push_constants.transform_mesh;
    }
 
-   pub fn cameraTransform(self : * const @This()) * const types.Matrix4(f32) {
+   pub fn cameraTransformMatrix(self : * const @This()) * const types.Matrix4(f32) {
       const uniform_buffer_transfer = self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer);
 
       return &uniform_buffer_transfer.transform_camera;
    }
 
-   pub fn cameraTransformMut(self : * @This()) * types.Matrix4(f32) {
+   pub fn cameraTransformMatrixMut(self : * @This()) * types.Matrix4(f32) {
       const uniform_buffer_transfer = self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer);
 
       return &uniform_buffer_transfer.transform_camera;
