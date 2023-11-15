@@ -53,11 +53,18 @@ pub fn Vector3(comptime ty : type) type {
    return packed union {
       vector   : @Vector(3, ty),
       xyz      : Xyz,
+      angles   : Angles,
 
       pub const Xyz = packed struct {
          x : ty,
          y : ty,
          z : ty,
+      };
+
+      pub const Angles = packed struct {
+         pitch : ty,
+         yaw   : ty,
+         roll  : ty,
       };
    };
 }
@@ -157,6 +164,22 @@ pub fn Matrix4(comptime ty : type) type {
          return mtx;
       }
 
+      pub fn createRotation(angles : * const Vector3(ty)) @This() {
+         const sx = std.math.sin(angles.angles.pitch);
+         const cx = std.math.cos(angles.angles.pitch);
+         const sy = std.math.sin(angles.angles.yaw);
+         const cy = std.math.cos(angles.angles.yaw);
+         const sz = std.math.sin(angles.angles.roll);
+         const cz = std.math.cos(angles.angles.roll);
+
+         return .{.items = .{
+            [4] ty {cy * cz, sx * sy * cz - cx * sz, cx * sy * cz + sx * sz, 0.0},
+            [4] ty {cy * sz, sx * sy * sz + cx * cz, cx * sy * sz - sx * cz, 0.0},
+            [4] ty {-1.0 * sy, sx * cy, cx * cy, 0.0},
+            [4] ty {0.0, 0.0, 0.0, 1.0},
+         }};
+      }
+
       pub fn createPerspectiveProjection(width : u32, height : u32, near_plane : f32, far_plane : f32, field_of_view : f32) @This() {
          if (width == 0 or height == 0) {
             return @This().ZERO;
@@ -208,6 +231,22 @@ pub fn Matrix4(comptime ty : type) type {
          }
 
          return result_matrix;
+      }
+   };
+}
+
+pub fn Transform(comptime ty : type) type {
+   return struct {
+      translation : Vector3(ty),
+      rotation    : Vector3(ty),
+      scale       : Vector3(ty),
+
+      pub fn toMatrix(self : * const @This()) Matrix4(ty) {
+         const mtx_translate  = Matrix4(f32).createTranslation(&self.translation);
+         const mtx_rotate     = Matrix4(f32).createRotation(&self.rotation);
+         const mtx_scale      = Matrix4(f32).createScale(&self.scale);
+
+         return mtx_translate.multiplyMatrix(&mtx_rotate.multiplyMatrix(&mtx_scale));
       }
    };
 }

@@ -66,6 +66,7 @@ pub const Compositor = struct {
 
 pub const Window = struct {
    _compositor                : * const Compositor,
+   _input_state               : input.InputState,
    _x_window                  : c.xcb_window_t,
    _x_atom_wm_delete_window   : c.xcb_atom_t,
    _should_close              : bool,
@@ -306,8 +307,7 @@ pub const Window = struct {
    }
 
    pub fn inputState(self : * const @This()) * const input.InputState {
-      _ = self;
-      unreachable;
+      return &self._input_state;
    }
 };
 

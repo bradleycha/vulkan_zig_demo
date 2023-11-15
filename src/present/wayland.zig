@@ -157,6 +157,7 @@ pub const Window = struct {
    _xdg_surface   : * c.xdg_surface,
    _xdg_toplevel  : * c.xdg_toplevel,
    _callbacks     : * _Callbacks,
+   _input_state   : input.InputState,
 
    const _Callbacks = struct {
       mutex                : std.Thread.Mutex = .{},
@@ -212,6 +213,7 @@ pub const Window = struct {
          ._xdg_surface  = xdg_surface,
          ._xdg_toplevel = xdg_toplevel,
          ._callbacks    = callbacks,
+         ._input_state  = .{},
       };
    }
 
@@ -300,8 +302,7 @@ pub const Window = struct {
    }
 
    pub fn inputState(self : * const @This()) * const input.InputState {
-      _ = self;
-      unreachable;
+      return &self._input_state;
    }
 };
 

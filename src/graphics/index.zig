@@ -217,7 +217,7 @@ pub const Renderer = struct {
       }) catch return error.VulkanUniformAllocationsCreateError;
       errdefer vulkan_uniform_allocations.destroy(allocator, &vulkan_memory_heap_transfer, &vulkan_memory_heap_draw);
 
-      const transform_camera = types.Matrix4(f32).IDENTITY;
+      const matrix_camera = types.Matrix4(f32).IDENTITY;
 
       const transform_projection = types.Matrix4(f32).createPerspectiveProjection(
          window_framebuffer_size.width,
@@ -228,7 +228,7 @@ pub const Renderer = struct {
       );
 
       const uniform_buffer_object = types.UniformBufferObject{
-         .transform_camera       = transform_camera,
+         .transform_camera       = matrix_camera,
          .transform_projection   = transform_projection,
       };
 
@@ -419,20 +419,23 @@ pub const Renderer = struct {
       return;
    }
 
-   pub fn meshTransform(self : * const @This(), mesh_handle : MeshHandle) * const types.Matrix4(f32) {
-      return &self._loaded_meshes.items[mesh_handle.index].push_constants.transform_mesh;
+   pub fn setMeshTransform(self : * @This(), mesh_handle : MeshHandle, transform : * const types.Transform(f32)) void {
+      const mesh_object = &self._loaded_meshes.items[mesh_handle.index];
+      const matrix_mesh = transform.toMatrix();
+
+      mesh_object.push_constants.transform_mesh = matrix_mesh;
+
+      return;
    }
 
-   pub fn meshTransformMut(self : * @This(), mesh_handle : MeshHandle) * types.Matrix4(f32) {
-      return &self._loaded_meshes.items[mesh_handle.index].push_constants.transform_mesh;
-   }
+   pub fn setCameraTransform(self : * @This(), transform : * const types.Transform(f32)) void {
+      const matrix_camera = transform.toMatrix();
 
-   pub fn cameraTransform(self : * const @This()) * const types.Matrix4(f32) {
-      return &self._vulkan_uniform_allocations.getUniformBufferObject(&self._vulkan_memory_heap_transfer).transform_camera;
-   }
+      const uniform_buffer_transfer = self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer);
 
-   pub fn cameraTransformMut(self : * @This()) * types.Matrix4(f32) {
-      return &self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer).transform_camera;
+      uniform_buffer_transfer.transform_camera = matrix_camera;
+
+      return;
    }
 
    pub const DrawError = error {
