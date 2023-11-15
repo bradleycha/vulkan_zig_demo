@@ -480,3 +480,80 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
    },
 };
 
+pub const MESH_TEST_PLANE  = graphics.types.Mesh{
+   .vertices = &.{
+      .{
+         .color = .{.channels = .{
+            .r = 0.20,
+            .g = 0.75,
+            .b = 0.35,
+            .a = 1.00,
+         }},
+         .sample = .{.uv = .{
+            .u = 0.0,
+            .v = 0.0,
+         }},
+         .position = .{.xyz = .{
+            .x = -0.5,
+            .y =  0.0,
+            .z = -0.5,
+         }},
+      },
+      .{
+         .color = .{.channels = .{
+            .r = 0.20,
+            .g = 0.75,
+            .b = 0.35,
+            .a = 1.00,
+         }},
+         .sample = .{.uv = .{
+            .u = 1.0,
+            .v = 0.0,
+         }},
+         .position = .{.xyz = .{
+            .x =  0.5,
+            .y =  0.0,
+            .z = -0.5,
+         }},
+      },
+      .{
+         .color = .{.channels = .{
+            .r = 0.20,
+            .g = 0.75,
+            .b = 0.35,
+            .a = 1.00,
+         }},
+         .sample = .{.uv = .{
+            .u = 0.0,
+            .v = 1.0,
+         }},
+         .position = .{.xyz = .{
+            .x = -0.5,
+            .y =  0.0,
+            .z =  0.5,
+         }},
+      },
+      .{
+         .color = .{.channels = .{
+            .r = 0.20,
+            .g = 0.75,
+            .b = 0.35,
+            .a = 1.00,
+         }},
+         .sample = .{.uv = .{
+            .u = 1.0,
+            .v = 1.0,
+         }},
+         .position = .{.xyz = .{
+            .x =  0.5,
+            .y =  0.0,
+            .z =  0.5,
+         }},
+      },
+   },
+   .indices = &.{
+      0, 1, 2,
+      1, 3, 2,
+   },
+};
+

@@ -61,16 +61,38 @@ pub fn main() MainError!void {
 
    std.log.info("loading resources", .{});
 
+   const mesh_handle_test_plane = renderer.loadMesh(&resources.meshes.MESH_TEST_PLANE) catch return error.ResourceLoadError;
+   defer renderer.unloadMesh(mesh_handle_test_plane);
+
    const mesh_handle_test_pyramid = renderer.loadMesh(&resources.meshes.MESH_TEST_PYRAMID) catch return error.ResourceLoadError;
    defer renderer.unloadMesh(mesh_handle_test_pyramid);
 
    const mesh_handle_test_cube = renderer.loadMesh(&resources.meshes.MESH_TEST_CUBE) catch return error.ResourceLoadError;
    defer renderer.unloadMesh(mesh_handle_test_cube);
 
+   const mesh_matrix_test_plane     = renderer.meshTransformMatrixMut(mesh_handle_test_plane);
    const mesh_matrix_test_pyramid   = renderer.meshTransformMatrixMut(mesh_handle_test_pyramid);
    const mesh_matrix_test_cube      = renderer.meshTransformMatrixMut(mesh_handle_test_cube);
 
    std.log.info("initialization complete, entering main loop", .{});
+
+   mesh_matrix_test_plane.* = graphics.types.Transform(f32).toMatrix(&.{
+      .translation = .{.xyz = .{
+         .x =  0.00,
+         .y = -0.75,
+         .z =  0.00,
+      }},
+      .rotation = .{.angles = .{
+         .pitch   = 0.0,
+         .yaw     = 0.0,
+         .roll    = 0.0,
+      }},
+      .scale = .{.xyz = .{
+         .x = 5.0,
+         .y = 0.0,
+         .z = 5.0,
+      }},
+   });
 
    var theta : f32 = 0.0;
 
@@ -150,18 +172,22 @@ pub fn main() MainError!void {
       // TODO: Freefly camera
       _ = input_state;
 
-      mesh_transform_test_pyramid.translation.xyz.z   = std.math.cos(theta);
       mesh_transform_test_pyramid.rotation.angles.yaw = theta;
 
       mesh_transform_test_cube.translation.xyz.x      = std.math.cos(theta);
-      mesh_transform_test_cube.translation.xyz.y      = std.math.sin(theta);
+      mesh_transform_test_cube.translation.xyz.z      = std.math.sin(theta);
       mesh_transform_test_cube.rotation.angles.pitch  = theta;
+      mesh_transform_test_cube.rotation.angles.roll   = theta;
 
       camera_matrix.*            = camera_transform.toMatrix();
       mesh_matrix_test_pyramid.* = mesh_transform_test_pyramid.toMatrix();
       mesh_matrix_test_cube.*    = mesh_transform_test_cube.toMatrix();
 
-      renderer.drawFrame(&.{mesh_handle_test_pyramid, mesh_handle_test_cube}) catch |err| {
+      renderer.drawFrame(&.{
+         mesh_handle_test_plane,
+         mesh_handle_test_pyramid,
+         mesh_handle_test_cube,
+      }) catch |err| {
          std.log.warn("failed to draw frame: {}", .{err});
       };
 
