@@ -57,7 +57,7 @@ pub fn main() MainError!void {
    }) catch return error.RendererCreateError;
    defer renderer.destroy();
 
-   renderer.setCameraTransform(&.{
+   renderer.cameraTransformMut().* = graphics.types.Transform(f32).toMatrix(&.{
       .translation = .{.xyz = .{
          .x =  0.0,
          .y =  0.0,
@@ -83,6 +83,9 @@ pub fn main() MainError!void {
    const mesh_handle_test_cube = renderer.loadMesh(&resources.meshes.MESH_TEST_CUBE) catch return error.ResourceLoadError;
    defer renderer.unloadMesh(mesh_handle_test_cube);
 
+   const mesh_transform_test_pyramid   = renderer.meshTransformMut(mesh_handle_test_pyramid);
+   const mesh_transform_test_cube      = renderer.meshTransformMut(mesh_handle_test_cube);
+
    std.log.info("initialization complete, entering main loop", .{});
 
    var theta : f32 = 0.0;
@@ -107,25 +110,7 @@ pub fn main() MainError!void {
 
       theta = @floatCast(@rem(theta + SPIN_SPEED * time_delta, std.math.pi * 2.0));
 
-      renderer.setMeshTransform(mesh_handle_test_cube, &.{
-         .translation = .{.xyz = .{
-            .x = std.math.cos(theta),
-            .y = std.math.sin(theta),
-            .z = 0.0,
-         }},
-         .rotation = .{.angles = .{
-            .pitch   = theta,
-            .yaw     = 0.0,
-            .roll    = 0.0,
-         }},
-         .scale = .{.xyz = .{
-            .x = 0.70,
-            .y = 0.70,
-            .z = 0.70,
-         }},
-      });
-
-      renderer.setMeshTransform(mesh_handle_test_pyramid, &.{
+      mesh_transform_test_pyramid.* = graphics.types.Transform(f32).toMatrix(&.{
           .translation = .{.xyz = .{
             .x = 0.0,
             .y = 0.0,
@@ -140,6 +125,24 @@ pub fn main() MainError!void {
             .x = 1.0,
             .y = 1.0,
             .z = 1.0,
+         }},
+      });
+
+      mesh_transform_test_cube.* = graphics.types.Transform(f32).toMatrix(&.{
+         .translation = .{.xyz = .{
+            .x = std.math.cos(theta),
+            .y = std.math.sin(theta),
+            .z = 0.0,
+         }},
+         .rotation = .{.angles = .{
+            .pitch   = theta,
+            .yaw     = 0.0,
+            .roll    = 0.0,
+         }},
+         .scale = .{.xyz = .{
+            .x = 0.70,
+            .y = 0.70,
+            .z = 0.70,
          }},
       });
 

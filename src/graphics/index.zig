@@ -419,23 +419,28 @@ pub const Renderer = struct {
       return;
    }
 
-   pub fn setMeshTransform(self : * @This(), mesh_handle : MeshHandle, transform : * const types.Transform(f32)) void {
+   pub fn meshTransform(self : * const @This(), mesh_handle : MeshHandle) * const types.Matrix4(f32) {
       const mesh_object = &self._loaded_meshes.items[mesh_handle.index];
-      const matrix_mesh = transform.toMatrix();
 
-      mesh_object.push_constants.transform_mesh = matrix_mesh;
-
-      return;
+      return &mesh_object.push_constants.transform_mesh;
    }
 
-   pub fn setCameraTransform(self : * @This(), transform : * const types.Transform(f32)) void {
-      const matrix_camera = transform.toMatrix();
+   pub fn meshTransformMut(self : * @This(), mesh_handle : MeshHandle) * types.Matrix4(f32) {
+      const mesh_object = &self._loaded_meshes.items[mesh_handle.index];
 
+      return &mesh_object.push_constants.transform_mesh;
+   }
+
+   pub fn cameraTransform(self : * const @This()) * const types.Matrix4(f32) {
       const uniform_buffer_transfer = self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer);
 
-      uniform_buffer_transfer.transform_camera = matrix_camera;
+      return &uniform_buffer_transfer.transform_camera;
+   }
 
-      return;
+   pub fn cameraTransformMut(self : * @This()) * types.Matrix4(f32) {
+      const uniform_buffer_transfer = self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer);
+
+      return &uniform_buffer_transfer.transform_camera;
    }
 
    pub const DrawError = error {
