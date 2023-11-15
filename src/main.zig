@@ -40,6 +40,8 @@ pub fn main() MainError!void {
    }) catch return error.WindowCreateError;
    defer window.destroy(allocator);
 
+   const input = window.inputState();
+
    var renderer = graphics.Renderer.create(allocator, &window, &.{
       .program_name     = PROGRAM_NAME,
       .debugging        = builtin.mode == .Debug,
@@ -140,12 +142,15 @@ pub fn main() MainError!void {
 
       mesh_transform_test_pyramid.* = mesh_transform_test_pyramid_final;
 
-      window.pollEvents() catch |err| {
-         std.log.warn("failed to poll window events: {}", .{err});
-      };
+      // TODO: Freefly camera
+      _ = input;
 
       renderer.drawFrame(&.{mesh_handle_test_pyramid, mesh_handle_test_cube}) catch |err| {
          std.log.warn("failed to draw frame: {}", .{err});
+      };
+
+      window.pollEvents() catch |err| {
+         std.log.warn("failed to poll window events: {}", .{err});
       };
    }
 

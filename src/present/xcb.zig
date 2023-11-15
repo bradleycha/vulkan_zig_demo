@@ -1,4 +1,5 @@
 const std      = @import("std");
+const input    = @import("input");
 const f_shared = @import("shared.zig");
 const c        = @import("cimports");
 
@@ -302,6 +303,11 @@ pub const Window = struct {
       };
 
       return c.vkCreateXcbSurfaceKHR(vk_instance, &vk_info_create_xcb_surface, vk_allocator, vk_surface);
+   }
+
+   pub fn inputState(self : * const @This()) * const input.InputState {
+      _ = self;
+      unreachable;
    }
 };
 

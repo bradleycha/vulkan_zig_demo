@@ -1,5 +1,6 @@
 const std      = @import("std");
 const options  = @import("options");
+const input    = @import("input");
 const f_shared = @import("shared.zig");
 const c        = @import("cimports");
 
@@ -70,6 +71,10 @@ fn _platformImplementation(comptime containers : PlatformContainers) type {
          vk_allocator   : ? * const c.VkAllocationCallbacks,
          vk_surface     : * c.VkSurfaceKHR,
       ) c.VkResult,
+
+      pfn_window_input_state : * const fn (
+         container   : * const containers.window,
+      ) * const input.InputState,
    };
 }
 
@@ -95,6 +100,7 @@ const IMPLEMENTATION = blk: {
          .pfn_window_should_close                                          = wayland.Window.shouldClose,
          .pfn_window_poll_events                                           = wayland.Window.pollEvents,
          .pfn_window_vulkan_create_surface                                 = wayland.Window.vulkanCreateSurface,
+         .pfn_window_input_state                                           = wayland.Window.inputState,
       },
 
       .xcb => break :blk _platformImplementation(.{
@@ -114,6 +120,7 @@ const IMPLEMENTATION = blk: {
          .pfn_window_should_close                                          = xcb.Window.shouldClose,
          .pfn_window_poll_events                                           = xcb.Window.pollEvents,
          .pfn_window_vulkan_create_surface                                 = xcb.Window.vulkanCreateSurface,
+         .pfn_window_input_state                                           = xcb.Window.inputState,
       },
    }
 };
@@ -195,6 +202,10 @@ pub const Window = struct {
 
    pub fn vulkanCreateSurface(self : * @This(), vk_instance : c.VkInstance, vk_allocator : ? * const c.VkAllocationCallbacks, vk_surface : * c.VkSurfaceKHR) c.VkResult {
       return IMPLEMENTATION.pfn_window_vulkan_create_surface(&self._container, vk_instance, vk_allocator, vk_surface);
+   }
+
+   pub fn inputState(self : * const @This()) * const input.InputState {
+      return IMPLEMENTATION.pfn_window_input_state(&self._container);
    }
 };
 

@@ -21,6 +21,7 @@ const MODULE_NAME = struct {
    pub const shaders    = "shaders";
    pub const cimports   = "cimports";
    pub const structures = "structures";
+   pub const input      = "input";
    pub const present    = "present";
    pub const graphics   = "graphics";
    pub const resources  = "resources";
@@ -29,6 +30,7 @@ const MODULE_NAME = struct {
 const MODULE_ROOT_SOURCE_PATH = struct {
    pub const cimports   = "src/cimports.zig";
    pub const structures = "src/structures/index.zig";
+   pub const input      = "src/input/index.zig";
    pub const present    = "src/present/index.zig";
    pub const graphics   = "src/graphics/index.zig";
    pub const resources  = "res/index.zig";
@@ -105,6 +107,24 @@ pub fn build(b : * std.Build) void {
       },
    });
 
+   const module_input = b.addModule(MODULE_NAME.input, .{
+      .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.input},
+      .dependencies  = &.{
+         .{
+            .name    = MODULE_NAME.options,
+            .module  = module_options,
+         },
+         .{
+            .name    = MODULE_NAME.cimports,
+            .module  = module_cimports,
+         },
+         .{
+            .name    = MODULE_NAME.structures,
+            .module  = module_structures,
+         },
+      },
+   });
+
    const module_present = b.addModule(MODULE_NAME.present, .{
       .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.present},
       .dependencies  = &.{
@@ -119,6 +139,10 @@ pub fn build(b : * std.Build) void {
          .{
             .name    = MODULE_NAME.structures,
             .module  = module_structures,
+         },
+         .{
+            .name    = MODULE_NAME.input,
+            .module  = module_input,
          },
       },
    });
@@ -180,6 +204,7 @@ pub fn build(b : * std.Build) void {
    exe_main.linkSystemLibrary("vulkan");
    exe_main.addModule(MODULE_NAME.options, module_options);
    exe_main.addModule(MODULE_NAME.structures, module_structures);
+   exe_main.addModule(MODULE_NAME.input, module_input);
    exe_main.addModule(MODULE_NAME.present, module_present);
    exe_main.addModule(MODULE_NAME.graphics, module_graphics);
    exe_main.addModule(MODULE_NAME.resources, module_resources);
