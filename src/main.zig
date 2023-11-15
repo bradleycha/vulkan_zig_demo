@@ -167,6 +167,8 @@ pub fn main() MainError!void {
          defer allocator.free(title);
 
          window.setTitle(title);
+
+         std.debug.print("{s}\n", .{title});
       }
 
       // TODO: Freefly camera
