@@ -2,6 +2,7 @@ const std      = @import("std");
 const builtin  = @import("builtin");
 const present  = @import("present");
 const vulkan   = @import("vulkan/index.zig");
+const math     = @import("math");
 const c        = @import("cimports");
 
 const FRAMES_IN_FLIGHT = 2;
@@ -217,9 +218,9 @@ pub const Renderer = struct {
       }) catch return error.VulkanUniformAllocationsCreateError;
       errdefer vulkan_uniform_allocations.destroy(allocator, &vulkan_memory_heap_transfer, &vulkan_memory_heap_draw);
 
-      const matrix_camera = types.Matrix4(f32).IDENTITY;
+      const matrix_camera = math.Matrix4(f32).IDENTITY;
 
-      const transform_projection = types.Matrix4(f32).createPerspectiveProjection(
+      const transform_projection = math.Matrix4(f32).createPerspectiveProjection(
          window_framebuffer_size.width,
          window_framebuffer_size.height,
          NEAR_PLANE,
@@ -379,7 +380,7 @@ pub const Renderer = struct {
          .vk_command_buffer_transfer   = self._vulkan_command_buffer_transfer.vk_command_buffer,
       }) catch return error.TransferError;
 
-      const transform_mesh = types.Matrix4(f32).IDENTITY;
+      const transform_mesh = math.Matrix4(f32).IDENTITY;
 
       const push_constants = types.PushConstants{
          .transform_mesh = transform_mesh,
@@ -419,25 +420,25 @@ pub const Renderer = struct {
       return;
    }
 
-   pub fn meshTransformMatrix(self : * const @This(), mesh_handle : MeshHandle) * const types.Matrix4(f32) {
+   pub fn meshTransformMatrix(self : * const @This(), mesh_handle : MeshHandle) * const math.Matrix4(f32) {
       const mesh_object = &self._loaded_meshes.items[mesh_handle.index];
 
       return &mesh_object.push_constants.transform_mesh;
    }
 
-   pub fn meshTransformMatrixMut(self : * @This(), mesh_handle : MeshHandle) * types.Matrix4(f32) {
+   pub fn meshTransformMatrixMut(self : * @This(), mesh_handle : MeshHandle) * math.Matrix4(f32) {
       const mesh_object = &self._loaded_meshes.items[mesh_handle.index];
 
       return &mesh_object.push_constants.transform_mesh;
    }
 
-   pub fn cameraTransformMatrix(self : * const @This()) * const types.Matrix4(f32) {
+   pub fn cameraTransformMatrix(self : * const @This()) * const math.Matrix4(f32) {
       const uniform_buffer_transfer = self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer);
 
       return &uniform_buffer_transfer.transform_camera;
    }
 
-   pub fn cameraTransformMatrixMut(self : * @This()) * types.Matrix4(f32) {
+   pub fn cameraTransformMatrixMut(self : * @This()) * math.Matrix4(f32) {
       const uniform_buffer_transfer = self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer);
 
       return &uniform_buffer_transfer.transform_camera;
@@ -648,7 +649,7 @@ fn _recreateSwapchain(self : * Renderer) SwapchainRecreateError!void {
    });
    errdefer vulkan_framebuffers.destroy(allocator, vk_device);
 
-   const transform_projection = types.Matrix4(f32).createPerspectiveProjection(
+   const transform_projection = math.Matrix4(f32).createPerspectiveProjection(
       framebuffer_size.width,
       framebuffer_size.height,
       NEAR_PLANE,

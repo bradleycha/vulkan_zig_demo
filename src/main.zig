@@ -1,6 +1,8 @@
 const std         = @import("std");
 const builtin     = @import("builtin");
 const options     = @import("options");
+const math        = @import("math");
+const input       = @import("input");
 const present     = @import("present");
 const graphics    = @import("graphics");
 const resources   = @import("resources");
@@ -76,7 +78,7 @@ pub fn main() MainError!void {
 
    std.log.info("initialization complete, entering main loop", .{});
 
-   mesh_matrix_test_plane.* = graphics.types.Transform(f32).toMatrix(&.{
+   mesh_matrix_test_plane.* = math.Transform(f32).toMatrix(&.{
       .translation = .{.xyz = .{
          .x =  0.00,
          .y = -0.75,
@@ -96,7 +98,7 @@ pub fn main() MainError!void {
 
    var theta : f32 = 0.0;
 
-   var camera_transform = graphics.types.Transform(f32){
+   var camera_transform = math.Transform(f32){
       .translation = .{.xyz = .{
          .x =  0.0,
          .y =  0.0,
@@ -114,7 +116,7 @@ pub fn main() MainError!void {
       }},
    };
 
-   var mesh_transform_test_pyramid = graphics.types.Transform(f32){
+   var mesh_transform_test_pyramid = math.Transform(f32){
       .translation = .{.xyz = .{
          .x = 0.0,
          .y = 0.0,
@@ -132,7 +134,7 @@ pub fn main() MainError!void {
       }},
    };
 
-   var mesh_transform_test_cube = graphics.types.Transform(f32){
+   var mesh_transform_test_cube = math.Transform(f32){
       .translation = .{.xyz = .{
          .x = undefined,
          .y = undefined,
