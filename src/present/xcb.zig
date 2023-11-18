@@ -267,6 +267,10 @@ pub const Window = struct {
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       const x_connection = self._compositor._x_connection;
 
+      self._input_state.buttons.advance();
+
+      // TODO: Update input
+
       var x_generic_event_iterator = c.xcb_poll_for_event(x_connection);
       while (x_generic_event_iterator) |x_generic_event| {
          try self._handleXEvent(x_generic_event);

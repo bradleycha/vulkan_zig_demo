@@ -286,6 +286,11 @@ pub const Window = struct {
 
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       _ = c.wl_display_roundtrip(self._compositor._wl_display);
+
+      self._input_state.buttons.advance();
+
+      // TODO: Input state
+
       return;
    }
 

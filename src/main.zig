@@ -152,7 +152,14 @@ pub fn main() MainError!void {
       }},
    };
 
-   while (window.shouldClose() == false) {
+   main_loop: while (true) {
+      if (window.shouldClose() == true) {
+         break :main_loop;
+      }
+      if (input_state.buttons.state(.exit).isPressed() == true) {
+         break :main_loop;
+      }
+
       const time_delta        = @as(f64, @floatFromInt(timer_delta.lap())) / 1000000000.0;
       const time_window_title = @as(f64, @floatFromInt(timer_window_title.read())) / 1000000000.0;
 
@@ -171,8 +178,7 @@ pub fn main() MainError!void {
          window.setTitle(title);
       }
 
-      // TODO: Freefly camera
-      _ = input_state;
+      // TODO: Freefly camera and toggling window focus / cursor grabbing
 
       mesh_transform_test_pyramid.rotation.angles.yaw = theta;
 
