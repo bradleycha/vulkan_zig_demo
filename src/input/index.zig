@@ -2,8 +2,8 @@ const std   = @import("std");
 const math  = @import("math");
 
 pub const InputState = struct {
-   axis_move   : math.Vector3(f32)  = .{.vector = @splat(0)},
-   axis_look   : math.Vector2(f32)  = .{.vector = @splat(0)},
+   axis_move   : math.Vector2(f32)  = math.Vector2(f32).ZERO,
+   axis_look   : math.Vector2(f32)  = math.Vector2(f32).ZERO,
    buttons     : Buttons            = .{},
 };
 

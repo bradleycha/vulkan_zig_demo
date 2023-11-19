@@ -24,6 +24,9 @@ pub fn Vector2(comptime ty : type) type {
          t : ty,
       };
 
+      pub const ZERO = @This(){.vector = @splat(0)};
+      pub const ONE  = @This(){.vector = @splat(1)};
+
       pub fn dotProduct(lhs : * const @This(), rhs : * const @This()) ty {
          return _vectorDotProductGeneric(COMPONENTS, ty, &lhs.vector, &rhs.vector);
       }
@@ -66,6 +69,9 @@ pub fn Vector3(comptime ty : type) type {
          roll  : ty,
       };
 
+      pub const ZERO = @This(){.vector = @splat(0)};
+      pub const ONE  = @This(){.vector = @splat(1)};
+
       pub fn dotProduct(lhs : * const @This(), rhs : * const @This()) ty {
          return _vectorDotProductGeneric(COMPONENTS, ty, &lhs.vector, &rhs.vector);
       }
@@ -101,6 +107,9 @@ pub fn Vector4(comptime ty : type) type {
          z : ty,
          w : ty,
       };
+
+      pub const ZERO = @This(){.vector = @splat(0)};
+      pub const ONE  = @This(){.vector = @splat(1)};
 
       pub fn dotProduct(lhs : * const @This(), rhs : * const @This()) ty {
          return _vectorDotProductGeneric(COMPONENTS, ty, &lhs.vector, &rhs.vector);
@@ -197,18 +206,18 @@ pub fn Matrix4(comptime ty : type) type {
    return struct {
       items : [4] @Vector(4, ty),
 
-      pub const IDENTITY = @This(){.items = .{
-         [4] ty {1, 0, 0, 0},
-         [4] ty {0, 1, 0, 0},
-         [4] ty {0, 0, 1, 0},
-         [4] ty {0, 0, 0, 1},
-      }};
-
       pub const ZERO = @This(){.items = .{
          [4] ty {0, 0, 0, 0},
          [4] ty {0, 0, 0, 0},
          [4] ty {0, 0, 0, 0},
          [4] ty {0, 0, 0, 0},
+      }};
+
+      pub const IDENTITY = @This(){.items = .{
+         [4] ty {1, 0, 0, 0},
+         [4] ty {0, 1, 0, 0},
+         [4] ty {0, 0, 1, 0},
+         [4] ty {0, 0, 0, 1},
       }};
 
       pub fn createTranslation(value : * const Vector3(ty)) @This() {
