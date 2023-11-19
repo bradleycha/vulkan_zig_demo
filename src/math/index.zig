@@ -1,10 +1,10 @@
-const std      = @import("std");
-const options  = @import("options");
-const c        = @import("cimports");
+const std = @import("std");
 
 pub fn Vector2(comptime ty : type) type {
+   const COMPONENTS = 2;
+
    return packed union {
-      vector   : @Vector(2, ty),
+      vector   : @Vector(COMPONENTS, ty),
       xy       : Xy,
       uv       : Uv,
       st       : St,
@@ -23,12 +23,34 @@ pub fn Vector2(comptime ty : type) type {
          s : ty,
          t : ty,
       };
+
+      pub fn dotProduct(lhs : * const @This(), rhs : * const @This()) ty {
+         return _vectorDotProductGeneric(COMPONENTS, ty, &lhs.vector, &rhs.vector);
+      }
+
+      pub fn magnitudeSquare(self : * const @This()) ty {
+         return _vectorMagnitudeSquareGeneric(COMPONENTS, ty, &self.vector);
+      }
+
+      pub fn magnitude(self : * const @This()) ty {
+         return _vectorMagnitudeGeneric(COMPONENTS, ty, &self.vector);
+      }
+
+      pub fn normalize(self : * const @This()) @This() {
+         return .{.vector = _vectorNormalizeGeneric(COMPONENTS, ty, &self.vector)};
+      }
+
+      pub fn normalizeZero(self : * const @This()) @This() {
+         return .{.vector = _vectorNormalizeZeroGeneric(COMPONENTS, ty, &self.vector)};
+      }
    };
 }
 
 pub fn Vector3(comptime ty : type) type {
+   const COMPONENTS = 3;
+
    return packed union {
-      vector   : @Vector(3, ty),
+      vector   : @Vector(COMPONENTS, ty),
       xyz      : Xyz,
       angles   : Angles,
 
@@ -43,12 +65,34 @@ pub fn Vector3(comptime ty : type) type {
          yaw   : ty,
          roll  : ty,
       };
+
+      pub fn dotProduct(lhs : * const @This(), rhs : * const @This()) ty {
+         return _vectorDotProductGeneric(COMPONENTS, ty, &lhs.vector, &rhs.vector);
+      }
+
+      pub fn magnitudeSquare(self : * const @This()) ty {
+         return _vectorMagnitudeSquareGeneric(COMPONENTS, ty, &self.vector);
+      }
+
+      pub fn magnitude(self : * const @This()) ty {
+         return _vectorMagnitudeGeneric(COMPONENTS, ty, &self.vector);
+      }
+
+      pub fn normalize(self : * const @This()) @This() {
+         return .{.vector = _vectorNormalizeGeneric(COMPONENTS, ty, &self.vector)};
+      }
+
+      pub fn normalizeZero(self : * const @This()) @This() {
+         return .{.vector = _vectorNormalizeZeroGeneric(COMPONENTS, ty, &self.vector)};
+      }
    };
 }
 
 pub fn Vector4(comptime ty : type) type {
+   const COMPONENTS = 4;
+   
    return packed union {
-      vector   : @Vector(4, ty),
+      vector   : @Vector(COMPONENTS, ty),
       xyzw     : Xyzw,
 
       pub const Xyzw = packed struct {
@@ -57,8 +101,97 @@ pub fn Vector4(comptime ty : type) type {
          z : ty,
          w : ty,
       };
+
+      pub fn dotProduct(lhs : * const @This(), rhs : * const @This()) ty {
+         return _vectorDotProductGeneric(COMPONENTS, ty, &lhs.vector, &rhs.vector);
+      }
+
+      pub fn magnitudeSquare(self : * const @This()) ty {
+         return _vectorMagnitudeSquareGeneric(COMPONENTS, ty, &self.vector);
+      }
+
+      pub fn magnitude(self : * const @This()) ty {
+         return _vectorMagnitudeGeneric(COMPONENTS, ty, &self.vector);
+      }
+
+      pub fn normalize(self : * const @This()) @This() {
+         return .{.vector = _vectorNormalizeGeneric(COMPONENTS, ty, &self.vector)};
+      }
+
+      pub fn normalizeZero(self : * const @This()) @This() {
+         return .{.vector = _vectorNormalizeZeroGeneric(COMPONENTS, ty, &self.vector)};
+      }
    };
 }
+
+fn _vectorDotProductGeneric(
+   comptime components  : comptime_int,
+   comptime ty          : type,
+   lhs_vector           : * const @Vector(components, ty),
+   rhs_vector           : * const @Vector(components, ty),
+) ty {
+   const multiply    = lhs_vector.* * rhs_vector.*;
+   const dot_product = @reduce(.Add, multiply);
+
+   return dot_product;
+}
+
+fn _vectorMagnitudeSquareGeneric(
+   comptime components  : comptime_int,
+   comptime ty          : type,
+   vector               : * const @Vector(components, ty),
+) ty {
+   return _vectorDotProductGeneric(components, ty, vector, vector);
+}
+
+fn _vectorMagnitudeGeneric(
+   comptime components  : comptime_int,
+   comptime ty          : type,
+   vector               : * const @Vector(components, ty),
+) ty {
+   const magnitude_square  = _vectorMagnitudeSquareGeneric(components, ty, vector);
+   const magnitude         = @sqrt(magnitude_square);
+
+   return magnitude;
+}
+
+fn _vectorNormalizeGeneric(
+   comptime components  : comptime_int,
+   comptime ty          : type,
+   vector               : * const @Vector(components, ty),
+) @Vector(components, ty) {
+   const magnitude   = _vectorMagnitudeGeneric(components, ty, vector);
+
+   if (std.debug.runtime_safety == true and magnitude == 0) {
+      @panic("attempted to normalize vector with length zero, if intended use normalizeZero()");
+   }
+
+   const reciprocal  = 1 / magnitude;
+   const multiplier  = @as(@Vector(components, ty), @splat(reciprocal));
+   const normalized  = multiplier * vector.*;
+
+   return normalized;
+}
+
+fn _vectorNormalizeZeroGeneric(
+   comptime components  : comptime_int,
+   comptime ty          : type,
+   vector               : * const @Vector(components, ty),
+) @Vector(components, ty) {
+   const magnitude   = _vectorMagnitudeGeneric(components, ty, vector);
+   
+   if (magnitude == 0) {
+      return @splat(0);
+   }
+
+   const reciprocal  = 1 / magnitude;
+   const multiplier  = @as(@Vector(components, ty), @splat(reciprocal));
+   const normalized  = multiplier * vector.*;
+
+   return normalized;
+}
+
+// TODO - Refactor below, make more generic like above
 
 pub fn Matrix4(comptime ty : type) type {
    return struct {
