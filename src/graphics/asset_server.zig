@@ -56,7 +56,7 @@ pub const MeshAssetServer = struct {
    }
 
    pub fn destroy(self : * @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice, vk_transfer_command_pool : c.VkCommandPool) void {
-      _ = c.vkWaitForFences(vk_device, 1, &self.vk_fence_transfer_finished, c.VK_TRUE, std.math.maxInt(u64));
+      _waitFence(vk_device, self.vk_fence_transfer_finished);
 
       c.vkDestroyFence(vk_device, self.vk_fence_transfer_finished, null);
       c.vkFreeCommandBuffers(vk_device, vk_transfer_command_pool, 1, &self.vk_command_buffer_transfer);
@@ -82,9 +82,38 @@ pub const MeshAssetServer = struct {
       return @constCast(self.get(handle));
    }
 
+   pub const LoadInfo = struct {
+      vk_device         : c.VkDevice,
+      vk_queue_transfer : c.VkQueue,
+      heap_draw         : * vulkan.MemoryHeapDraw,
+      heap_transfer     : * vulkan.MemoryHeapTransfer,
+   };
+
+   pub const UnloadInfo = struct {
+      vk_device   : c.VkDevice,
+      heap_draw   : * vulkan.MemoryHeapDraw,
+   };
+
    pub const LoadError = error {
       OutOfMemory,
    };
+
+   pub fn loadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, load_info : * const LoadInfo, meshes : [] const * const vulkan.types.Mesh, mesh_handles : [] Handle) LoadError!void {
+      _waitFence(load_info.vk_device, self.vk_fence_transfer_finished);
+
+      _ = allocator;
+      _ = meshes;
+      _ = mesh_handles;
+      unreachable;
+   }
+
+   pub fn unloadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, unload_info : * const UnloadInfo, meshes : [] const Handle) void {
+      _waitFence(unload_info.vk_device, self.vk_fence_transfer_finished);
+
+      _ = allocator;
+      _ = meshes;
+      unreachable;
+   }
 };
 
 fn _createTransferCommandBuffer(vk_device : c.VkDevice, vk_transfer_command_pool : c.VkCommandPool) MeshAssetServer.CreateError!c.VkCommandBuffer {
@@ -131,5 +160,27 @@ fn _createTransferFence(vk_device : c.VkDevice) MeshAssetServer.CreateError!c.Vk
    errdefer c.vkDestroyFence(vk_device, vk_fence, null);
 
    return vk_fence;
+}
+
+fn _waitFence(vk_device : c.VkDevice, vk_fence : c.VkFence) void {
+   var vk_result : c.VkResult = undefined;
+
+   vk_result = c.vkWaitForFences(vk_device, 1, &vk_fence, c.VK_TRUE, std.math.maxInt(u64));
+
+   if (std.debug.runtime_safety == false) {
+      return;
+   }
+
+   const ERRMSG = "failed to wait for vulkan fence: ";
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_TIMEOUT                     => {},
+      c.VK_ERROR_OUT_OF_HOST_MEMORY    => @panic(ERRMSG ++ "out of host memory"),
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => @panic(ERRMSG ++ "out of device memory"),
+      c.VK_ERROR_DEVICE_LOST           => @panic(ERRMSG ++ "device lost"),
+      else                             => unreachable,
+   }
+
+   return;
 }
 

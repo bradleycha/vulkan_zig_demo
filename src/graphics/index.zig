@@ -289,16 +289,20 @@ pub const Renderer = struct {
 
    pub const MeshHandle = asset_server.MeshAssetServer.Handle;
 
-   pub fn loadMesh(self : * @This(), mesh : * const types.Mesh) MeshLoadError!MeshHandle {
-      _ = self;
-      _ = mesh;
-      unreachable;
+   pub fn loadMeshMultiple(self : * @This(), meshes : [] const * const types.Mesh, mesh_handles : [] MeshHandle) MeshLoadError!void {
+      return self._mesh_asset_server.loadMeshMultiple(self._allocator, &.{
+         .vk_device           = self._vulkan_device.vk_device,
+         .vk_queue_transfer   = self._vulkan_device.queues.transfer,
+         .heap_draw           = &self._vulkan_memory_heap_draw,
+         .heap_transfer       = &self._vulkan_memory_heap_transfer,
+      }, meshes, mesh_handles);
    }
 
-   pub fn unloadMesh(self : * @This(), mesh_handle : MeshHandle) void {
-      _ = self;
-      _ = mesh_handle;
-      unreachable;
+   pub fn unloadMeshMultiple(self : * @This(), meshes : [] const MeshHandle) void {
+      return self._mesh_asset_server.unloadMeshMultiple(self._allocator, &.{
+         .vk_device  = self._vulkan_device.vk_device,
+         .heap_draw  = &self._vulkan_memory_heap_draw,
+      }, meshes);
    }
 
    pub fn meshTransformMatrix(self : * const @This(), mesh_handle : MeshHandle) * const math.Matrix4(f32) {
