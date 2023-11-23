@@ -64,21 +64,18 @@ pub const MeshAssetServer = struct {
       return;
    }
 
-   pub fn get(self : * const @This(), handle : Handle) ? * const Object {
-      if (handle >= self.loaded.items.len) {
-         return null;
-      }
-
-      const object = &self.loaded.items[handle];
-
-      if (object.isNull() == true) {
-         return null;
-      }
+   pub fn get(self : * const @This(), handle : Handle) * const Object {
+      const object = _getMeshObjectFallible(self, handle) orelse {
+         switch (std.debug.runtime_safety) {
+            true  => @panic("attempted to access invalid mesh"),
+            false => unreachable,
+         }
+      };
 
       return object;
    }
 
-   pub fn getMut(self : * @This(), handle : Handle) ? * Object {
+   pub fn getMut(self : * @This(), handle : Handle) * Object {
       return @constCast(self.get(handle));
    }
 
@@ -110,11 +107,33 @@ pub const MeshAssetServer = struct {
    pub fn unloadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, unload_info : * const UnloadInfo, meshes : [] const Handle) void {
       _waitFence(unload_info.vk_device, self.vk_fence_transfer_finished);
 
-      _ = allocator;
-      _ = meshes;
-      unreachable;
+      for (meshes) |handle| {
+         const object = self.getMut(handle);
+
+         unload_info.heap_draw.memory_heap.free(allocator, object.allocation);
+
+         object.setNull();
+      }
+      
+      _freeExcessNullMeshes(self, allocator);
+
+      return;
    }
 };
+
+fn _getMeshObjectFallible(mesh_asset_server : * const MeshAssetServer, handle : MeshAssetServer.Handle) ? * const MeshAssetServer.Object {
+   if (handle >= mesh_asset_server.loaded.items.len) {
+      return null;
+   }
+
+   const object = &mesh_asset_server.loaded.items[handle];
+
+   if (object.isNull() == true) {
+      return null;
+   }
+
+   return object;
+}
 
 fn _createTransferCommandBuffer(vk_device : c.VkDevice, vk_transfer_command_pool : c.VkCommandPool) MeshAssetServer.CreateError!c.VkCommandBuffer {
    var vk_result : c.VkResult = undefined;
@@ -180,6 +199,17 @@ fn _waitFence(vk_device : c.VkDevice, vk_fence : c.VkFence) void {
       c.VK_ERROR_DEVICE_LOST           => @panic(ERRMSG ++ "device lost"),
       else                             => unreachable,
    }
+
+   return;
+}
+
+fn _freeExcessNullMeshes(mesh_asset_server : * MeshAssetServer, allocator : std.mem.Allocator) void {
+   var new_length = mesh_asset_server.loaded.items.len;
+   while (mesh_asset_server.loaded.items[new_length - 1].isNull() == true and new_length != 0) {
+      new_length -= 1;
+   }
+
+   mesh_asset_server.loaded.shrinkAndFree(allocator, new_length);
 
    return;
 }

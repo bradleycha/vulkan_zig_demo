@@ -306,12 +306,7 @@ pub const Renderer = struct {
    }
 
    pub fn meshTransformMatrix(self : * const @This(), mesh_handle : MeshHandle) * const math.Matrix4(f32) {
-      const object = self._mesh_asset_server.get(mesh_handle) orelse {
-         switch (std.debug.runtime_safety) {
-            true  => @panic("attempted to access invalid mesh"),
-            false => unreachable,
-         }
-      };
+      const object = self._mesh_asset_server.get(mesh_handle);
 
       return &object.push_constants.transform_mesh;
    }
@@ -663,12 +658,7 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
    c.vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
 
    for (mesh_handles) |mesh_handle| {
-      const mesh_object = mesh_asset_server.get(mesh_handle) orelse {
-         switch (std.debug.runtime_safety) {
-            true  => @panic("attempted to draw invalid mesh"),
-            false => unreachable,
-         }
-      };
+      const mesh_object = mesh_asset_server.get(mesh_handle);
 
       const vk_buffer_draw_offset_vertex  = @as(u64, mesh_object.allocation.offset);
       const vk_buffer_draw_offset_index   = @as(u64, mesh_object.allocation.offset + mesh_object.allocation.bytes - mesh_object.indices * @sizeOf(types.Mesh.IndexElement));
