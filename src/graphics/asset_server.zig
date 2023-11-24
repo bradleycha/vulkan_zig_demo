@@ -6,6 +6,22 @@ const present  = @import("present");
 const vulkan   = @import("vulkan/index.zig");
 const c        = @import("cimports");
 
+// We find the field with the largest alignment so all subsequent fields stored
+// next to each other in memory will the garunteed proper alignment.
+const MESH_BYTE_ALIGNMENT = blk: {
+   var alignment : comptime_int = 0;
+
+   inline for (@typeInfo(vulkan.types.Vertex).Struct.fields) |field| {
+      const field_alignment = @alignOf(field.type);
+
+      if (field_alignment > alignment) {
+         alignment = field_alignment;
+      }
+   }
+
+   break :blk alignment;
+};
+
 pub const MeshAssetServer = struct {
    loaded                     : std.ArrayListUnmanaged(Object) = .{},
    vk_command_buffer_transfer : c.VkCommandBuffer,
@@ -104,8 +120,11 @@ pub const MeshAssetServer = struct {
 
    pub fn loadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, load_info : * const LoadInfo, meshes : [] const * const vulkan.types.Mesh, mesh_handles : [] Handle, vk_buffer_copy_regions : [] c.VkBufferCopy) LoadError!void {
       // Quick safety check
-      if (std.debug.runtime_safety == true and meshes.len != mesh_handles.len) {
+      if (std.debug.runtime_safety == true and mesh_handles.len != meshes.len) {
          @panic("mesh handles buffer not the same length as mesh count");
+      }
+      if (std.debug.runtime_safety == true and vk_buffer_copy_regions.len != mesh_handles.len) {
+         @panic("vulkan buffer copy regions buffer not the same length as mesh count");
       }
 
       // Assign new handle IDs for each mesh
@@ -113,10 +132,16 @@ pub const MeshAssetServer = struct {
       try _assignMultipleNewHandleId(self, allocator, mesh_handles);
       errdefer self.loaded.shrinkAndFree(allocator, loaded_handles_old_len);
 
-      // TODO: Create one massive transfer allocation for every mesh
-
+      // Create one large transfer allocation for every mesh
+      const transfer_allocation_bytes = _calculateTransferAllocationBytes(meshes);
+      const transfer_allocation = try load_info.heap_transfer.memory_heap.allocate(allocator, &.{
+         .alignment  = MESH_BYTE_ALIGNMENT,
+         .bytes      = transfer_allocation_bytes,
+      });
+      defer load_info.heap_transfer.memory_heap.free(allocator, transfer_allocation);
 
       // Iterate through every new mesh handle and initialize its associated mesh object
+      var transfer_allocation_mesh_offset : u32 = 0;
       for (meshes, mesh_handles, vk_buffer_copy_regions, 0..meshes.len) |mesh, handle, *vk_buffer_copy_region_dest, i| {
          errdefer for (mesh_handles[0..i]) |handle_old| {
             const object_old = self.getMut(handle_old);
@@ -125,11 +150,27 @@ pub const MeshAssetServer = struct {
 
          const object_dest = self.getMut(handle);
 
-         // TODO: Implement object creation and buffer copy region creation
-         _ = mesh;
-         _ = object_dest;
-         _ = vk_buffer_copy_region_dest;
-         unreachable;
+         const mesh_bytes = _calculateMeshBytes(mesh);
+
+         // TODO: Implement object creation and buffer copy region creation, abstract to function
+         const object : Object = if (true) unreachable;
+         errdefer object.destroyAndNull(allocator, &load_info.heap_draw.memory_heap);
+
+         // Calculate the copy region, be careful here!  We want to copy the
+         // entire contents of the transfer buffer *for this one mesh* at once.
+         const vk_buffer_copy_region = c.VkBufferCopy{
+            .srcOffset  = transfer_allocation.offset + transfer_allocation_mesh_offset,
+            .dstOffset  = object.allocation.offset,
+            .size       = mesh_bytes.total,
+         };
+
+         // Write the newly created data
+         object_dest.*                 = object;
+         vk_buffer_copy_region_dest.*  = vk_buffer_copy_region;
+
+         // We need to be careful to use total_aligned so the next mesh
+         // stays aligned on its required boundary.
+         transfer_allocation_mesh_offset += mesh_bytes.total_aligned;
       }
       errdefer for (mesh_handles) |handle| {
          const object = self.getMut(handle);
@@ -253,6 +294,42 @@ fn _assignMultipleNewHandleId(mesh_asset_server : * MeshAssetServer, allocator :
    }
 
    return;
+}
+
+fn _calculateTransferAllocationBytes(meshes : [] const * const vulkan.types.Mesh) u32 {
+   var bytes_total : u32 = 0;
+
+   for (meshes[0..meshes.len - 1]) |mesh| {
+      const bytes_mesh = _calculateMeshBytes(mesh);
+
+      bytes_total += bytes_mesh.total_aligned;
+   }
+
+   const bytes_mesh = _calculateMeshBytes(meshes[meshes.len - 1]);
+   bytes_total += bytes_mesh.total;
+
+   return bytes_total;
+}
+
+const MeshBytes = struct {
+   vertices       : u32,
+   indices        : u32,
+   total          : u32,
+   total_aligned  : u32,
+};
+
+fn _calculateMeshBytes(mesh : * const vulkan.types.Mesh) MeshBytes {
+   const bytes_vertices       = mesh.vertices.len * @sizeOf(vulkan.types.Vertex);
+   const bytes_indices        = mesh.indices.len * @sizeOf(vulkan.types.Mesh.IndexElement);
+   const bytes_total          = bytes_vertices + bytes_indices;
+   const bytes_total_aligned  = math.alignForward(usize, bytes_total, MESH_BYTE_ALIGNMENT);
+
+   return .{
+      .vertices      = @intCast(bytes_vertices),
+      .indices       = @intCast(bytes_indices),
+      .total         = @intCast(bytes_total),
+      .total_aligned = @intCast(bytes_total_aligned),
+   };
 }
 
 fn _sendTransferCommand(vk_command_buffer_transfer : c.VkCommandBuffer, vk_fence_transfer_finished : c.VkFence, load_info : * const MeshAssetServer.LoadInfo, vk_buffer_copy_regions : [] c.VkBufferCopy) MeshAssetServer.LoadError!void {
