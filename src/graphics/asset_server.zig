@@ -140,6 +140,8 @@ pub const MeshAssetServer = struct {
       });
       defer load_info.heap_transfer.memory_heap.free(allocator, transfer_allocation);
 
+      const transfer_allocation_mapping = _calculateTransferAllocationMappingOffset(load_info.heap_transfer, &transfer_allocation);
+
       // Iterate through every new mesh handle and initialize its associated mesh object
       var transfer_allocation_mesh_offset : u32 = 0;
       for (meshes, mesh_handles, vk_buffer_copy_regions, 0..meshes.len) |mesh, handle, *vk_buffer_copy_region_dest, i| {
@@ -150,11 +152,17 @@ pub const MeshAssetServer = struct {
 
          const object_dest = self.getMut(handle);
 
-         const mesh_bytes = _calculateMeshBytes(mesh);
+         // Calculate byte and pointers for current mesh
+         const mesh_bytes     = _calculateMeshBytes(mesh);
+         const mesh_pointers  = _calculateMeshPointers(&mesh_bytes, transfer_allocation_mapping, transfer_allocation_mesh_offset);
 
-         // TODO: Implement object creation and buffer copy region creation, abstract to function
-         const object : Object = if (true) unreachable;
+         // Create the backing object for the mesh
+         const object = try _createMeshObject(allocator, load_info, mesh, &mesh_bytes);
          errdefer object.destroyAndNull(allocator, &load_info.heap_draw.memory_heap);
+
+         // Copy the mesh data into the transfer buffer
+         @memcpy(mesh_pointers.vertices, mesh.vertices);
+         @memcpy(mesh_pointers.indices, mesh.indices);
 
          // Calculate the copy region, be careful here!  We want to copy the
          // entire contents of the transfer buffer *for this one mesh* at once.
@@ -311,6 +319,16 @@ fn _calculateTransferAllocationBytes(meshes : [] const * const vulkan.types.Mesh
    return bytes_total;
 }
 
+fn _calculateTransferAllocationMappingOffset(heap : * const vulkan.MemoryHeapTransfer, allocation : * const vulkan.MemoryHeap.Allocation) * anyopaque {
+   const base_ptr = heap.mapping;
+   const offset   = allocation.offset;
+
+   const offset_int_ptr = @intFromPtr(base_ptr) + offset;
+   const offset_ptr     = @as(* anyopaque, @ptrFromInt(offset_int_ptr));
+
+   return offset_ptr;
+}
+
 const MeshBytes = struct {
    vertices       : u32,
    indices        : u32,
@@ -329,6 +347,48 @@ fn _calculateMeshBytes(mesh : * const vulkan.types.Mesh) MeshBytes {
       .indices       = @intCast(bytes_indices),
       .total         = @intCast(bytes_total),
       .total_aligned = @intCast(bytes_total_aligned),
+   };
+}
+
+const MeshPointers = struct {
+   vertices : [*] vulkan.types.Vertex,
+   indices  : [*] vulkan.types.Mesh.IndexElement,
+};
+
+fn _calculateMeshPointers(bytes : * const MeshBytes, mapping : * anyopaque, offset : u32) MeshPointers {
+   const base_int_ptr   = @intFromPtr(mapping) + offset;
+
+   const vertices_int_ptr  = base_int_ptr;
+   const indices_int_ptr   = vertices_int_ptr + bytes.vertices;
+
+   const vertices_ptr   = @as([*] vulkan.types.Vertex, @ptrFromInt(vertices_int_ptr));
+   const indices_ptr    = @as([*] vulkan.types.Mesh.IndexElement, @ptrFromInt(indices_int_ptr));
+
+   return .{
+      .vertices   = vertices_ptr,
+      .indices    = indices_ptr,
+   };
+}
+
+fn _createMeshObject(allocator : std.mem.Allocator, load_info : * const MeshAssetServer.LoadInfo, mesh : * const vulkan.types.Mesh, mesh_bytes : * const MeshBytes) MeshAssetServer.LoadError!MeshAssetServer.Object {
+   const transform_mesh = math.Matrix4(f32).IDENTITY;
+
+   const push_constants = vulkan.types.PushConstants{
+      .transform_mesh   = transform_mesh,
+   };
+
+   const allocation = try load_info.heap_draw.memory_heap.allocate(allocator, &.{
+      .alignment  = MESH_BYTE_ALIGNMENT,
+      .bytes      = mesh_bytes.total,
+   });
+   errdefer load_info.heap_draw.memory_heap.free(allocator, allocation);
+
+   const indices = @as(u32, @intCast(mesh.indices.len));
+
+   return .{
+      .push_constants   = push_constants,
+      .allocation       = allocation,
+      .indices          = indices,
    };
 }
 
