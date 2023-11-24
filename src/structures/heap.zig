@@ -1,5 +1,6 @@
 const std      = @import("std");
 const builtin  = @import("builtin");
+const math     = @import("math");
 
 pub fn Heap(comptime memory_precision : type) type {
    return struct {
@@ -94,7 +95,7 @@ pub fn Heap(comptime memory_precision : type) type {
          }
 
          // Calculate the block offset, checking against our special sentinel value
-         const block_offset = _alignForward(free_block_start, allocate_info.alignment);
+         const block_offset = math.alignForward(memory_precision, free_block_start, allocate_info.alignment);
          if (block_offset == NULL_ALLOCATION_OFFSET) {
             return error.OutOfMemory;
          }
@@ -264,12 +265,8 @@ pub fn Heap(comptime memory_precision : type) type {
          return node;
       }
 
-      fn _alignForward(value : memory_precision, alignment : memory_precision) memory_precision {
-         return value + alignment - @rem(value, alignment);
-      }
-
       fn _calculateAlignedBlockSize(start : memory_precision, end : memory_precision, alignment : memory_precision) memory_precision {
-         const start_aligned = _alignForward(start, alignment);
+         const start_aligned = math.alignForward(memory_precision, start, alignment);
 
          if (start_aligned >= end) {
             return 0;

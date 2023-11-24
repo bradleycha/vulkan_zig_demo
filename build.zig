@@ -20,8 +20,8 @@ const MODULE_NAME = struct {
    pub const options    = "options";
    pub const shaders    = "shaders";
    pub const cimports   = "cimports";
-   pub const structures = "structures";
    pub const math       = "math";
+   pub const structures = "structures";
    pub const input      = "input";
    pub const present    = "present";
    pub const graphics   = "graphics";
@@ -30,8 +30,8 @@ const MODULE_NAME = struct {
 
 const MODULE_ROOT_SOURCE_PATH = struct {
    pub const cimports   = "src/cimports.zig";
-   pub const structures = "src/structures/index.zig";
    pub const math       = "src/math/index.zig";
+   pub const structures = "src/structures/index.zig";
    pub const input      = "src/input/index.zig";
    pub const present    = "src/present/index.zig";
    pub const graphics   = "src/graphics/index.zig";
@@ -95,8 +95,8 @@ pub fn build(b : * std.Build) void {
       },
    });
 
-   const module_structures = b.addModule(MODULE_NAME.structures, .{
-      .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.structures},
+   const module_math = b.addModule(MODULE_NAME.math, .{
+      .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.math},
       .dependencies  = &.{
          .{
             .name    = MODULE_NAME.options,
@@ -109,8 +109,8 @@ pub fn build(b : * std.Build) void {
       },
    });
 
-   const module_math = b.addModule(MODULE_NAME.math, .{
-      .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.math},
+   const module_structures = b.addModule(MODULE_NAME.structures, .{
+      .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.structures},
       .dependencies  = &.{
          .{
             .name    = MODULE_NAME.options,
@@ -119,6 +119,10 @@ pub fn build(b : * std.Build) void {
          .{
             .name    = MODULE_NAME.cimports,
             .module  = module_cimports,
+         },
+         .{
+            .name    = MODULE_NAME.math,
+            .module  = module_math,
          },
       },
    });
