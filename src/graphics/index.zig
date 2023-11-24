@@ -290,12 +290,17 @@ pub const Renderer = struct {
    pub const MeshHandle = asset_server.MeshAssetServer.Handle;
 
    pub fn loadMeshMultiple(self : * @This(), meshes : [] const * const types.Mesh, mesh_handles : [] MeshHandle) MeshLoadError!void {
-      return self._mesh_asset_server.loadMeshMultiple(self._allocator, &.{
+      const allocator = self._allocator;
+
+      const vk_buffer_copy_regions = try allocator.alloc(c.VkBufferCopy, meshes.len);
+      defer allocator.free(vk_buffer_copy_regions);
+
+      return self._mesh_asset_server.loadMeshMultiple(allocator, &.{
          .vk_device           = self._vulkan_device.vk_device,
          .vk_queue_transfer   = self._vulkan_device.queues.transfer,
          .heap_draw           = &self._vulkan_memory_heap_draw,
          .heap_transfer       = &self._vulkan_memory_heap_transfer,
-      }, meshes, mesh_handles);
+      }, meshes, mesh_handles, vk_buffer_copy_regions);
    }
 
    pub fn unloadMeshMultiple(self : * @This(), meshes : [] const MeshHandle) void {
