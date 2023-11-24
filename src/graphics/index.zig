@@ -305,8 +305,9 @@ pub const Renderer = struct {
 
    pub fn unloadMeshMultiple(self : * @This(), meshes : [] const MeshHandle) void {
       return self._mesh_asset_server.unloadMeshMultiple(self._allocator, &.{
-         .vk_device  = self._vulkan_device.vk_device,
-         .heap_draw  = &self._vulkan_memory_heap_draw,
+         .vk_device     = self._vulkan_device.vk_device,
+         .heap_draw     = &self._vulkan_memory_heap_draw,
+         .heap_transfer = &self._vulkan_memory_heap_transfer,
       }, meshes);
    }
 
@@ -417,6 +418,13 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
       c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
       else                             => unreachable,
    }
+
+   self._mesh_asset_server.pollMeshLoadStatus(
+      self._allocator,
+      vk_device,
+      &self._vulkan_memory_heap_transfer,
+      mesh_handles,
+   );
 
    try _recordRenderPass(mesh_handles, &.{
       .vk_command_buffer            = vk_command_buffer,
@@ -664,6 +672,12 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
 
    for (mesh_handles) |mesh_handle| {
       const mesh_object = mesh_asset_server.get(mesh_handle);
+
+      // If the mesh is in the middle of loading, don't draw it but also don't
+      // block the thread.  Simply skip over it in the draw command.
+      if (mesh_object.isPending() == true) {
+         continue;
+      }
 
       const vk_buffer_draw_offset_vertex  = @as(u64, mesh_object.allocation.offset);
       const vk_buffer_draw_offset_index   = @as(u64, mesh_object.allocation.offset + mesh_object.allocation.bytes - mesh_object.indices * @sizeOf(types.Mesh.IndexElement));
