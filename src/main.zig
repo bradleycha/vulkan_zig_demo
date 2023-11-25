@@ -63,17 +63,17 @@ pub fn main() MainError!void {
 
    std.log.info("loading resources", .{});
 
-   var mesh_handles: [3] graphics.Renderer.MeshHandle = undefined;
+   var mesh_load_buffers : graphics.Renderer.MeshLoadBuffersStatic(3) = undefined;
    renderer.loadMeshMultiple(&.{
       &resources.meshes.MESH_TEST_PLANE,
       &resources.meshes.MESH_TEST_PYRAMID,
       &resources.meshes.MESH_TEST_CUBE,
-   }, &mesh_handles) catch return error.ResourceLoadError;
-   defer renderer.unloadMeshMultiple(&mesh_handles);
+   }, &mesh_load_buffers.toPointers()) catch return error.ResourceLoadError;
+   defer renderer.unloadMeshMultiple(mesh_load_buffers.mesh_handles[0..3]);
 
-   const mesh_handle_test_plane     = mesh_handles[0];
-   const mesh_handle_test_pyramid   = mesh_handles[1];
-   const mesh_handle_test_cube      = mesh_handles[2];
+   const mesh_handle_test_plane     = mesh_load_buffers.mesh_handles[0];
+   const mesh_handle_test_pyramid   = mesh_load_buffers.mesh_handles[1];
+   const mesh_handle_test_cube      = mesh_load_buffers.mesh_handles[2];
 
    const mesh_matrix_test_plane     = renderer.meshTransformMatrixMut(mesh_handle_test_plane);
    const mesh_matrix_test_pyramid   = renderer.meshTransformMatrixMut(mesh_handle_test_pyramid);

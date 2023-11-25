@@ -127,16 +127,95 @@ pub const MeshAssetServer = struct {
    }
 
    pub const LoadInfo = struct {
-      vk_device         : c.VkDevice,
-      vk_queue_transfer : c.VkQueue,
-      heap_draw         : * vulkan.MemoryHeapDraw,
-      heap_transfer     : * vulkan.MemoryHeapTransfer,
+      meshes                  : [] const * const vulkan.types.Mesh,
+      load_buffers_pointers   : * const LoadBuffersPointers,
+      vk_device               : c.VkDevice,
+      vk_queue_transfer       : c.VkQueue,
+      heap_draw               : * vulkan.MemoryHeapDraw,
+      heap_transfer           : * vulkan.MemoryHeapTransfer,
    };
 
-   pub const UnloadInfo = struct {
-      vk_device      : c.VkDevice,
-      heap_draw      : * vulkan.MemoryHeapDraw,
-      heap_transfer  : * vulkan.MemoryHeapTransfer,
+   pub fn LoadBuffersStatic(comptime count : comptime_int) type {
+      return struct {
+         mesh_handles            : [count] Handle,
+         vk_buffer_copy_regions  : [count] c.VkBufferCopy,
+
+         pub fn toPointers(self : * @This()) LoadBuffersPointers {
+            var pointers : LoadBuffersPointers = undefined;
+            pointers.mesh_handles            = &self.mesh_handles;
+            pointers.vk_buffer_copy_regions  = &self.vk_buffer_copy_regions;
+
+            if (@hasField(LoadBuffersPointers, "count") == true) {
+               pointers.count = count;
+            }
+
+            return pointers;
+         }
+      };
+   }
+
+   pub const LoadBuffersDynamic = struct {
+      mesh_handles            : [*] Handle,
+      vk_buffer_copy_regions  : [*] c.VkBufferCopy,
+      count                   : usize,
+
+      pub const InitError = error {
+         OutOfMemory,
+      };
+
+      pub fn init(allocator : std.mem.Allocator, count : usize) InitError!@This() {
+         const mesh_handles = try allocator.alloc(Handle, count);
+         errdefer allocator.free(mesh_handles);
+
+         const vk_buffer_copy_regions = try allocator.alloc(c.VkBufferCopy, count);
+         errdefer allocator.free(vk_buffer_copy_regions);
+
+         return @This(){
+            .mesh_handles           = mesh_handles.ptr,
+            .vk_buffer_copy_regions = vk_buffer_copy_regions.ptr,
+            .count                  = count,
+         };
+      }
+
+      pub fn deinit(self : @This(), allocator : std.mem.Allocator) void {
+         allocator.free(self.mesh_handles[0..self.count]);
+         allocator.free(self.vk_buffer_copy_regions[0..self.count]);
+         return;
+      }
+
+      pub fn toPointers(self : * @This()) LoadBuffersPointers {
+         var pointers : LoadBuffersPointers = undefined;
+         pointers.mesh_handles            = self.mesh_handles;
+         pointers.vk_buffer_copy_regions  = self.vk_buffer_copy_regions;
+
+         if (@hasField(LoadBuffersPointers, "count") == true) {
+            pointers.count = self.count;
+         }
+
+         return pointers;
+      }
+   };
+
+   // We do this so we can have very trim structs in fast release builds while
+   // also allowing for runtime safety in debug / release-safe builds.  Raw
+   // pointers accompanied by a count field are used instead of slices because
+   // it's reduntant to store slices for every field.
+   pub const LoadBuffersPointers = blk: {
+      switch (std.debug.runtime_safety) {
+         true  => break :blk LoadBuffersPointersChecked,
+         false => break :blk LoadBuffersPointersUnchecked,
+      }
+   };
+
+   const LoadBuffersPointersChecked = struct {
+      mesh_handles            : [*] Handle,
+      vk_buffer_copy_regions  : [*] c.VkBufferCopy,
+      count                   : usize,
+   };
+
+   const LoadBuffersPointersUnchecked = struct {
+      mesh_handles            : [*] Handle,
+      vk_buffer_copy_regions  : [*] c.VkBufferCopy,
    };
 
    pub const LoadError = error {
@@ -145,13 +224,26 @@ pub const MeshAssetServer = struct {
       DeviceLost,
    };
 
-   pub fn loadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, load_info : * const LoadInfo, meshes : [] const * const vulkan.types.Mesh, mesh_handles : [] Handle, vk_buffer_copy_regions : [] c.VkBufferCopy) LoadError!void {
-      // Quick safety check
-      if (std.debug.runtime_safety == true and mesh_handles.len != meshes.len) {
-         @panic("mesh handles buffer not the same length as mesh count");
-      }
-      if (std.debug.runtime_safety == true and vk_buffer_copy_regions.len != mesh_handles.len) {
-         @panic("vulkan buffer copy regions buffer not the same length as mesh count");
+   pub const UnloadInfo = struct {
+      meshes         : [] const Handle,
+      vk_device      : c.VkDevice,
+      heap_draw      : * vulkan.MemoryHeapDraw,
+      heap_transfer  : * vulkan.MemoryHeapTransfer,
+   };
+
+   pub fn loadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, load_info : * const LoadInfo) LoadError!void {
+      const meshes                  = load_info.meshes;
+      const mesh_handles            = load_info.load_buffers_pointers.mesh_handles[0..meshes.len];
+      const vk_buffer_copy_regions  = load_info.load_buffers_pointers.vk_buffer_copy_regions[0..meshes.len];
+
+      // Debug-only runtime safety checks
+      if (std.debug.runtime_safety == true and @hasField(LoadBuffersPointers, "count")) {
+         const meshes_count                  = meshes.len;
+         const mesh_buffers_pointers_count   = load_info.load_buffers_pointers.count;
+
+         if (meshes_count > mesh_buffers_pointers_count) {
+            @panic("mesh load count exceeds mesh buffers length");
+         }
       }
 
       // Assign new handle IDs for each mesh
@@ -221,7 +313,9 @@ pub const MeshAssetServer = struct {
       return;
    }
 
-   pub fn unloadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, unload_info : * const UnloadInfo, meshes : [] const Handle) void {
+   pub fn unloadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, unload_info : * const UnloadInfo) void {
+      const meshes = unload_info.meshes;
+
       // Wait for the previous transfer command to finish to prevent race conditions
       _waitOnFence(unload_info.vk_device, self.vk_fence_transfer_finished) catch |err| {
          if (std.debug.runtime_safety == false) {

@@ -285,30 +285,34 @@ pub const Renderer = struct {
       return;
    }
 
+   pub const MeshLoadBuffersStatic = asset_server.MeshAssetServer.LoadBuffersStatic;
+
+   pub const MeshLoadBuffersDynamic = asset_server.MeshAssetServer.LoadBuffersDynamic;
+
+   pub const MeshLoadBuffersPointers = asset_server.MeshAssetServer.LoadBuffersPointers;
+
    pub const MeshLoadError = asset_server.MeshAssetServer.LoadError;
 
    pub const MeshHandle = asset_server.MeshAssetServer.Handle;
 
-   pub fn loadMeshMultiple(self : * @This(), meshes : [] const * const types.Mesh, mesh_handles : [] MeshHandle) MeshLoadError!void {
-      const allocator = self._allocator;
-
-      const vk_buffer_copy_regions = try allocator.alloc(c.VkBufferCopy, meshes.len);
-      defer allocator.free(vk_buffer_copy_regions);
-
-      return self._mesh_asset_server.loadMeshMultiple(allocator, &.{
-         .vk_device           = self._vulkan_device.vk_device,
-         .vk_queue_transfer   = self._vulkan_device.queues.transfer,
-         .heap_draw           = &self._vulkan_memory_heap_draw,
-         .heap_transfer       = &self._vulkan_memory_heap_transfer,
-      }, meshes, mesh_handles, vk_buffer_copy_regions);
+   pub fn loadMeshMultiple(self : * @This(), meshes : [] const * const types.Mesh, load_buffers_pointers : * const MeshLoadBuffersPointers) MeshLoadError!void {
+      return self._mesh_asset_server.loadMeshMultiple(self._allocator, &.{
+         .meshes                 = meshes,
+         .load_buffers_pointers  = load_buffers_pointers,
+         .vk_device              = self._vulkan_device.vk_device,
+         .vk_queue_transfer      = self._vulkan_device.queues.transfer,
+         .heap_draw              = &self._vulkan_memory_heap_draw,
+         .heap_transfer          = &self._vulkan_memory_heap_transfer,
+      });
    }
 
    pub fn unloadMeshMultiple(self : * @This(), meshes : [] const MeshHandle) void {
       return self._mesh_asset_server.unloadMeshMultiple(self._allocator, &.{
+         .meshes        = meshes,
          .vk_device     = self._vulkan_device.vk_device,
          .heap_draw     = &self._vulkan_memory_heap_draw,
          .heap_transfer = &self._vulkan_memory_heap_transfer,
-      }, meshes);
+      });
    }
 
    pub fn meshTransformMatrix(self : * const @This(), mesh_handle : MeshHandle) * const math.Matrix4(f32) {
