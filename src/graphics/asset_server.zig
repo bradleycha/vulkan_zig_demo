@@ -483,49 +483,21 @@ fn _assignMultipleNewHandleId(mesh_asset_server : * MeshAssetServer, allocator :
    return;
 }
 
-fn _calculateTransferAllocationBytes(meshes : [] const * const vulkan.types.Mesh) u32 {
-   var bytes_total : u32 = 0;
-
-   for (meshes[0..meshes.len - 1]) |mesh| {
-      const bytes_mesh = _calculateMeshBytes(mesh);
-
-      bytes_total += bytes_mesh.total_aligned;
-   }
-
-   const bytes_mesh = _calculateMeshBytes(meshes[meshes.len - 1]);
-   bytes_total += bytes_mesh.total;
-
-   return bytes_total;
-}
-
-fn _calculateTransferAllocationMappingOffset(heap : * const vulkan.MemoryHeapTransfer, allocation : * const vulkan.MemoryHeap.Allocation) * anyopaque {
-   const base_ptr = heap.mapping;
-   const offset   = allocation.offset;
-
-   const offset_int_ptr = @intFromPtr(base_ptr) + offset;
-   const offset_ptr     = @as(* anyopaque, @ptrFromInt(offset_int_ptr));
-
-   return offset_ptr;
-}
-
 const MeshBytes = struct {
-   vertices       : u32,
-   indices        : u32,
-   total          : u32,
-   total_aligned  : u32,
+   vertices : u32,
+   indices  : u32,
+   total    : u32,
 };
 
 fn _calculateMeshBytes(mesh : * const vulkan.types.Mesh) MeshBytes {
    const bytes_vertices       = mesh.vertices.len * @sizeOf(vulkan.types.Vertex);
    const bytes_indices        = mesh.indices.len * @sizeOf(vulkan.types.Mesh.IndexElement);
    const bytes_total          = bytes_vertices + bytes_indices;
-   const bytes_total_aligned  = math.alignForward(usize, bytes_total, MESH_BYTE_ALIGNMENT);
 
    return .{
-      .vertices      = @intCast(bytes_vertices),
-      .indices       = @intCast(bytes_indices),
-      .total         = @intCast(bytes_total),
-      .total_aligned = @intCast(bytes_total_aligned),
+      .vertices   = @intCast(bytes_vertices),
+      .indices    = @intCast(bytes_indices),
+      .total      = @intCast(bytes_total),
    };
 }
 
