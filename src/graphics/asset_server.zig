@@ -232,19 +232,19 @@ pub const MeshAssetServer = struct {
    };
 
    pub fn loadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, load_info : * const LoadInfo) LoadError!void {
-      const meshes                  = load_info.meshes;
-      const mesh_handles            = load_info.load_buffers_pointers.mesh_handles[0..meshes.len];
-      const vk_buffer_copy_regions  = load_info.load_buffers_pointers.vk_buffer_copy_regions[0..meshes.len];
-
       // Debug-only runtime safety checks
       if (std.debug.runtime_safety == true and @hasField(LoadBuffersPointers, "count")) {
-         const meshes_count                  = meshes.len;
+         const meshes_count                  = load_info.meshes.len;
          const mesh_buffers_pointers_count   = load_info.load_buffers_pointers.count;
 
          if (meshes_count > mesh_buffers_pointers_count) {
             @panic("mesh load count exceeds mesh buffers length");
          }
       }
+
+      const meshes                  = load_info.meshes;
+      const mesh_handles            = load_info.load_buffers_pointers.mesh_handles[0..meshes.len];
+      const vk_buffer_copy_regions  = load_info.load_buffers_pointers.vk_buffer_copy_regions[0..meshes.len];
 
       // Assign new handle IDs for each mesh
       const loaded_handles_old_len = self.loaded.items.len;
