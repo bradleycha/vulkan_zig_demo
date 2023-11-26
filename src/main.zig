@@ -29,6 +29,8 @@ comptime {
       }
    };
 
+   // Does this enable fast floating-point for all our imported packages too?
+   // TODO: Disassemble and inspect the generated assembly to verify this works.
    @setFloatMode(float_mode);
 }
 
