@@ -139,8 +139,8 @@ pub const GraphicsPipeline = struct {
          .sType                  = c.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
          .pNext                  = null,
          .flags                  = 0x00000000,
-         .topology               = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-         .primitiveRestartEnable = c.VK_FALSE,
+         .topology               = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+         .primitiveRestartEnable = c.VK_TRUE,
       };
 
       const vk_info_create_viewport_state = c.VkPipelineViewportStateCreateInfo{

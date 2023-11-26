@@ -216,14 +216,16 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
       },
    },
    .indices = &.{
-      0, 1, 2,
-      0, 2, 3,
-      0, 3, 4,
-      0, 4, 5,
-      0, 5, 6,
-      0, 6, 7,
-      0, 7, 8,
-      0, 8, 1,
+      1, 2, 0,
+      3,
+      4,
+      0xFFFF,
+      4, 5, 0,
+      6,
+      7,
+      0xFFFF,
+      7, 8, 0,
+      1,
    },
 };
 
@@ -368,17 +370,18 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
    },
    .indices = &.{
       0, 1, 3,
-      1, 2, 3,
-      3, 2, 7,
-      2, 6, 7,
-      7, 6, 4,
-      6, 5, 4,
-      4, 5, 0,
-      5, 1, 0,
-      4, 0, 7,
-      0, 3, 7,
-      1, 5, 6,
-      1, 6, 2,
+      2,
+      7,
+      6,
+      4,
+      5,
+      1,
+      6,
+      2,
+      0xFFFF,
+      1, 0, 4,
+      3,
+      7,
    },
 };
 
@@ -471,12 +474,13 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
       },
    },
    .indices = &.{
-      0, 2, 1,
+      2, 3, 4,
+      0,
+      1,
+      2,
+      4,
+      0xFFFF,
       0, 3, 2,
-      0, 4, 3,
-      0, 1, 4,
-      1, 2, 4,
-      4, 2, 3,
    },
 };
 
@@ -553,7 +557,7 @@ pub const MESH_TEST_PLANE  = graphics.types.Mesh{
    },
    .indices = &.{
       0, 1, 2,
-      1, 3, 2,
+      3,
    },
 };
 
