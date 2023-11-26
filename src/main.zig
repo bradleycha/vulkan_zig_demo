@@ -21,6 +21,17 @@ const PROGRAM_NAME                     = "Learn Graphics Programming with Zig!";
 const WINDOW_TITLE_UPDATE_TIME_SECONDS = 1.0;
 const SPIN_SPEED                       = 2.0;
 
+comptime {
+   const float_mode = blk: {
+      switch (std.debug.runtime_safety) {
+         true  => break :blk std.builtin.FloatMode.Strict,
+         false => break :blk std.builtin.FloatMode.Optimized,
+      }
+   };
+
+   @setFloatMode(float_mode);
+}
+
 pub fn main() MainError!void {
    var heap = chooseHeapSettings();
    defer _ = heap.deinit();
@@ -223,7 +234,7 @@ fn chooseBackingAllocator() std.mem.Allocator {
       return std.heap.page_allocator;
    }
 
-   if (builtin.mode == .Debug) {
+   if (std.debug.runtime_safety == true) {
       return std.heap.page_allocator;
    }
 
