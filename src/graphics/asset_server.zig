@@ -23,7 +23,7 @@ const MESH_BYTE_ALIGNMENT = blk: {
 };
 
 pub const MeshAssetServer = struct {
-   loaded                     : std.ArrayListUnmanaged(Object) = .{},
+   mesh_objects               : std.ArrayListUnmanaged(Object) = .{},
    vk_command_buffer_transfer : c.VkCommandBuffer,
    vk_fence_transfer_finished : c.VkFence,
 
@@ -98,7 +98,7 @@ pub const MeshAssetServer = struct {
       errdefer c.vkDestroyFence(vk_device, vk_fence_transfer_finished, null);
 
       return @This(){
-         .loaded                       = .{},
+         .mesh_objects                 = .{},
          .vk_command_buffer_transfer   = vk_command_buffer_transfer,
          .vk_fence_transfer_finished   = vk_fence_transfer_finished,
       };
@@ -107,7 +107,7 @@ pub const MeshAssetServer = struct {
    pub fn destroy(self : * @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice, vk_transfer_command_pool : c.VkCommandPool) void {
       c.vkDestroyFence(vk_device, self.vk_fence_transfer_finished, null);
       c.vkFreeCommandBuffers(vk_device, vk_transfer_command_pool, 1, &self.vk_command_buffer_transfer);
-      self.loaded.deinit(allocator);
+      self.mesh_objects.deinit(allocator);
       return;
    }
 
@@ -247,9 +247,9 @@ pub const MeshAssetServer = struct {
       const vk_buffer_copy_regions  = load_info.load_buffers_pointers.vk_buffer_copy_regions[0..meshes.len];
 
       // Assign new handle IDs for each mesh
-      const loaded_handles_old_len = self.loaded.items.len;
+      const mesh_objects_old_len = self.mesh_objects.items.len;
       try _assignMultipleNewHandleId(self, allocator, mesh_handles);
-      errdefer self.loaded.shrinkAndFree(allocator, loaded_handles_old_len);
+      errdefer self.mesh_objects.shrinkAndFree(allocator, mesh_objects_old_len);
 
       // Iterate through every new mesh handle and initialize its associated mesh object
       for (meshes, mesh_handles, vk_buffer_copy_regions, 0..meshes.len) |mesh, handle, *vk_buffer_copy_region_dest, i| {
@@ -390,11 +390,11 @@ pub const MeshAssetServer = struct {
 };
 
 fn _getMeshObjectFallible(mesh_asset_server : * const MeshAssetServer, handle : MeshAssetServer.Handle) ? * const MeshAssetServer.Object {
-   if (handle >= mesh_asset_server.loaded.items.len) {
+   if (handle >= mesh_asset_server.mesh_objects.items.len) {
       return null;
    }
 
-   const object = &mesh_asset_server.loaded.items[handle];
+   const object = &mesh_asset_server.mesh_objects.items[handle];
 
    if (object.isNull() == true) {
       return null;
@@ -450,31 +450,31 @@ fn _createTransferFence(vk_device : c.VkDevice) MeshAssetServer.CreateError!c.Vk
 }
 
 fn _freeExcessNullMeshes(mesh_asset_server : * MeshAssetServer, allocator : std.mem.Allocator) void {
-   var new_length = mesh_asset_server.loaded.items.len;
-   while (new_length != 0 and mesh_asset_server.loaded.items[new_length - 1].isNull() == true) {
+   var new_length = mesh_asset_server.mesh_objects.items.len;
+   while (new_length != 0 and mesh_asset_server.mesh_objects.items[new_length - 1].isNull() == true) {
       new_length -= 1;
    }
 
-   mesh_asset_server.loaded.shrinkAndFree(allocator, new_length);
+   mesh_asset_server.mesh_objects.shrinkAndFree(allocator, new_length);
 
    return;
 }
 
 fn _assignNewHandleId(mesh_asset_server : * MeshAssetServer, allocator : std.mem.Allocator) MeshAssetServer.LoadError!MeshAssetServer.Handle {
-   for (mesh_asset_server.loaded.items, 0..mesh_asset_server.loaded.items.len) |object, i| {
+   for (mesh_asset_server.mesh_objects.items, 0..mesh_asset_server.mesh_objects.items.len) |object, i| {
       if (object.isNull() == true) {
          return i;
       }
    }
 
-   try mesh_asset_server.loaded.resize(allocator, mesh_asset_server.loaded.items.len + 1);
+   try mesh_asset_server.mesh_objects.resize(allocator, mesh_asset_server.mesh_objects.items.len + 1);
 
-   return mesh_asset_server.loaded.items.len - 1;
+   return mesh_asset_server.mesh_objects.items.len - 1;
 }
 
 fn _assignMultipleNewHandleId(mesh_asset_server : * MeshAssetServer, allocator : std.mem.Allocator, buffer : [] MeshAssetServer.Handle) MeshAssetServer.LoadError!void {
-   const old_size = mesh_asset_server.loaded.items.len;
-   errdefer mesh_asset_server.loaded.shrinkAndFree(allocator, old_size);
+   const old_size = mesh_asset_server.mesh_objects.items.len;
+   errdefer mesh_asset_server.mesh_objects.shrinkAndFree(allocator, old_size);
 
    for (buffer) |*handle_out| {
       handle_out.* = try _assignNewHandleId(mesh_asset_server, allocator);
