@@ -293,7 +293,7 @@ pub const Renderer = struct {
 
    pub const MeshLoadError = asset_server.MeshAssetServer.LoadError;
 
-   pub const MeshHandle = asset_server.MeshAssetServer.Handle;
+   pub const MeshHandle = asset_server.MeshAssetServer.MeshHandle;
 
    pub fn loadMeshMultiple(self : * @This(), meshes : [] const * const types.Mesh, load_buffers_pointers : * const MeshLoadBuffersPointers) MeshLoadError!void {
       return self._mesh_asset_server.loadMeshMultiple(self._allocator, &.{

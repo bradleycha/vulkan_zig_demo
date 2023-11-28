@@ -23,13 +23,13 @@ const MESH_BYTE_ALIGNMENT = blk: {
 };
 
 pub const MeshAssetServer = struct {
-   mesh_objects               : std.ArrayListUnmanaged(Object) = .{},
+   mesh_objects               : std.ArrayListUnmanaged(MeshObject) = .{},
    vk_command_buffer_transfer : c.VkCommandBuffer,
    vk_fence_transfer_finished : c.VkFence,
 
-   pub const Handle = usize;
+   pub const MeshHandle = usize;
 
-   pub const Object = struct {
+   pub const MeshObject = struct {
       push_constants : vulkan.types.PushConstants,
       allocation     : vulkan.MemoryHeap.Allocation,
       indices        : u32,
@@ -111,7 +111,7 @@ pub const MeshAssetServer = struct {
       return;
    }
 
-   pub fn get(self : * const @This(), handle : Handle) * const Object {
+   pub fn get(self : * const @This(), handle : MeshHandle) * const MeshObject {
       const object = _getMeshObjectFallible(self, handle) orelse {
          switch (std.debug.runtime_safety) {
             true  => @panic("attempted to access invalid mesh"),
@@ -122,7 +122,7 @@ pub const MeshAssetServer = struct {
       return object;
    }
 
-   pub fn getMut(self : * @This(), handle : Handle) * Object {
+   pub fn getMut(self : * @This(), handle : MeshHandle) * MeshObject {
       return @constCast(self.get(handle));
    }
 
@@ -137,7 +137,7 @@ pub const MeshAssetServer = struct {
 
    pub fn LoadBuffersStatic(comptime count : comptime_int) type {
       return struct {
-         mesh_handles            : [count] Handle,
+         mesh_handles            : [count] MeshHandle,
          vk_buffer_copy_regions  : [count] c.VkBufferCopy,
 
          pub fn toPointers(self : * @This()) LoadBuffersPointers {
@@ -155,7 +155,7 @@ pub const MeshAssetServer = struct {
    }
 
    pub const LoadBuffersDynamic = struct {
-      mesh_handles            : [*] Handle,
+      mesh_handles            : [*] MeshHandle,
       vk_buffer_copy_regions  : [*] c.VkBufferCopy,
       count                   : usize,
 
@@ -164,7 +164,7 @@ pub const MeshAssetServer = struct {
       };
 
       pub fn init(allocator : std.mem.Allocator, count : usize) InitError!@This() {
-         const mesh_handles = try allocator.alloc(Handle, count);
+         const mesh_handles = try allocator.alloc(MeshHandle, count);
          errdefer allocator.free(mesh_handles);
 
          const vk_buffer_copy_regions = try allocator.alloc(c.VkBufferCopy, count);
@@ -208,13 +208,13 @@ pub const MeshAssetServer = struct {
    };
 
    const LoadBuffersPointersChecked = struct {
-      mesh_handles            : [*] Handle,
+      mesh_handles            : [*] MeshHandle,
       vk_buffer_copy_regions  : [*] c.VkBufferCopy,
       count                   : usize,
    };
 
    const LoadBuffersPointersUnchecked = struct {
-      mesh_handles            : [*] Handle,
+      mesh_handles            : [*] MeshHandle,
       vk_buffer_copy_regions  : [*] c.VkBufferCopy,
    };
 
@@ -225,7 +225,7 @@ pub const MeshAssetServer = struct {
    };
 
    pub const UnloadInfo = struct {
-      meshes         : [] const Handle,
+      meshes         : [] const MeshHandle,
       vk_device      : c.VkDevice,
       heap_draw      : * vulkan.MemoryHeapDraw,
       heap_transfer  : * vulkan.MemoryHeapTransfer,
@@ -351,7 +351,7 @@ pub const MeshAssetServer = struct {
       return;
    }
 
-   pub fn pollMeshLoadStatus(self : * @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice, heap_transfer : * vulkan.MemoryHeapTransfer, meshes : [] const Handle) void {
+   pub fn pollMeshLoadStatus(self : * @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice, heap_transfer : * vulkan.MemoryHeapTransfer, meshes : [] const MeshHandle) void {
       const vk_fence_transfer_finished_status = _fenceIsSignaled(vk_device, self.vk_fence_transfer_finished) catch |err| {
          if(std.debug.runtime_safety == false) {
             unreachable;
@@ -389,7 +389,7 @@ pub const MeshAssetServer = struct {
    }
 };
 
-fn _getMeshObjectFallible(mesh_asset_server : * const MeshAssetServer, handle : MeshAssetServer.Handle) ? * const MeshAssetServer.Object {
+fn _getMeshObjectFallible(mesh_asset_server : * const MeshAssetServer, handle : MeshAssetServer.MeshHandle) ? * const MeshAssetServer.MeshObject {
    if (handle >= mesh_asset_server.mesh_objects.items.len) {
       return null;
    }
@@ -460,7 +460,7 @@ fn _freeExcessNullMeshes(mesh_asset_server : * MeshAssetServer, allocator : std.
    return;
 }
 
-fn _assignNewHandleId(mesh_asset_server : * MeshAssetServer, allocator : std.mem.Allocator) MeshAssetServer.LoadError!MeshAssetServer.Handle {
+fn _assignNewHandleId(mesh_asset_server : * MeshAssetServer, allocator : std.mem.Allocator) MeshAssetServer.LoadError!MeshAssetServer.MeshHandle {
    for (mesh_asset_server.mesh_objects.items, 0..mesh_asset_server.mesh_objects.items.len) |object, i| {
       if (object.isNull() == true) {
          return i;
@@ -472,7 +472,7 @@ fn _assignNewHandleId(mesh_asset_server : * MeshAssetServer, allocator : std.mem
    return mesh_asset_server.mesh_objects.items.len - 1;
 }
 
-fn _assignMultipleNewHandleId(mesh_asset_server : * MeshAssetServer, allocator : std.mem.Allocator, buffer : [] MeshAssetServer.Handle) MeshAssetServer.LoadError!void {
+fn _assignMultipleNewHandleId(mesh_asset_server : * MeshAssetServer, allocator : std.mem.Allocator, buffer : [] MeshAssetServer.MeshHandle) MeshAssetServer.LoadError!void {
    const old_size = mesh_asset_server.mesh_objects.items.len;
    errdefer mesh_asset_server.mesh_objects.shrinkAndFree(allocator, old_size);
 
@@ -521,7 +521,7 @@ fn _calculateMeshPointers(bytes : * const MeshBytes, mapping : * anyopaque, offs
    };
 }
 
-fn _createMeshObject(mesh : * const vulkan.types.Mesh, allocation_transfer : vulkan.MemoryHeap.Allocation, allocation_draw : vulkan.MemoryHeap.Allocation) MeshAssetServer.Object {
+fn _createMeshObject(mesh : * const vulkan.types.Mesh, allocation_transfer : vulkan.MemoryHeap.Allocation, allocation_draw : vulkan.MemoryHeap.Allocation) MeshAssetServer.MeshObject {
    const transform_mesh = math.Matrix4(f32).IDENTITY;
 
    const push_constants = vulkan.types.PushConstants{
