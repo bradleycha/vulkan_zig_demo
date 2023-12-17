@@ -3,6 +3,27 @@ const std         = @import("std");
 const c           = @import("cimports");
 const structures  = @import("structures");
 
+pub const MemorySource = struct {
+   vk_memory_index : u32,
+
+   pub fn findSuitable(vk_memory_property_flags : c.VkMemoryPropertyFlags, vk_physical_device_memory_properties : c.VkPhysicalDeviceMemoryProperties) ? @This() {
+      const vk_memory_types_count   = vk_physical_device_memory_properties.memoryTypeCount;
+      const vk_memory_types         = vk_physical_device_memory_properties.memoryTypes[0..vk_memory_types_count];
+
+      for (vk_memory_types, 0..vk_memory_types_count) |vk_memory_type, i| {
+         // This differs from the tutorial because I don't have a clue what the
+         // tutorial's code is supposed to do and it doesn't work for me.
+         if (vk_memory_type.propertyFlags & vk_memory_property_flags != vk_memory_property_flags) {
+            continue;
+         }
+
+         return @This(){.vk_memory_index = @intCast(i)};
+      }
+
+      return null;
+   }
+};
+
 pub const MemoryHeap = struct {
    vk_buffer         : c.VkBuffer,
    vk_device_memory  : c.VkDeviceMemory,
@@ -61,7 +82,7 @@ pub const MemoryHeap = struct {
       }
       errdefer c.vkDestroyBuffer(vk_device, vk_buffer, null);
 
-      const vk_memory_type_index = _chooseMemoryTypeIndex(
+      const memory_source = MemorySource.findSuitable(
          memory_flags,
          physical_device.vk_physical_device_memory_properties,
       ) orelse return error.NoSuitableMemoryAvailable;
@@ -70,7 +91,7 @@ pub const MemoryHeap = struct {
          .sType            = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
          .pNext            = null,
          .allocationSize   = heap_size,
-         .memoryTypeIndex  = vk_memory_type_index,
+         .memoryTypeIndex  = memory_source.vk_memory_index,
       };
 
       var vk_device_memory : c.VkDeviceMemory = undefined;
@@ -252,20 +273,5 @@ fn _chooseConcurrencyMode(queue_family_indices : * const root.QueueFamilyIndices
    };
 }
 
-fn _chooseMemoryTypeIndex(vk_memory_property_flags : c.VkMemoryPropertyFlags, vk_physical_device_memory_properties : c.VkPhysicalDeviceMemoryProperties) ? u32 {
-   const vk_memory_types_count   = vk_physical_device_memory_properties.memoryTypeCount;
-   const vk_memory_types         = vk_physical_device_memory_properties.memoryTypes[0..vk_memory_types_count];
 
-   for (vk_memory_types, 0..vk_memory_types_count) |vk_memory_type, i| {
-      // This differs from the tutorial because I don't have a clue what the
-      // tutorial's code is supposed to do and it doesn't work for me.
-      if (vk_memory_type.propertyFlags & vk_memory_property_flags != vk_memory_property_flags) {
-         continue;
-      }
-
-      return @intCast(i);
-   }
-
-   return null;
-}
 
