@@ -23,25 +23,18 @@ const MESH_BYTE_ALIGNMENT = blk: {
 };
 
 pub const AssetServer = struct {
-   mesh_objects               : std.ArrayListUnmanaged(MeshObject) = .{},
+   mesh_objects               : std.ArrayListUnmanaged(MeshObject),
    vk_command_buffer_transfer : c.VkCommandBuffer,
    vk_fence_transfer_finished : c.VkFence,
-   allocation_transfer        : vulkan.MemoryHeap.Allocation = .{.offset = NULL_ALLOCATION_OFFSET, .bytes = undefined},
+   allocation_transfer        : vulkan.MemoryHeap.Allocation,
 
    pub const MeshHandle = usize;
-
-   pub const TextureHandle = usize;
 
    pub const MeshObject = struct {
       push_constants : vulkan.types.PushConstants,
       allocation     : vulkan.MemoryHeap.Allocation,
       indices        : u32,
       load_status    : LoadStatus,
-
-      pub const LoadStatus = enum {
-         pending,
-         ready,
-      };
 
       const NULL_INDICES_COUNT = std.math.maxInt(u32);
 
@@ -57,6 +50,11 @@ pub const AssetServer = struct {
       pub fn isPending(self : * const @This()) bool {
          return self.load_status == .pending;
       }
+   };
+
+   pub const LoadStatus = enum {
+      pending,
+      ready,
    };
 
    pub const CreateInfo = struct {
