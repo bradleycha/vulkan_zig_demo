@@ -304,17 +304,19 @@ pub const Renderer = struct {
       return;
    }
 
-   pub const MeshLoadBuffersStatic = f_asset_server.AssetServer.MeshLoadBuffersStatic;
+   pub const AssetLoadBuffersStatic = f_asset_server.AssetServer.LoadBuffersStatic;
 
-   pub const MeshLoadBuffersDynamic = f_asset_server.AssetServer.MeshLoadBuffersDynamic;
+   pub const AssetLoadBuffersDynamic = f_asset_server.AssetServer.LoadBuffersDynamic;
 
-   pub const MeshLoadBuffersPointers = f_asset_server.AssetServer.MeshLoadBuffersPointers;
+   pub const AssetLoadBuffersPointers = f_asset_server.AssetServer.LoadBuffersPointers;
 
-   pub const MeshLoadError = f_asset_server.AssetServer.MeshLoadError;
+   pub const AssetLoadError = f_asset_server.AssetServer.LoadError;
 
    pub const MeshHandle = f_asset_server.AssetServer.MeshHandle;
 
-   pub fn loadMeshMultiple(self : * @This(), meshes : [] const * const types.Mesh, load_buffers_pointers : * const MeshLoadBuffersPointers) MeshLoadError!void {
+   pub const TextureHandle = f_asset_server.AssetServer.TextureHandle;
+
+   pub fn loadMeshMultiple(self : * @This(), meshes : [] const * const types.Mesh, load_buffers_pointers : * const AssetLoadBuffersPointers) AssetLoadError!void {
       return self._asset_server.loadMeshMultiple(self._allocator, &.{
          .meshes                 = meshes,
          .load_buffers_pointers  = load_buffers_pointers,
@@ -442,12 +444,11 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
       else                             => unreachable,
    }
 
-   self._asset_server.pollMeshLoadStatus(
-      self._allocator,
-      vk_device,
-      &self._vulkan_memory_heap_transfer,
-      mesh_handles,
-   );
+   self._asset_server.cleanupFreeMemory(self._allocator, vk_device, &self._vulkan_memory_heap_transfer);
+
+   for (mesh_handles) |handle| {
+      self._asset_server.pollMeshLoadStatus(vk_device, handle);
+   }
 
    try _recordRenderPass(mesh_handles, &.{
       .vk_command_buffer            = vk_command_buffer,
@@ -698,7 +699,7 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
 
       // If the mesh is in the middle of loading, don't draw it but also don't
       // block the thread.  Simply skip over it in the draw command.
-      if (mesh_object.isPending() == true) {
+      if (mesh_object.load_status == .pending) {
          continue;
       }
 

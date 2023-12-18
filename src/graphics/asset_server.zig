@@ -24,11 +24,14 @@ const MESH_BYTE_ALIGNMENT = blk: {
 
 pub const AssetServer = struct {
    mesh_objects               : std.ArrayListUnmanaged(MeshObject),
+   texture_objects            : std.ArrayListUnmanaged(TextureObject),
    vk_command_buffer_transfer : c.VkCommandBuffer,
    vk_fence_transfer_finished : c.VkFence,
    allocation_transfer        : vulkan.MemoryHeap.Allocation,
 
    pub const MeshHandle = usize;
+
+   pub const TextureHandle = usize;
 
    pub const MeshObject = struct {
       push_constants : vulkan.types.PushConstants,
@@ -46,9 +49,33 @@ pub const AssetServer = struct {
       pub fn isNull(self : * const @This()) bool {
          return self.indices == NULL_INDICES_COUNT;
       }
+   };
 
-      pub fn isPending(self : * const @This()) bool {
-         return self.load_status == .pending;
+   pub const TextureObject = struct {
+      image       : vulkan.Image,
+      // TODO: Add image view, sampler, descriptor set
+      load_status : LoadStatus,
+
+      const NULL_VK_IMAGE = @as(c.VkImage, @ptrCast(c.VK_NULL_HANDLE));
+
+      pub fn setNull(self : * @This()) void {
+         self.image.vk_image = NULL_VK_IMAGE;
+      }
+      
+      pub fn isNull(self : * const @This()) bool {
+         return self.image.vk_image == NULL_VK_IMAGE;
+      }
+
+      pub fn destroy(self : * @This(), vk_device : c.VkDevice) void {
+         self.image.destroy(vk_device);
+         return;
+      }
+
+      pub fn destroyAndNull(self : * @This()) void {
+         self.destory();
+
+         self.setNull();
+         return;
       }
    };
 
@@ -78,6 +105,7 @@ pub const AssetServer = struct {
 
       return @This(){
          .mesh_objects                 = .{},
+         .texture_objects              = .{},
          .vk_command_buffer_transfer   = vk_command_buffer_transfer,
          .vk_fence_transfer_finished   = vk_fence_transfer_finished,
          .allocation_transfer          = .{.offset = NULL_ALLOCATION_OFFSET, .bytes = undefined},
@@ -87,6 +115,7 @@ pub const AssetServer = struct {
    pub fn destroy(self : * @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice, vk_transfer_command_pool : c.VkCommandPool) void {
       c.vkDestroyFence(vk_device, self.vk_fence_transfer_finished, null);
       c.vkFreeCommandBuffers(vk_device, vk_transfer_command_pool, 1, &self.vk_command_buffer_transfer);
+      self.texture_objects.deinit(allocator);
       self.mesh_objects.deinit(allocator);
       return;
    }
@@ -106,26 +135,41 @@ pub const AssetServer = struct {
       return @constCast(self.getMesh(handle));
    }
 
-   pub const MeshLoadInfo = struct {
+   pub fn getTexture(self : * const @This(), handle : TextureHandle) * const TextureObject {
+      const object = _getTextureObjectFallible(self, handle) orelse {
+         switch (std.debug.runtime_safety) {
+            true  => @panic("attempted to access invalid texture"),
+            false => unreachable,
+         }
+      };
+
+      return object;
+   }
+
+   pub fn getTextureMut(self : * @This(), handle : TextureHandle) * TextureObject {
+      return @constCast(self.getTexture(handle));
+   }
+
+   pub const LoadInfo = struct {
       meshes                  : [] const * const vulkan.types.Mesh,
-      load_buffers_pointers   : * const MeshLoadBuffersPointers,
+      load_buffers_pointers   : * const LoadBuffersPointers,
       vk_device               : c.VkDevice,
       vk_queue_transfer       : c.VkQueue,
       heap_draw               : * vulkan.MemoryHeapDraw,
       heap_transfer           : * vulkan.MemoryHeapTransfer,
    };
 
-   pub fn MeshLoadBuffersStatic(comptime count : comptime_int) type {
+   pub fn LoadBuffersStatic(comptime count : comptime_int) type {
       return struct {
          mesh_handles            : [count] MeshHandle,
          vk_buffer_copy_regions  : [count] c.VkBufferCopy,
 
-         pub fn toPointers(self : * @This()) MeshLoadBuffersPointers {
-            var pointers : MeshLoadBuffersPointers = undefined;
+         pub fn toPointers(self : * @This()) LoadBuffersPointers {
+            var pointers : LoadBuffersPointers = undefined;
             pointers.mesh_handles            = &self.mesh_handles;
             pointers.vk_buffer_copy_regions  = &self.vk_buffer_copy_regions;
 
-            if (@hasField(MeshLoadBuffersPointers, "count") == true) {
+            if (@hasField(LoadBuffersPointers, "count") == true) {
                pointers.count = count;
             }
 
@@ -134,7 +178,7 @@ pub const AssetServer = struct {
       };
    }
 
-   pub const MeshLoadBuffersDynamic = struct {
+   pub const LoadBuffersDynamic = struct {
       mesh_handles            : [*] MeshHandle,
       vk_buffer_copy_regions  : [*] c.VkBufferCopy,
       count                   : usize,
@@ -163,12 +207,12 @@ pub const AssetServer = struct {
          return;
       }
 
-      pub fn toPointers(self : * @This()) MeshLoadBuffersPointers {
-         var pointers : MeshLoadBuffersPointers = undefined;
+      pub fn toPointers(self : * @This()) LoadBuffersPointers {
+         var pointers : LoadBuffersPointers = undefined;
          pointers.mesh_handles            = self.mesh_handles;
          pointers.vk_buffer_copy_regions  = self.vk_buffer_copy_regions;
 
-         if (@hasField(MeshLoadBuffersPointers, "count") == true) {
+         if (@hasField(LoadBuffersPointers, "count") == true) {
             pointers.count = self.count;
          }
 
@@ -180,40 +224,40 @@ pub const AssetServer = struct {
    // also allowing for runtime safety in debug / release-safe builds.  Raw
    // pointers accompanied by a count field are used instead of slices because
    // it's reduntant to store slices for every field.
-   pub const MeshLoadBuffersPointers = blk: {
+   pub const LoadBuffersPointers = blk: {
       switch (std.debug.runtime_safety) {
-         true  => break :blk MeshLoadBuffersPointersChecked,
-         false => break :blk MeshLoadBuffersPointersUnchecked,
+         true  => break :blk LoadBuffersPointersChecked,
+         false => break :blk LoadBuffersPointersUnchecked,
       }
    };
 
-   const MeshLoadBuffersPointersChecked = struct {
+   const LoadBuffersPointersChecked = struct {
       mesh_handles            : [*] MeshHandle,
       vk_buffer_copy_regions  : [*] c.VkBufferCopy,
       count                   : usize,
    };
 
-   const MeshLoadBuffersPointersUnchecked = struct {
+   const LoadBuffersPointersUnchecked = struct {
       mesh_handles            : [*] MeshHandle,
       vk_buffer_copy_regions  : [*] c.VkBufferCopy,
    };
 
-   pub const MeshLoadError = error {
+   pub const LoadError = error {
       OutOfMemory,
       Unknown,
       DeviceLost,
    };
 
-   pub const MeshUnloadInfo = struct {
+   pub const UnloadInfo = struct {
       meshes         : [] const MeshHandle,
       vk_device      : c.VkDevice,
       heap_draw      : * vulkan.MemoryHeapDraw,
       heap_transfer  : * vulkan.MemoryHeapTransfer,
    };
 
-   pub fn loadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, load_info : * const MeshLoadInfo) MeshLoadError!void {
+   pub fn loadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, load_info : * const LoadInfo) LoadError!void {
       // Debug-only runtime safety checks
-      if (std.debug.runtime_safety == true and @hasField(MeshLoadBuffersPointers, "count")) {
+      if (std.debug.runtime_safety == true and @hasField(LoadBuffersPointers, "count")) {
          const meshes_count                  = load_info.meshes.len;
          const mesh_buffers_pointers_count   = load_info.load_buffers_pointers.count;
 
@@ -319,7 +363,7 @@ pub const AssetServer = struct {
       return;
    }
 
-   pub fn unloadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, unload_info : * const MeshUnloadInfo) void {
+   pub fn unloadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, unload_info : * const UnloadInfo) void {
       const meshes = unload_info.meshes;
 
       // Wait for the previous transfer command to finish to prevent race conditions
@@ -352,7 +396,7 @@ pub const AssetServer = struct {
       return;
    }
 
-   pub fn pollMeshLoadStatus(self : * @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice, heap_transfer : * vulkan.MemoryHeapTransfer, meshes : [] const MeshHandle) void {
+   pub fn cleanupFreeMemory(self : * @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice, heap_transfer : * vulkan.MemoryHeapTransfer) void {
       const vk_fence_transfer_finished_status = _fenceIsSignaled(vk_device, self.vk_fence_transfer_finished) catch |err| {
          if(std.debug.runtime_safety == false) {
             unreachable;
@@ -372,22 +416,62 @@ pub const AssetServer = struct {
       }
 
       _allocationTransferTryFreeAndNull(self, allocator, heap_transfer);
+   }
 
-      for (meshes) |handle| {
-         const object = self.getMeshMut(handle);
-
-         if (object.isNull()) {
-            continue;
+   pub fn pollMeshLoadStatus(self : * @This(), vk_device : c.VkDevice, mesh : MeshHandle) void {
+      const vk_fence_transfer_finished_status = _fenceIsSignaled(vk_device, self.vk_fence_transfer_finished) catch |err| {
+         if(std.debug.runtime_safety == false) {
+            unreachable;
          }
 
-         if (object.isPending() == false) {
-            continue;
+         switch (err) {
+            inline else => |tag| {
+               @panic("failed to query vulkan fence status: " ++ @errorName(tag));
+            },
          }
 
-         object.load_status = .ready;
+         unreachable;
+      };
+
+      if (vk_fence_transfer_finished_status == false) {
+         return;
       }
 
-      return;
+      const object = self.getMeshMut(mesh);
+
+      if (object.load_status != .pending) {
+         return;
+      }
+
+      object.load_status = .ready;
+   }
+
+   pub fn pollTextureLoadStatus(self : * @This(), vk_device : c.VkDevice, texture : TextureHandle) void {
+      const vk_fence_transfer_finished_status = _fenceIsSignaled(vk_device, self.vk_fence_transfer_finished) catch |err| {
+         if(std.debug.runtime_safety == false) {
+            unreachable;
+         }
+
+         switch (err) {
+            inline else => |tag| {
+               @panic("failed to query vulkan fence status: " ++ @errorName(tag));
+            },
+         }
+
+         unreachable;
+      };
+
+      if (vk_fence_transfer_finished_status == false) {
+         return;
+      }
+
+      const object = self.getTextureMut(texture);
+
+      if (object.load_status != .pending) {
+         return;
+      }
+
+      object.load_status = .ready;
    }
 };
 
@@ -397,6 +481,20 @@ fn _getMeshObjectFallible(asset_server : * const AssetServer, handle : AssetServ
    }
 
    const object = &asset_server.mesh_objects.items[handle];
+
+   if (object.isNull() == true) {
+      return null;
+   }
+
+   return object;
+}
+
+fn _getTextureObjectFallible(asset_server : * const AssetServer, handle : AssetServer.TextureHandle) ? * const AssetServer.TextureHandle {
+   if (handle >= asset_server.texture_objects.items.len) {
+      return null;
+   }
+
+   const object = &asset_server.texture_objects.items[handle];
 
    if (object.isNull() == true) {
       return null;
@@ -462,7 +560,7 @@ fn _freeExcessNullMeshes(asset_server : * AssetServer, allocator : std.mem.Alloc
    return;
 }
 
-fn _assignNewHandleId(asset_server : * AssetServer, allocator : std.mem.Allocator) AssetServer.MeshLoadError!AssetServer.MeshHandle {
+fn _assignNewHandleId(asset_server : * AssetServer, allocator : std.mem.Allocator) AssetServer.LoadError!AssetServer.MeshHandle {
    for (asset_server.mesh_objects.items, 0..asset_server.mesh_objects.items.len) |object, i| {
       if (object.isNull() == true) {
          return i;
@@ -474,7 +572,7 @@ fn _assignNewHandleId(asset_server : * AssetServer, allocator : std.mem.Allocato
    return asset_server.mesh_objects.items.len - 1;
 }
 
-fn _assignMultipleNewHandleId(asset_server : * AssetServer, allocator : std.mem.Allocator, buffer : [] AssetServer.MeshHandle) AssetServer.MeshLoadError!void {
+fn _assignMultipleNewHandleId(asset_server : * AssetServer, allocator : std.mem.Allocator, buffer : [] AssetServer.MeshHandle) AssetServer.LoadError!void {
    const old_size = asset_server.mesh_objects.items.len;
    errdefer asset_server.mesh_objects.shrinkAndFree(allocator, old_size);
 
@@ -543,7 +641,7 @@ fn _createMeshObject(mesh : * const vulkan.types.Mesh, allocation_draw : vulkan.
    };
 }
 
-fn _waitOnFence(vk_device : c.VkDevice, vk_fence : c.VkFence) AssetServer.MeshLoadError!void {
+fn _waitOnFence(vk_device : c.VkDevice, vk_fence : c.VkFence) AssetServer.LoadError!void {
    var vk_result : c.VkResult = undefined;
 
    vk_result = c.vkWaitForFences(vk_device, 1, &vk_fence, c.VK_FALSE, std.math.maxInt(u64));
@@ -560,7 +658,7 @@ fn _waitOnFence(vk_device : c.VkDevice, vk_fence : c.VkFence) AssetServer.MeshLo
    return;
 }
 
-fn _resetFence(vk_device : c.VkDevice, vk_fence : c.VkFence) AssetServer.MeshLoadError!void {
+fn _resetFence(vk_device : c.VkDevice, vk_fence : c.VkFence) AssetServer.LoadError!void {
    var vk_result : c.VkResult = undefined;
 
    vk_result = c.vkResetFences(vk_device, 1, &vk_fence);
@@ -574,7 +672,7 @@ fn _resetFence(vk_device : c.VkDevice, vk_fence : c.VkFence) AssetServer.MeshLoa
    return;
 }
 
-fn _fenceIsSignaled(vk_device : c.VkDevice, vk_fence : c.VkFence) AssetServer.MeshLoadError!bool {
+fn _fenceIsSignaled(vk_device : c.VkDevice, vk_fence : c.VkFence) AssetServer.LoadError!bool {
    var vk_result : c.VkResult = undefined;
 
    vk_result = c.vkGetFenceStatus(vk_device, vk_fence);
@@ -589,7 +687,7 @@ fn _fenceIsSignaled(vk_device : c.VkDevice, vk_fence : c.VkFence) AssetServer.Me
    unreachable;
 }
 
-fn _sendTransferCommand(vk_command_buffer_transfer : c.VkCommandBuffer, vk_fence_transfer_finished : c.VkFence, load_info : * const AssetServer.MeshLoadInfo, vk_buffer_copy_regions : [] c.VkBufferCopy) AssetServer.MeshLoadError!void {
+fn _sendTransferCommand(vk_command_buffer_transfer : c.VkCommandBuffer, vk_fence_transfer_finished : c.VkFence, load_info : * const AssetServer.LoadInfo, vk_buffer_copy_regions : [] c.VkBufferCopy) AssetServer.LoadError!void {
    var vk_result : c.VkResult = undefined;
 
    const vk_info_command_buffer_transfer_begin = c.VkCommandBufferBeginInfo{
