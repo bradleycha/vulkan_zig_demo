@@ -73,6 +73,8 @@ pub const Renderer = struct {
       VulkanSemaphoresImageAvailableCreateError,
       VulkanSemaphoresRenderFinishedCreateError,
       VulkanFencesInFlightCreateError,
+      VulkanMemorySourceDrawFindError,
+      VulkanMemorySourceTransferFindError,
       VulkanMemoryHeapDrawCreateError,
       VulkanMemoryHeapTransferCreateError,
       VulkanUniformAllocationsCreateError,
@@ -180,18 +182,26 @@ pub const Renderer = struct {
       ) catch return error.VulkanFencesInFlightCreateError;
       errdefer vulkan_fences_in_flight.destroy(vk_device);
 
+      const vulkan_memory_source_draw = vulkan.MemorySourceDraw.findSuitable(
+         vulkan_physical_device.vk_physical_device_memory_properties,
+      ) orelse return error.VulkanMemorySourceDrawFindError;
+
+      const vulkan_memory_source_transfer = vulkan.MemorySourceTransfer.findSuitable(
+         vulkan_physical_device.vk_physical_device_memory_properties,
+      ) orelse return error.VulkanMemorySourceTransferFindError;
+
       var vulkan_memory_heap_draw = vulkan.MemoryHeapDraw.create(allocator, &.{
          .physical_device  = &vulkan_physical_device,
          .vk_device        = vk_device,
          .heap_size        = MEMORY_HEAP_SIZE_DRAW,
-      }) catch return error.VulkanMemoryHeapDrawCreateError;
+      }, &vulkan_memory_source_draw) catch return error.VulkanMemoryHeapDrawCreateError;
       errdefer vulkan_memory_heap_draw.destroy(allocator, vk_device);
 
       var vulkan_memory_heap_transfer = vulkan.MemoryHeapTransfer.create(allocator, vk_device, &.{
          .physical_device  = &vulkan_physical_device,
          .vk_device        = vk_device,
          .heap_size        = MEMORY_HEAP_SIZE_TRANSFER,
-      }) catch return error.VulkanMemoryHeapTransferCreateError;
+      }, &vulkan_memory_source_transfer) catch return error.VulkanMemoryHeapTransferCreateError;
       errdefer vulkan_memory_heap_transfer.destroy(allocator, vk_device);
 
       var vulkan_uniform_allocations = vulkan.UniformAllocations(FRAMES_IN_FLIGHT).create(allocator, &.{

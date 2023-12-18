@@ -38,8 +38,8 @@ pub const MemoryHeap = struct {
    };
 
    pub const MemoryInfo = struct {
-      memory_flags   : c.VkMemoryPropertyFlags,
-      usage_flags    : c.VkBufferUsageFlags,
+      source      : MemorySource,
+      usage_flags : c.VkBufferUsageFlags,
    };
 
    pub const CreateError = error {
@@ -54,7 +54,7 @@ pub const MemoryHeap = struct {
       const physical_device   = create_info.physical_device;
       const vk_device         = create_info.vk_device;
       const heap_size         = create_info.heap_size;
-      const memory_flags      = memory_info.memory_flags;
+      const memory_source     = memory_info.source;
       const usage_flags       = memory_info.usage_flags;
 
       var concurrency_mode_queue_family_indices_buffer : [_ConcurrencyMode.INFO.Count] u32 = undefined;
@@ -81,11 +81,6 @@ pub const MemoryHeap = struct {
          else                                            => unreachable,
       }
       errdefer c.vkDestroyBuffer(vk_device, vk_buffer, null);
-
-      const memory_source = MemorySource.findSuitable(
-         memory_flags,
-         physical_device.vk_physical_device_memory_properties,
-      ) orelse return error.NoSuitableMemoryAvailable;
 
       const vk_info_memory_allocate = c.VkMemoryAllocateInfo{
          .sType            = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,

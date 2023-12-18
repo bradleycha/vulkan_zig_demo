@@ -2,6 +2,24 @@ const root  = @import("index.zig");
 const std   = @import("std");
 const c     = @import("cimports");
 
+const MEMORY_FLAGS   = c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+const USAGE_FLAGS    = c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT | c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+
+pub const MemorySourceDraw = struct {
+   memory_source  : root.MemorySource,
+
+   pub fn findSuitable(vk_physical_device_memory_properties : c.VkPhysicalDeviceMemoryProperties) ? @This() {
+      const memory_source = root.MemorySource.findSuitable(
+         MEMORY_FLAGS,
+         vk_physical_device_memory_properties,
+      ) orelse return null;
+
+      return @This(){
+         .memory_source = memory_source,
+      };
+   }
+};
+
 pub const MemoryHeapDraw = struct {
    memory_heap : root.MemoryHeap,
 
@@ -9,10 +27,10 @@ pub const MemoryHeapDraw = struct {
 
    pub const CreateError = root.MemoryHeap.CreateError;
 
-   pub fn create(allocator : std.mem.Allocator, create_info : * const CreateInfo) CreateError!@This() {
+   pub fn create(allocator : std.mem.Allocator, create_info : * const CreateInfo, memory_source : * const MemorySourceDraw) CreateError!@This() {
       const MEMORY_INFO = root.MemoryHeap.MemoryInfo{
-         .memory_flags  = c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-         .usage_flags   = c.VK_BUFFER_USAGE_TRANSFER_DST_BIT | c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.VK_BUFFER_USAGE_INDEX_BUFFER_BIT | c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+         .source        = memory_source.memory_source,
+         .usage_flags   = USAGE_FLAGS,
       };
 
       const memory_heap = try root.MemoryHeap.create(allocator, &.{

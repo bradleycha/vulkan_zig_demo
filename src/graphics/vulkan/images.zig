@@ -12,6 +12,15 @@ pub const ImageSource = struct {
    pub const PixelFormat = enum(c.VkFormat) {
       rgb888   = c.VK_FORMAT_R8G8B8_SRGB,
       rgba8888 = c.VK_FORMAT_R8G8B8A8_SRGB,
+
+      pub fn bytesPerPixel(self : @This()) usize {
+         switch (self) {
+            .rgb888     => return 3,
+            .rgba8888   => return 4,
+         }
+
+         unreachable;
+      }
    };
 };
 

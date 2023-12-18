@@ -2,6 +2,24 @@ const root  = @import("index.zig");
 const std   = @import("std");
 const c     = @import("cimports");
 
+pub const MEMORY_FLAGS  = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+pub const USAGE_FLAGS   = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+pub const MemorySourceTransfer = struct {
+   memory_source  : root.MemorySource,
+
+   pub fn findSuitable(vk_physical_device_memory_properties : c.VkPhysicalDeviceMemoryProperties) ? @This() {
+      const memory_source = root.MemorySource.findSuitable(
+         MEMORY_FLAGS,
+         vk_physical_device_memory_properties,
+      ) orelse return null;
+
+      return @This(){
+         .memory_source = memory_source,
+      };
+   }
+};
+
 pub const MemoryHeapTransfer = struct {
    memory_heap : root.MemoryHeap,
    mapping     : * anyopaque,
@@ -10,12 +28,12 @@ pub const MemoryHeapTransfer = struct {
 
    pub const CreateError = root.MemoryHeap.CreateError;
 
-   pub fn create(allocator : std.mem.Allocator, vk_device : c.VkDevice, create_info : * const CreateInfo) CreateError!@This() {
+   pub fn create(allocator : std.mem.Allocator, vk_device : c.VkDevice, create_info : * const CreateInfo, memory_source : * const MemorySourceTransfer) CreateError!@This() {
       var vk_result : c.VkResult = undefined;
 
       const MEMORY_INFO = root.MemoryHeap.MemoryInfo{
-         .memory_flags  = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-         .usage_flags   = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+         .source        = memory_source.memory_source,
+         .usage_flags   = USAGE_FLAGS,
       };
 
       var memory_heap = try root.MemoryHeap.create(allocator, &.{
