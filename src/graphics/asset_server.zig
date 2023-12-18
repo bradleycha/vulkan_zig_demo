@@ -23,9 +23,10 @@ const MESH_BYTE_ALIGNMENT = blk: {
 };
 
 pub const AssetServer = struct {
-   mesh_objects               : std.ArrayListUnmanaged(MeshObject)      = .{},
+   mesh_objects               : std.ArrayListUnmanaged(MeshObject) = .{},
    vk_command_buffer_transfer : c.VkCommandBuffer,
    vk_fence_transfer_finished : c.VkFence,
+   allocation_transfer        : vulkan.MemoryHeap.Allocation = .{.offset = NULL_ALLOCATION_OFFSET, .bytes = undefined},
 
    pub const MeshHandle = usize;
 
@@ -37,18 +38,9 @@ pub const AssetServer = struct {
       indices        : u32,
       load_status    : LoadStatus,
 
-      pub const LoadStatusTag = enum {
+      pub const LoadStatus = enum {
          pending,
          ready,
-      };
-
-      pub const LoadStatus = union(LoadStatusTag) {
-         pending  : LoadData,
-         ready    : void,
-      };
-
-      pub const LoadData = struct {
-         allocation_transfer  : vulkan.MemoryHeap.Allocation,
       };
 
       const NULL_INDICES_COUNT = std.math.maxInt(u32);
@@ -64,19 +56,6 @@ pub const AssetServer = struct {
 
       pub fn isPending(self : * const @This()) bool {
          return self.load_status == .pending;
-      }
-
-      pub fn destroyAndNull(self : * @This(), allocator : std.mem.Allocator, heap_draw : * vulkan.MemoryHeapDraw, heap_transfer : * vulkan.MemoryHeapTransfer) void {
-         switch (self.load_status) {
-            .pending => |load_data| {
-               heap_transfer.memory_heap.free(allocator, load_data.allocation_transfer);
-            },
-            .ready   => {},
-         }
-
-         heap_draw.memory_heap.free(allocator, self.allocation);
-         self.setNull();
-         return;
       }
    };
 
@@ -103,6 +82,7 @@ pub const AssetServer = struct {
          .mesh_objects                 = .{},
          .vk_command_buffer_transfer   = vk_command_buffer_transfer,
          .vk_fence_transfer_finished   = vk_fence_transfer_finished,
+         .allocation_transfer          = .{.offset = NULL_ALLOCATION_OFFSET, .bytes = undefined},
       };
    }
 
@@ -248,16 +228,37 @@ pub const AssetServer = struct {
       const mesh_handles            = load_info.load_buffers_pointers.mesh_handles[0..meshes.len];
       const vk_buffer_copy_regions  = load_info.load_buffers_pointers.vk_buffer_copy_regions[0..meshes.len];
 
+      // Calculate the required size for the transfer allocation
+      const allocation_transfer_bytes = blk: {
+         var sum : u32 = 0;
+
+         for (meshes) |mesh| {
+            const mesh_bytes = _calculateMeshBytes(mesh);
+
+            sum += mesh_bytes.total_aligned;
+         }
+
+         break :blk sum;
+      };
+
+      // Create the unified transfer allocation
+      const allocation_transfer = try load_info.heap_transfer.memory_heap.allocate(allocator, &.{
+         .alignment  = MESH_BYTE_ALIGNMENT,
+         .bytes      = allocation_transfer_bytes,
+      });
+      errdefer load_info.heap_transfer.memory_heap.free(allocator, allocation_transfer);
+
       // Assign new handle IDs for each mesh
       const mesh_objects_old_len = self.mesh_objects.items.len;
       try _assignMultipleNewHandleId(self, allocator, mesh_handles);
       errdefer self.mesh_objects.shrinkAndFree(allocator, mesh_objects_old_len);
 
       // Iterate through every new mesh handle and initialize its associated mesh object
+      var allocation_transfer_offset : u32 = 0;
       for (meshes, mesh_handles, vk_buffer_copy_regions, 0..meshes.len) |mesh, handle, *vk_buffer_copy_region_dest, i| {
          errdefer for (mesh_handles[0..i]) |handle_old| {
             const object_old = self.getMeshMut(handle_old);
-            object_old.destroyAndNull(allocator, load_info.heap_draw, load_info.heap_transfer);
+            object_old.setNull();
          };
 
          const object_dest = self.getMeshMut(handle);
@@ -265,24 +266,19 @@ pub const AssetServer = struct {
          // Calculate bytes for the current mesh
          const mesh_bytes = _calculateMeshBytes(mesh);
 
-         // Create the transfer and draw heap allocations
-         const allocation_info = vulkan.MemoryHeap.AllocateInfo{
+         // Create the draw heap allocation
+         const object_allocation_draw = try load_info.heap_draw.memory_heap.allocate(allocator, &.{
             .alignment  = MESH_BYTE_ALIGNMENT,
             .bytes      = mesh_bytes.total,
-         };
-
-         const object_allocation_transfer = try load_info.heap_transfer.memory_heap.allocate(allocator, &allocation_info);
-         errdefer load_info.heap_transfer.memory_heap.free(allocator, object_allocation_transfer);
-
-         const object_allocation_draw = try load_info.heap_draw.memory_heap.allocate(allocator, &allocation_info);
+         });
          errdefer load_info.heap_draw.memory_heap.free(allocator, object_allocation_draw);
 
          // Calculate pointers for the transfer allocation
-         const mesh_pointers = _calculateMeshPointers(&mesh_bytes, load_info.heap_transfer.mapping, object_allocation_transfer.offset);
+         const mesh_pointers = _calculateMeshPointers(&mesh_bytes, load_info.heap_transfer.mapping, allocation_transfer.offset + allocation_transfer_offset);
 
          // Create the backing object for the mesh
-         const object = _createMeshObject(mesh, object_allocation_transfer, object_allocation_draw);
-         errdefer object.destroyAndNull(allocator, load_info.heap_draw, load_info.heap_transfer);
+         const object = _createMeshObject(mesh, object_allocation_draw);
+         errdefer object.setNull(allocator, load_info.heap_draw, load_info.heap_transfer);
 
          // Copy the mesh data into the transfer buffer
          @memcpy(mesh_pointers.vertices, mesh.vertices);
@@ -290,7 +286,7 @@ pub const AssetServer = struct {
 
          // Calculate the copy region
          const vk_buffer_copy_region = c.VkBufferCopy{
-            .srcOffset  = object_allocation_transfer.offset,
+            .srcOffset  = allocation_transfer.offset + allocation_transfer_offset,
             .dstOffset  = object_allocation_draw.offset,
             .size       = mesh_bytes.total,
          };
@@ -298,18 +294,28 @@ pub const AssetServer = struct {
          // Write the newly created data
          object_dest.*                 = object;
          vk_buffer_copy_region_dest.*  = vk_buffer_copy_region;
+
+         // Advance the offset into the transfer allocation
+         allocation_transfer_offset += mesh_bytes.total_aligned;
       }
       errdefer for (mesh_handles) |handle| {
          const object = self.getMeshMut(handle);
-         object.destroyAndNull(allocator, load_info.heap_draw, load_info.heap_transfer);
+         object.setNull();
       };
 
       // Wait for the previous transfer command to finish and reset the fence once complete
+      // This is why you should avoid multiple load calls instead of a single
+      // unified load call.  We have no choice but to block the thread to safely
+      // issue the transfer command.
       try _waitOnFence(load_info.vk_device, self.vk_fence_transfer_finished);
       try _resetFence(load_info.vk_device, self.vk_fence_transfer_finished);
 
       // Record and send the transfer command
       try _sendTransferCommand(self.vk_command_buffer_transfer, self.vk_fence_transfer_finished, load_info, vk_buffer_copy_regions);
+
+      // Free the old transfer allocation and replace it with the new one
+      _allocationTransferTryFreeAndNull(self, allocator, load_info.heap_transfer);
+      self.allocation_transfer = allocation_transfer;
 
       // Success!
       return;
@@ -333,15 +339,10 @@ pub const AssetServer = struct {
          unreachable;
       };
 
+      _allocationTransferTryFreeAndNull(self, allocator, unload_info.heap_transfer);
+
       for (meshes) |handle| {
          const object = self.getMeshMut(handle);
-
-         switch (object.load_status) {
-            .pending => |load_data| {
-               unload_info.heap_transfer.memory_heap.free(allocator, load_data.allocation_transfer);
-            },
-            .ready   => {},
-         }
 
          unload_info.heap_draw.memory_heap.free(allocator, object.allocation);
 
@@ -372,6 +373,8 @@ pub const AssetServer = struct {
          return;
       }
 
+      _allocationTransferTryFreeAndNull(self, allocator, heap_transfer);
+
       for (meshes) |handle| {
          const object = self.getMeshMut(handle);
 
@@ -383,7 +386,6 @@ pub const AssetServer = struct {
             continue;
          }
 
-         heap_transfer.memory_heap.free(allocator, object.load_status.pending.allocation_transfer);
          object.load_status = .ready;
       }
 
@@ -486,20 +488,23 @@ fn _assignMultipleNewHandleId(asset_server : * AssetServer, allocator : std.mem.
 }
 
 const MeshBytes = struct {
-   vertices : u32,
-   indices  : u32,
-   total    : u32,
+   vertices       : u32,
+   indices        : u32,
+   total          : u32,
+   total_aligned  : u32,
 };
 
 fn _calculateMeshBytes(mesh : * const vulkan.types.Mesh) MeshBytes {
    const bytes_vertices       = mesh.vertices.len * @sizeOf(vulkan.types.Vertex);
    const bytes_indices        = mesh.indices.len * @sizeOf(vulkan.types.Mesh.IndexElement);
    const bytes_total          = bytes_vertices + bytes_indices;
+   const bytes_total_aligned  = math.alignForward(usize, bytes_total, MESH_BYTE_ALIGNMENT);
 
    return .{
-      .vertices   = @intCast(bytes_vertices),
-      .indices    = @intCast(bytes_indices),
-      .total      = @intCast(bytes_total),
+      .vertices      = @intCast(bytes_vertices),
+      .indices       = @intCast(bytes_indices),
+      .total         = @intCast(bytes_total),
+      .total_aligned = @intCast(bytes_total_aligned),
    };
 }
 
@@ -523,7 +528,7 @@ fn _calculateMeshPointers(bytes : * const MeshBytes, mapping : * anyopaque, offs
    };
 }
 
-fn _createMeshObject(mesh : * const vulkan.types.Mesh, allocation_transfer : vulkan.MemoryHeap.Allocation, allocation_draw : vulkan.MemoryHeap.Allocation) AssetServer.MeshObject {
+fn _createMeshObject(mesh : * const vulkan.types.Mesh, allocation_draw : vulkan.MemoryHeap.Allocation) AssetServer.MeshObject {
    const transform_mesh = math.Matrix4(f32).IDENTITY;
 
    const push_constants = vulkan.types.PushConstants{
@@ -536,7 +541,7 @@ fn _createMeshObject(mesh : * const vulkan.types.Mesh, allocation_transfer : vul
       .push_constants   = push_constants,
       .allocation       = allocation_draw,
       .indices          = indices,
-      .load_status      = .{.pending = .{.allocation_transfer = allocation_transfer}},
+      .load_status      = .pending,
    };
 }
 
@@ -640,6 +645,29 @@ fn _sendTransferCommand(vk_command_buffer_transfer : c.VkCommandBuffer, vk_fence
       c.VK_ERROR_DEVICE_LOST           => return error.DeviceLost,
       else                             => unreachable,
    }
+
+   return;
+}
+
+const NULL_ALLOCATION_OFFSET = std.math.maxInt(u32);
+
+fn _allocationTransferIsNull(asset_server : * const AssetServer) bool {
+   return asset_server.allocation_transfer.offset == NULL_ALLOCATION_OFFSET;
+}
+
+fn _allocationTransferSetNull(asset_server : * AssetServer) void {
+   asset_server.allocation_transfer.offset = NULL_ALLOCATION_OFFSET;
+   return;
+}
+
+fn _allocationTransferTryFreeAndNull(asset_server : * AssetServer, allocator : std.mem.Allocator, heap_transfer : * vulkan.MemoryHeapTransfer) void {
+   if (_allocationTransferIsNull(asset_server) == true) {
+      return;
+   }
+
+   heap_transfer.memory_heap.free(allocator, asset_server.allocation_transfer);
+
+   _allocationTransferSetNull(asset_server);
 
    return;
 }
