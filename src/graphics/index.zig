@@ -23,6 +23,8 @@ pub const ShaderSource = vulkan.ShaderSource;
 
 pub const ClearColor = vulkan.ClearColor;
 
+pub const ImageSource = vulkan.ImageSource;
+
 pub const Renderer = struct {
    _allocator                          : std.mem.Allocator,
    _vulkan_instance                    : vulkan.Instance,

@@ -23,11 +23,13 @@ const MESH_BYTE_ALIGNMENT = blk: {
 };
 
 pub const AssetServer = struct {
-   mesh_objects               : std.ArrayListUnmanaged(MeshObject) = .{},
+   mesh_objects               : std.ArrayListUnmanaged(MeshObject)      = .{},
    vk_command_buffer_transfer : c.VkCommandBuffer,
    vk_fence_transfer_finished : c.VkFence,
 
    pub const MeshHandle = usize;
+
+   pub const TextureHandle = usize;
 
    pub const MeshObject = struct {
       push_constants : vulkan.types.PushConstants,

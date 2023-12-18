@@ -17,4 +17,5 @@ pub usingnamespace @import("memory_heap_draw.zig");
 pub usingnamespace @import("memory_heap_transfer.zig");
 pub usingnamespace @import("uniform_allocations.zig");
 pub usingnamespace @import("descriptor_sets.zig");
+pub usingnamespace @import("images.zig");
 
