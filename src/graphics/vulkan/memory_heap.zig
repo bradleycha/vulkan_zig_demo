@@ -45,7 +45,6 @@ pub const MemoryHeap = struct {
    pub const CreateError = error {
       OutOfMemory,
       Unknown,
-      NoSuitableMemoryAvailable,
    };
 
    pub fn create(allocator : std.mem.Allocator, create_info : * const CreateInfo, memory_info : * const MemoryInfo) CreateError!@This() {

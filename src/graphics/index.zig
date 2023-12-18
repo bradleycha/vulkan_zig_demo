@@ -40,6 +40,7 @@ pub const Renderer = struct {
    _vulkan_semaphores_image_available  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
    _vulkan_semaphores_render_finished  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
    _vulkan_fences_in_flight            : vulkan.FenceList(FRAMES_IN_FLIGHT),
+   _vulkan_memory_source_image         : vulkan.MemorySourceImage,
    _vulkan_memory_heap_draw            : vulkan.MemoryHeapDraw,
    _vulkan_memory_heap_transfer        : vulkan.MemoryHeapTransfer,
    _vulkan_uniform_allocations         : vulkan.UniformAllocations(FRAMES_IN_FLIGHT),
@@ -75,6 +76,7 @@ pub const Renderer = struct {
       VulkanFencesInFlightCreateError,
       VulkanMemorySourceDrawFindError,
       VulkanMemorySourceTransferFindError,
+      VulkanMemorySourceImageFindError,
       VulkanMemoryHeapDrawCreateError,
       VulkanMemoryHeapTransferCreateError,
       VulkanUniformAllocationsCreateError,
@@ -190,6 +192,10 @@ pub const Renderer = struct {
          vulkan_physical_device.vk_physical_device_memory_properties,
       ) orelse return error.VulkanMemorySourceTransferFindError;
 
+      const vulkan_memory_source_image = vulkan.MemorySourceImage.findSuitable(
+         vulkan_physical_device.vk_physical_device_memory_properties,
+      ) orelse return error.VulkanMemorySourceImageFindError;
+
       var vulkan_memory_heap_draw = vulkan.MemoryHeapDraw.create(allocator, &.{
          .physical_device  = &vulkan_physical_device,
          .vk_device        = vk_device,
@@ -256,6 +262,7 @@ pub const Renderer = struct {
          ._vulkan_semaphores_image_available = vulkan_semaphores_image_available,
          ._vulkan_semaphores_render_finished = vulkan_semaphores_render_finished,
          ._vulkan_fences_in_flight           = vulkan_fences_in_flight,
+         ._vulkan_memory_source_image        = vulkan_memory_source_image,
          ._vulkan_memory_heap_draw           = vulkan_memory_heap_draw,
          ._vulkan_memory_heap_transfer       = vulkan_memory_heap_transfer,
          ._vulkan_uniform_allocations        = vulkan_uniform_allocations,
