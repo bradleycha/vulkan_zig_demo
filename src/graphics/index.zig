@@ -2,7 +2,7 @@ const std            = @import("std");
 const builtin        = @import("builtin");
 const present        = @import("present");
 const vulkan         = @import("vulkan/index.zig");
-const asset_server   = @import("asset_server.zig");
+const f_asset_server = @import("asset_server.zig");
 const math           = @import("math");
 const c              = @import("cimports");
 
@@ -42,7 +42,7 @@ pub const Renderer = struct {
    _vulkan_memory_heap_transfer        : vulkan.MemoryHeapTransfer,
    _vulkan_uniform_allocations         : vulkan.UniformAllocations(FRAMES_IN_FLIGHT),
    _vulkan_descriptor_sets             : vulkan.DescriptorSets(FRAMES_IN_FLIGHT),
-   _mesh_asset_server                  : asset_server.MeshAssetServer,
+   _asset_server                       : f_asset_server.AssetServer,
    _window                             : * const present.Window,
    _refresh_mode                       : RefreshMode,
    _clear_color                        : ClearColor,
@@ -75,7 +75,7 @@ pub const Renderer = struct {
       VulkanMemoryHeapTransferCreateError,
       VulkanUniformAllocationsCreateError,
       VulkanDescriptorSetsCreateError,
-      MeshAssetServerCreateError,
+      AssetServerCreateError,
    };
 
    pub fn create(allocator : std.mem.Allocator, window : * present.Window, create_info : * const CreateInfo) CreateError!@This() {
@@ -223,11 +223,11 @@ pub const Renderer = struct {
       }) catch return error.VulkanDescriptorSetsCreateError;
       errdefer vulkan_descriptor_sets.destroy(vk_device);
 
-      var mesh_asset_server = asset_server.MeshAssetServer.create(&.{
+      var asset_server = f_asset_server.AssetServer.create(&.{
          .vk_device                 = vk_device,
          .vk_transfer_command_pool  = vulkan_command_pools.transfer,
-      }) catch return error.MeshAssetServerCreateError;
-      errdefer mesh_asset_server.destroy(allocator, vk_device, vulkan_command_pools.transfer);
+      }) catch return error.AssetServerCreateError;
+      errdefer asset_server.destroy(allocator, vk_device, vulkan_command_pools.transfer);
 
       return @This(){
          ._allocator                         = allocator,
@@ -248,7 +248,7 @@ pub const Renderer = struct {
          ._vulkan_memory_heap_transfer       = vulkan_memory_heap_transfer,
          ._vulkan_uniform_allocations        = vulkan_uniform_allocations,
          ._vulkan_descriptor_sets            = vulkan_descriptor_sets,
-         ._mesh_asset_server                 = mesh_asset_server,
+         ._asset_server                      = asset_server,
          ._window                            = window,
          ._refresh_mode                      = create_info.refresh_mode,
          ._clear_color                       = create_info.clear_color,
@@ -266,7 +266,7 @@ pub const Renderer = struct {
 
       _ = c.vkDeviceWaitIdle(vk_device);
 
-      self_mut._mesh_asset_server.destroy(allocator, vk_device, self._vulkan_command_pools.transfer);
+      self_mut._asset_server.destroy(allocator, vk_device, self._vulkan_command_pools.transfer);
       self._vulkan_descriptor_sets.destroy(vk_device);
       self._vulkan_uniform_allocations.destroy(allocator, &self_mut._vulkan_memory_heap_transfer, &self_mut._vulkan_memory_heap_draw);
       self_mut._vulkan_memory_heap_transfer.destroy(allocator, vk_device);
@@ -285,18 +285,18 @@ pub const Renderer = struct {
       return;
    }
 
-   pub const MeshLoadBuffersStatic = asset_server.MeshAssetServer.LoadBuffersStatic;
+   pub const MeshLoadBuffersStatic = f_asset_server.AssetServer.MeshLoadBuffersStatic;
 
-   pub const MeshLoadBuffersDynamic = asset_server.MeshAssetServer.LoadBuffersDynamic;
+   pub const MeshLoadBuffersDynamic = f_asset_server.AssetServer.MeshLoadBuffersDynamic;
 
-   pub const MeshLoadBuffersPointers = asset_server.MeshAssetServer.LoadBuffersPointers;
+   pub const MeshLoadBuffersPointers = f_asset_server.AssetServer.MeshLoadBuffersPointers;
 
-   pub const MeshLoadError = asset_server.MeshAssetServer.LoadError;
+   pub const MeshLoadError = f_asset_server.AssetServer.MeshLoadError;
 
-   pub const MeshHandle = asset_server.MeshAssetServer.MeshHandle;
+   pub const MeshHandle = f_asset_server.AssetServer.MeshHandle;
 
    pub fn loadMeshMultiple(self : * @This(), meshes : [] const * const types.Mesh, load_buffers_pointers : * const MeshLoadBuffersPointers) MeshLoadError!void {
-      return self._mesh_asset_server.loadMeshMultiple(self._allocator, &.{
+      return self._asset_server.loadMeshMultiple(self._allocator, &.{
          .meshes                 = meshes,
          .load_buffers_pointers  = load_buffers_pointers,
          .vk_device              = self._vulkan_device.vk_device,
@@ -307,7 +307,7 @@ pub const Renderer = struct {
    }
 
    pub fn unloadMeshMultiple(self : * @This(), meshes : [] const MeshHandle) void {
-      return self._mesh_asset_server.unloadMeshMultiple(self._allocator, &.{
+      return self._asset_server.unloadMeshMultiple(self._allocator, &.{
          .meshes        = meshes,
          .vk_device     = self._vulkan_device.vk_device,
          .heap_draw     = &self._vulkan_memory_heap_draw,
@@ -316,7 +316,7 @@ pub const Renderer = struct {
    }
 
    pub fn meshTransformMatrix(self : * const @This(), mesh_handle : MeshHandle) * const math.Matrix4(f32) {
-      const object = self._mesh_asset_server.get(mesh_handle);
+      const object = self._asset_server.getMesh(mesh_handle);
 
       return &object.push_constants.transform_mesh;
    }
@@ -423,7 +423,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
       else                             => unreachable,
    }
 
-   self._mesh_asset_server.pollMeshLoadStatus(
+   self._asset_server.pollMeshLoadStatus(
       self._allocator,
       vk_device,
       &self._vulkan_memory_heap_transfer,
@@ -441,7 +441,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
       .allocation_uniform_transfer  = allocation_uniform_transfer,
       .allocation_uniform_draw      = allocation_uniform_draw,
       .clear_color                  = &self._clear_color,
-      .mesh_asset_server            = &self._mesh_asset_server,
+      .asset_server                 = &self._asset_server,
    });
 
    const vk_info_submit_render_pass = c.VkSubmitInfo{
@@ -581,7 +581,7 @@ const RecordInfo = struct {
    allocation_uniform_transfer   : vulkan.MemoryHeap.Allocation,
    allocation_uniform_draw       : vulkan.MemoryHeap.Allocation,
    clear_color                   : * const ClearColor,
-   mesh_asset_server             : * const asset_server.MeshAssetServer,
+   asset_server                  : * const f_asset_server.AssetServer,
 };
 
 fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : * const RecordInfo) Renderer.DrawError!void {
@@ -599,7 +599,7 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
    const allocation_uniform_transfer   = record_info.allocation_uniform_transfer;
    const allocation_uniform_draw       = record_info.allocation_uniform_draw;
    const clear_color                   = record_info.clear_color;
-   const mesh_asset_server             = record_info.mesh_asset_server;
+   const asset_server                  = record_info.asset_server;
 
    const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
       .sType            = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -675,7 +675,7 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
    c.vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
 
    for (mesh_handles) |mesh_handle| {
-      const mesh_object = mesh_asset_server.get(mesh_handle);
+      const mesh_object = asset_server.getMesh(mesh_handle);
 
       // If the mesh is in the middle of loading, don't draw it but also don't
       // block the thread.  Simply skip over it in the draw command.

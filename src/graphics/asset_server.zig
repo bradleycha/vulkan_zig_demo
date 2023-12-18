@@ -22,7 +22,7 @@ const MESH_BYTE_ALIGNMENT = blk: {
    break :blk alignment;
 };
 
-pub const MeshAssetServer = struct {
+pub const AssetServer = struct {
    mesh_objects               : std.ArrayListUnmanaged(MeshObject) = .{},
    vk_command_buffer_transfer : c.VkCommandBuffer,
    vk_fence_transfer_finished : c.VkFence,
@@ -111,7 +111,7 @@ pub const MeshAssetServer = struct {
       return;
    }
 
-   pub fn get(self : * const @This(), handle : MeshHandle) * const MeshObject {
+   pub fn getMesh(self : * const @This(), handle : MeshHandle) * const MeshObject {
       const object = _getMeshObjectFallible(self, handle) orelse {
          switch (std.debug.runtime_safety) {
             true  => @panic("attempted to access invalid mesh"),
@@ -122,30 +122,30 @@ pub const MeshAssetServer = struct {
       return object;
    }
 
-   pub fn getMut(self : * @This(), handle : MeshHandle) * MeshObject {
-      return @constCast(self.get(handle));
+   pub fn getMeshMut(self : * @This(), handle : MeshHandle) * MeshObject {
+      return @constCast(self.getMesh(handle));
    }
 
-   pub const LoadInfo = struct {
+   pub const MeshLoadInfo = struct {
       meshes                  : [] const * const vulkan.types.Mesh,
-      load_buffers_pointers   : * const LoadBuffersPointers,
+      load_buffers_pointers   : * const MeshLoadBuffersPointers,
       vk_device               : c.VkDevice,
       vk_queue_transfer       : c.VkQueue,
       heap_draw               : * vulkan.MemoryHeapDraw,
       heap_transfer           : * vulkan.MemoryHeapTransfer,
    };
 
-   pub fn LoadBuffersStatic(comptime count : comptime_int) type {
+   pub fn MeshLoadBuffersStatic(comptime count : comptime_int) type {
       return struct {
          mesh_handles            : [count] MeshHandle,
          vk_buffer_copy_regions  : [count] c.VkBufferCopy,
 
-         pub fn toPointers(self : * @This()) LoadBuffersPointers {
-            var pointers : LoadBuffersPointers = undefined;
+         pub fn toPointers(self : * @This()) MeshLoadBuffersPointers {
+            var pointers : MeshLoadBuffersPointers = undefined;
             pointers.mesh_handles            = &self.mesh_handles;
             pointers.vk_buffer_copy_regions  = &self.vk_buffer_copy_regions;
 
-            if (@hasField(LoadBuffersPointers, "count") == true) {
+            if (@hasField(MeshLoadBuffersPointers, "count") == true) {
                pointers.count = count;
             }
 
@@ -154,7 +154,7 @@ pub const MeshAssetServer = struct {
       };
    }
 
-   pub const LoadBuffersDynamic = struct {
+   pub const MeshLoadBuffersDynamic = struct {
       mesh_handles            : [*] MeshHandle,
       vk_buffer_copy_regions  : [*] c.VkBufferCopy,
       count                   : usize,
@@ -183,12 +183,12 @@ pub const MeshAssetServer = struct {
          return;
       }
 
-      pub fn toPointers(self : * @This()) LoadBuffersPointers {
-         var pointers : LoadBuffersPointers = undefined;
+      pub fn toPointers(self : * @This()) MeshLoadBuffersPointers {
+         var pointers : MeshLoadBuffersPointers = undefined;
          pointers.mesh_handles            = self.mesh_handles;
          pointers.vk_buffer_copy_regions  = self.vk_buffer_copy_regions;
 
-         if (@hasField(LoadBuffersPointers, "count") == true) {
+         if (@hasField(MeshLoadBuffersPointers, "count") == true) {
             pointers.count = self.count;
          }
 
@@ -200,40 +200,40 @@ pub const MeshAssetServer = struct {
    // also allowing for runtime safety in debug / release-safe builds.  Raw
    // pointers accompanied by a count field are used instead of slices because
    // it's reduntant to store slices for every field.
-   pub const LoadBuffersPointers = blk: {
+   pub const MeshLoadBuffersPointers = blk: {
       switch (std.debug.runtime_safety) {
-         true  => break :blk LoadBuffersPointersChecked,
-         false => break :blk LoadBuffersPointersUnchecked,
+         true  => break :blk MeshLoadBuffersPointersChecked,
+         false => break :blk MeshLoadBuffersPointersUnchecked,
       }
    };
 
-   const LoadBuffersPointersChecked = struct {
+   const MeshLoadBuffersPointersChecked = struct {
       mesh_handles            : [*] MeshHandle,
       vk_buffer_copy_regions  : [*] c.VkBufferCopy,
       count                   : usize,
    };
 
-   const LoadBuffersPointersUnchecked = struct {
+   const MeshLoadBuffersPointersUnchecked = struct {
       mesh_handles            : [*] MeshHandle,
       vk_buffer_copy_regions  : [*] c.VkBufferCopy,
    };
 
-   pub const LoadError = error {
+   pub const MeshLoadError = error {
       OutOfMemory,
       Unknown,
       DeviceLost,
    };
 
-   pub const UnloadInfo = struct {
+   pub const MeshUnloadInfo = struct {
       meshes         : [] const MeshHandle,
       vk_device      : c.VkDevice,
       heap_draw      : * vulkan.MemoryHeapDraw,
       heap_transfer  : * vulkan.MemoryHeapTransfer,
    };
 
-   pub fn loadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, load_info : * const LoadInfo) LoadError!void {
+   pub fn loadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, load_info : * const MeshLoadInfo) MeshLoadError!void {
       // Debug-only runtime safety checks
-      if (std.debug.runtime_safety == true and @hasField(LoadBuffersPointers, "count")) {
+      if (std.debug.runtime_safety == true and @hasField(MeshLoadBuffersPointers, "count")) {
          const meshes_count                  = load_info.meshes.len;
          const mesh_buffers_pointers_count   = load_info.load_buffers_pointers.count;
 
@@ -254,11 +254,11 @@ pub const MeshAssetServer = struct {
       // Iterate through every new mesh handle and initialize its associated mesh object
       for (meshes, mesh_handles, vk_buffer_copy_regions, 0..meshes.len) |mesh, handle, *vk_buffer_copy_region_dest, i| {
          errdefer for (mesh_handles[0..i]) |handle_old| {
-            const object_old = self.getMut(handle_old);
+            const object_old = self.getMeshMut(handle_old);
             object_old.destroyAndNull(allocator, load_info.heap_draw, load_info.heap_transfer);
          };
 
-         const object_dest = self.getMut(handle);
+         const object_dest = self.getMeshMut(handle);
 
          // Calculate bytes for the current mesh
          const mesh_bytes = _calculateMeshBytes(mesh);
@@ -298,7 +298,7 @@ pub const MeshAssetServer = struct {
          vk_buffer_copy_region_dest.*  = vk_buffer_copy_region;
       }
       errdefer for (mesh_handles) |handle| {
-         const object = self.getMut(handle);
+         const object = self.getMeshMut(handle);
          object.destroyAndNull(allocator, load_info.heap_draw, load_info.heap_transfer);
       };
 
@@ -313,7 +313,7 @@ pub const MeshAssetServer = struct {
       return;
    }
 
-   pub fn unloadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, unload_info : * const UnloadInfo) void {
+   pub fn unloadMeshMultiple(self : * @This(), allocator : std.mem.Allocator, unload_info : * const MeshUnloadInfo) void {
       const meshes = unload_info.meshes;
 
       // Wait for the previous transfer command to finish to prevent race conditions
@@ -332,7 +332,7 @@ pub const MeshAssetServer = struct {
       };
 
       for (meshes) |handle| {
-         const object = self.getMut(handle);
+         const object = self.getMeshMut(handle);
 
          switch (object.load_status) {
             .pending => |load_data| {
@@ -371,7 +371,7 @@ pub const MeshAssetServer = struct {
       }
 
       for (meshes) |handle| {
-         const object = self.getMut(handle);
+         const object = self.getMeshMut(handle);
 
          if (object.isNull()) {
             continue;
@@ -389,12 +389,12 @@ pub const MeshAssetServer = struct {
    }
 };
 
-fn _getMeshObjectFallible(mesh_asset_server : * const MeshAssetServer, handle : MeshAssetServer.MeshHandle) ? * const MeshAssetServer.MeshObject {
-   if (handle >= mesh_asset_server.mesh_objects.items.len) {
+fn _getMeshObjectFallible(asset_server : * const AssetServer, handle : AssetServer.MeshHandle) ? * const AssetServer.MeshObject {
+   if (handle >= asset_server.mesh_objects.items.len) {
       return null;
    }
 
-   const object = &mesh_asset_server.mesh_objects.items[handle];
+   const object = &asset_server.mesh_objects.items[handle];
 
    if (object.isNull() == true) {
       return null;
@@ -403,7 +403,7 @@ fn _getMeshObjectFallible(mesh_asset_server : * const MeshAssetServer, handle : 
    return object;
 }
 
-fn _createTransferCommandBuffer(vk_device : c.VkDevice, vk_transfer_command_pool : c.VkCommandPool) MeshAssetServer.CreateError!c.VkCommandBuffer {
+fn _createTransferCommandBuffer(vk_device : c.VkDevice, vk_transfer_command_pool : c.VkCommandPool) AssetServer.CreateError!c.VkCommandBuffer {
    var vk_result : c.VkResult = undefined;
 
    const vk_info_allocate_command_buffer = c.VkCommandBufferAllocateInfo{
@@ -427,7 +427,7 @@ fn _createTransferCommandBuffer(vk_device : c.VkDevice, vk_transfer_command_pool
    return vk_command_buffer;
 }
 
-fn _createTransferFence(vk_device : c.VkDevice) MeshAssetServer.CreateError!c.VkFence {
+fn _createTransferFence(vk_device : c.VkDevice) AssetServer.CreateError!c.VkFence {
    var vk_result : c.VkResult = undefined;
 
    const vk_info_create_fence = c.VkFenceCreateInfo{
@@ -449,35 +449,35 @@ fn _createTransferFence(vk_device : c.VkDevice) MeshAssetServer.CreateError!c.Vk
    return vk_fence;
 }
 
-fn _freeExcessNullMeshes(mesh_asset_server : * MeshAssetServer, allocator : std.mem.Allocator) void {
-   var new_length = mesh_asset_server.mesh_objects.items.len;
-   while (new_length != 0 and mesh_asset_server.mesh_objects.items[new_length - 1].isNull() == true) {
+fn _freeExcessNullMeshes(asset_server : * AssetServer, allocator : std.mem.Allocator) void {
+   var new_length = asset_server.mesh_objects.items.len;
+   while (new_length != 0 and asset_server.mesh_objects.items[new_length - 1].isNull() == true) {
       new_length -= 1;
    }
 
-   mesh_asset_server.mesh_objects.shrinkAndFree(allocator, new_length);
+   asset_server.mesh_objects.shrinkAndFree(allocator, new_length);
 
    return;
 }
 
-fn _assignNewHandleId(mesh_asset_server : * MeshAssetServer, allocator : std.mem.Allocator) MeshAssetServer.LoadError!MeshAssetServer.MeshHandle {
-   for (mesh_asset_server.mesh_objects.items, 0..mesh_asset_server.mesh_objects.items.len) |object, i| {
+fn _assignNewHandleId(asset_server : * AssetServer, allocator : std.mem.Allocator) AssetServer.MeshLoadError!AssetServer.MeshHandle {
+   for (asset_server.mesh_objects.items, 0..asset_server.mesh_objects.items.len) |object, i| {
       if (object.isNull() == true) {
          return i;
       }
    }
 
-   try mesh_asset_server.mesh_objects.resize(allocator, mesh_asset_server.mesh_objects.items.len + 1);
+   try asset_server.mesh_objects.resize(allocator, asset_server.mesh_objects.items.len + 1);
 
-   return mesh_asset_server.mesh_objects.items.len - 1;
+   return asset_server.mesh_objects.items.len - 1;
 }
 
-fn _assignMultipleNewHandleId(mesh_asset_server : * MeshAssetServer, allocator : std.mem.Allocator, buffer : [] MeshAssetServer.MeshHandle) MeshAssetServer.LoadError!void {
-   const old_size = mesh_asset_server.mesh_objects.items.len;
-   errdefer mesh_asset_server.mesh_objects.shrinkAndFree(allocator, old_size);
+fn _assignMultipleNewHandleId(asset_server : * AssetServer, allocator : std.mem.Allocator, buffer : [] AssetServer.MeshHandle) AssetServer.MeshLoadError!void {
+   const old_size = asset_server.mesh_objects.items.len;
+   errdefer asset_server.mesh_objects.shrinkAndFree(allocator, old_size);
 
    for (buffer) |*handle_out| {
-      handle_out.* = try _assignNewHandleId(mesh_asset_server, allocator);
+      handle_out.* = try _assignNewHandleId(asset_server, allocator);
    }
 
    return;
@@ -521,7 +521,7 @@ fn _calculateMeshPointers(bytes : * const MeshBytes, mapping : * anyopaque, offs
    };
 }
 
-fn _createMeshObject(mesh : * const vulkan.types.Mesh, allocation_transfer : vulkan.MemoryHeap.Allocation, allocation_draw : vulkan.MemoryHeap.Allocation) MeshAssetServer.MeshObject {
+fn _createMeshObject(mesh : * const vulkan.types.Mesh, allocation_transfer : vulkan.MemoryHeap.Allocation, allocation_draw : vulkan.MemoryHeap.Allocation) AssetServer.MeshObject {
    const transform_mesh = math.Matrix4(f32).IDENTITY;
 
    const push_constants = vulkan.types.PushConstants{
@@ -538,7 +538,7 @@ fn _createMeshObject(mesh : * const vulkan.types.Mesh, allocation_transfer : vul
    };
 }
 
-fn _waitOnFence(vk_device : c.VkDevice, vk_fence : c.VkFence) MeshAssetServer.LoadError!void {
+fn _waitOnFence(vk_device : c.VkDevice, vk_fence : c.VkFence) AssetServer.MeshLoadError!void {
    var vk_result : c.VkResult = undefined;
 
    vk_result = c.vkWaitForFences(vk_device, 1, &vk_fence, c.VK_FALSE, std.math.maxInt(u64));
@@ -555,7 +555,7 @@ fn _waitOnFence(vk_device : c.VkDevice, vk_fence : c.VkFence) MeshAssetServer.Lo
    return;
 }
 
-fn _resetFence(vk_device : c.VkDevice, vk_fence : c.VkFence) MeshAssetServer.LoadError!void {
+fn _resetFence(vk_device : c.VkDevice, vk_fence : c.VkFence) AssetServer.MeshLoadError!void {
    var vk_result : c.VkResult = undefined;
 
    vk_result = c.vkResetFences(vk_device, 1, &vk_fence);
@@ -569,7 +569,7 @@ fn _resetFence(vk_device : c.VkDevice, vk_fence : c.VkFence) MeshAssetServer.Loa
    return;
 }
 
-fn _fenceIsSignaled(vk_device : c.VkDevice, vk_fence : c.VkFence) MeshAssetServer.LoadError!bool {
+fn _fenceIsSignaled(vk_device : c.VkDevice, vk_fence : c.VkFence) AssetServer.MeshLoadError!bool {
    var vk_result : c.VkResult = undefined;
 
    vk_result = c.vkGetFenceStatus(vk_device, vk_fence);
@@ -584,7 +584,7 @@ fn _fenceIsSignaled(vk_device : c.VkDevice, vk_fence : c.VkFence) MeshAssetServe
    unreachable;
 }
 
-fn _sendTransferCommand(vk_command_buffer_transfer : c.VkCommandBuffer, vk_fence_transfer_finished : c.VkFence, load_info : * const MeshAssetServer.LoadInfo, vk_buffer_copy_regions : [] c.VkBufferCopy) MeshAssetServer.LoadError!void {
+fn _sendTransferCommand(vk_command_buffer_transfer : c.VkCommandBuffer, vk_fence_transfer_finished : c.VkFence, load_info : * const AssetServer.MeshLoadInfo, vk_buffer_copy_regions : [] c.VkBufferCopy) AssetServer.MeshLoadError!void {
    var vk_result : c.VkResult = undefined;
 
    const vk_info_command_buffer_transfer_begin = c.VkCommandBufferBeginInfo{
