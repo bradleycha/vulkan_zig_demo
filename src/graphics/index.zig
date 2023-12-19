@@ -25,6 +25,20 @@ pub const ClearColor = vulkan.ClearColor;
 
 pub const ImageSource = vulkan.ImageSource;
 
+pub const Camera = struct {
+   position : math.Vector3(f32)  = math.Vector3(f32).ZERO,
+   angles   : math.Vector3(f32)  = math.Vector3(f32).ZERO,
+
+   pub fn toMatrix(self : * const @This()) math.Matrix4(f32) {
+      const matrix_position   = math.Matrix4(f32).createTranslation(&self.position);
+      const matrix_angles     = math.Matrix4(f32).createRotation(&self.angles);
+
+      const matrix = matrix_angles.multiplyMatrix(&matrix_position);
+
+      return matrix;
+   }
+};
+
 pub const Renderer = struct {
    _allocator                          : std.mem.Allocator,
    _vulkan_instance                    : vulkan.Instance,
@@ -49,6 +63,8 @@ pub const Renderer = struct {
    _window                             : * const present.Window,
    _refresh_mode                       : RefreshMode,
    _clear_color                        : ClearColor,
+   _camera                             : Camera,
+   _transform_projection               : math.Matrix4(f32),
    _frame_index                        : u32,
    _framebuffer_size                   : present.Window.Resolution,
 
@@ -216,8 +232,6 @@ pub const Renderer = struct {
       }) catch return error.VulkanUniformAllocationsCreateError;
       errdefer vulkan_uniform_allocations.destroy(allocator, &vulkan_memory_heap_transfer, &vulkan_memory_heap_draw);
 
-      const matrix_camera = math.Matrix4(f32).IDENTITY;
-
       const transform_projection = math.Matrix4(f32).createPerspectiveProjection(
          window_framebuffer_size.width,
          window_framebuffer_size.height,
@@ -225,13 +239,6 @@ pub const Renderer = struct {
          FAR_PLANE,
          FIELD_OF_VIEW,
       );
-
-      const uniform_buffer_object = types.UniformBufferObject{
-         .transform_camera       = matrix_camera,
-         .transform_projection   = transform_projection,
-      };
-
-      vulkan_uniform_allocations.getUniformBufferObjectMut(&vulkan_memory_heap_transfer).* = uniform_buffer_object;
 
       const vulkan_descriptor_sets = vulkan.DescriptorSets(FRAMES_IN_FLIGHT).create(&.{
          .vk_device                 = vk_device,
@@ -269,6 +276,8 @@ pub const Renderer = struct {
          ._vulkan_descriptor_sets            = vulkan_descriptor_sets,
          ._asset_server                      = asset_server,
          ._window                            = window,
+         ._camera                            = .{},
+         ._transform_projection              = transform_projection,
          ._refresh_mode                      = create_info.refresh_mode,
          ._clear_color                       = create_info.clear_color,
          ._frame_index                       = 0,
@@ -346,16 +355,12 @@ pub const Renderer = struct {
       return @constCast(self.meshTransformMatrix(mesh_handle));
    }
 
-   pub fn cameraTransformMatrix(self : * const @This()) * const math.Matrix4(f32) {
-      const uniform_buffer_transfer = self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer);
-
-      return &uniform_buffer_transfer.transform_camera;
+   pub fn camera(self : * const @This()) * const Camera {
+      return &self._camera;
    }
 
-   pub fn cameraTransformMatrixMut(self : * @This()) * math.Matrix4(f32) {
-      const uniform_buffer_transfer = self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer);
-
-      return &uniform_buffer_transfer.transform_camera;
+   pub fn cameraMut(self : * @This()) * Camera {
+      return &self._camera;
    }
 
    pub const DrawError = error {
@@ -449,6 +454,11 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
    for (mesh_handles) |handle| {
       self._asset_server.pollMeshLoadStatus(vk_device, handle);
    }
+
+   const transform_camera           = self._camera.toMatrix();
+   const transform_view_projection  = self._transform_projection.multiplyMatrix(&transform_camera);
+
+   self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer).transform_view_projection = transform_view_projection;
 
    try _recordRenderPass(mesh_handles, &.{
       .vk_command_buffer            = vk_command_buffer,
@@ -577,7 +587,7 @@ fn _recreateSwapchain(self : * Renderer) SwapchainRecreateError!void {
       FIELD_OF_VIEW,
    );
 
-   self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer).transform_projection = transform_projection;
+   self._transform_projection = transform_projection;
 
    self._vulkan_framebuffers.destroy(allocator, vk_device, &vulkan_swapchain);
    self._vulkan_swapchain.destroy(allocator, vk_device);

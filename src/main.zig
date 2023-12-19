@@ -72,7 +72,7 @@ pub fn main() MainError!void {
    }) catch return error.RendererCreateError;
    defer renderer.destroy();
 
-   const camera_matrix = renderer.cameraTransformMatrixMut();
+   const camera = renderer.cameraMut();
 
    std.log.info("loading resources", .{});
 
@@ -114,21 +114,16 @@ pub fn main() MainError!void {
 
    var theta : f32 = 0.0;
 
-   var camera_transform = math.Transform(f32){
-      .translation = .{.xyz = .{
-         .x =  0.0,
+   camera.* = .{
+      .position = .{.xyz = .{
+         .x =  1.0,
          .y =  0.0,
          .z = -2.5,
       }},
-      .rotation = .{.angles = .{
+      .angles = .{.angles = .{
          .pitch   = 0.0,
          .yaw     = std.math.pi / -10.0,
          .roll    = 0.0,
-      }},
-      .scale = .{.xyz = .{
-         .x = 1.0,
-         .y = 1.0,
-         .z = 1.0,
       }},
    };
 
@@ -203,7 +198,6 @@ pub fn main() MainError!void {
       mesh_transform_test_cube.rotation.angles.pitch  = theta;
       mesh_transform_test_cube.rotation.angles.roll   = theta;
 
-      camera_matrix.*            = camera_transform.toMatrix();
       mesh_matrix_test_pyramid.* = mesh_transform_test_pyramid.toMatrix();
       mesh_matrix_test_cube.*    = mesh_transform_test_cube.toMatrix();
 

@@ -55,7 +55,6 @@ pub const PushConstants = struct {
 };
 
 pub const UniformBufferObject = struct {
-   transform_camera     : math.Matrix4(f32), // 64 bytes | offset +0
-   transform_projection : math.Matrix4(f32), // 64 bytes | offset +64
+   transform_view_projection : math.Matrix4(f32), // 0 bytes | offset +0
 };
 
