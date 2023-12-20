@@ -14,27 +14,17 @@ pub const VULKAN_REQUIRED_EXTENSIONS = struct {
 };
 
 pub const Compositor = struct {
-   _wl_display    : * c.wl_display,
-   _wl_registry   : * c.wl_registry,
-   _wl_globals    : WaylandGlobals,
-   _surface_map   : * _SurfaceMap,
-
-   // Unfortunately we need to store a map of windows and their callback info
-   // inside compositor since libwayland input event handlers only give us an
-   // affected surface.  TL:DR - This is mitigation for a poorly designed C API.
-   // Key is a wl_surface casted with @intFromPtr() so it can work with the
-   // hash map.  Synchronization is required since an event could access while
-   // a window is being inserted.
-   const _SurfaceMap = struct {
-      mutex : std.Thread.Mutex = .{},
-      map   : std.AutoHashMapUnmanaged(usize, * Window._Callbacks) = .{},
-   };
+   _wl_display       : * c.wl_display,
+   _wl_registry      : * c.wl_registry,
+   _wl_globals       : WaylandGlobals,
+   _wl_surface_map   : * WaylandSurfaceMap,
+   _wl_inputs        : WaylandInputs,
 
    pub fn connect(allocator : std.mem.Allocator) f_shared.Compositor.ConnectError!@This() {
-      const surface_map = try allocator.create(_SurfaceMap);
-      errdefer allocator.destroy(surface_map);
+      const wl_surface_map = try allocator.create(WaylandSurfaceMap);
+      errdefer allocator.destroy(wl_surface_map);
 
-      surface_map.* = .{};
+      wl_surface_map.* = .{};
 
       const wl_display = c.wl_display_connect(null) orelse return error.Unavailable;
       errdefer c.wl_display_disconnect(wl_display);
@@ -58,12 +48,40 @@ pub const Compositor = struct {
       };
 
       _ = c.xdg_wm_base_add_listener(wl_globals.xdg_wm_base, &xdg_wm_base_listener, null);
+
+      const wl_seat_listener = c.wl_seat_listener{
+         .capabilities  = _waylandSeatListenerCapabilities,
+         .name          = _waylandSeatListenerName,
+      };
+
+      var wl_inputs = WaylandInputs{};
+      _ = c.wl_seat_add_listener(wl_globals.seat, &wl_seat_listener, &wl_inputs);
+      _ = c.wl_display_roundtrip(wl_display);
+
+      if (wl_inputs.pointer) |wl_pointer| {
+         const wl_pointer_listener = c.wl_pointer_listener{
+            .enter                     = _waylandPointerListenerEnter,
+            .leave                     = _waylandPointerListenerLeave,
+            .motion                    = _waylandPointerListenerMotion,
+            .button                    = _waylandPointerListenerButton,
+            .axis                      = _waylandPointerListenerAxis,
+            .frame                     = _waylandPointerListenerFrame,
+            .axis_source               = _waylandPointerListenerAxisSource,
+            .axis_stop                 = _waylandPointerListenerAxisStop,
+            .axis_discrete             = _waylandPointerListenerAxisDiscrete,
+            .axis_value120             = _waylandPointerListenerAxisValue120,
+            .axis_relative_direction   = _waylandPointerListenerAxisRelativeDirection,
+         };
+
+         _ = c.wl_pointer_add_listener(wl_pointer, &wl_pointer_listener, wl_surface_map);
+      }
       
       return @This(){
-         ._wl_display   = wl_display,
-         ._wl_registry  = wl_registry,
-         ._wl_globals   = wl_globals,
-         ._surface_map  = surface_map,
+         ._wl_display      = wl_display,
+         ._wl_registry     = wl_registry,
+         ._wl_globals      = wl_globals,
+         ._wl_inputs       = wl_inputs,
+         ._wl_surface_map  = wl_surface_map,
       };
    }
 
@@ -87,6 +105,21 @@ pub const Compositor = struct {
             return globals;
          }
       };
+   };
+
+   // Unfortunately we need to store a map of windows and their callback info
+   // inside compositor since libwayland input event handlers only give us an
+   // affected surface.  TL:DR - This is mitigation for a poorly designed C API.
+   // Key is a wl_surface casted with @intFromPtr() so it can work with the
+   // hash map.  Synchronization is required since an event could access while
+   // a window is being inserted.
+   const WaylandSurfaceMap = struct {
+      mutex : std.Thread.Mutex = .{},
+      map   : std.AutoHashMapUnmanaged(usize, * Window._Callbacks) = .{},
+   };
+
+   const WaylandInputs = struct {
+      pointer  : ? * c.wl_pointer = null,
    };
 
    fn _waylandRegistryListenerGlobal(p_data : ? * anyopaque, p_wl_registry : ? * c.wl_registry, p_name : u32, p_interface : ? * const u8, p_version : u32) callconv(.C) void {
@@ -172,9 +205,120 @@ pub const Compositor = struct {
       return;
    }
 
+   fn _waylandSeatListenerCapabilities(p_data : ? * anyopaque, p_wl_seat : ? * c.wl_seat, p_capabilities : u32) callconv(.C) void {
+      const wl_inputs      = @as(* WaylandInputs, @ptrCast(@alignCast(p_data orelse unreachable)));
+      const wl_seat        = p_wl_seat orelse unreachable;
+      const capabilities   = p_capabilities;
+
+      if (capabilities & c.WL_SEAT_CAPABILITY_POINTER != 0) blk: {
+         const wl_pointer = c.wl_seat_get_pointer(wl_seat) orelse break :blk;
+         wl_inputs.pointer = wl_pointer;
+      }
+
+      return;
+   }
+
+   fn _waylandSeatListenerName(p_data : ? * anyopaque, p_wl_seat : ? * c.wl_seat, p_name : [*c] const u8) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_seat;
+      _ = p_name;
+      return;
+   }
+   
+   fn _waylandPointerListenerEnter(p_data : ? * anyopaque, p_wl_pointer : ? * c.wl_pointer, p_serial : u32, p_wl_surface : ? * c.wl_surface, p_wl_surface_x : c.wl_fixed_t, p_wl_surface_y : c.wl_fixed_t) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_pointer;
+      _ = p_serial;
+      _ = p_wl_surface;
+      _ = p_wl_surface_x;
+      _ = p_wl_surface_y;
+      return;
+   }
+
+   fn _waylandPointerListenerLeave(p_data : ? * anyopaque, p_wl_pointer : ? * c.wl_pointer, p_serial : u32, p_wl_surface : ? * c.wl_surface) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_pointer;
+      _ = p_serial;
+      _ = p_wl_surface;
+      return;
+   }
+
+   fn _waylandPointerListenerMotion(p_data : ? * anyopaque, p_wl_pointer : ? * c.wl_pointer, p_time : u32, p_wl_surface_x : c.wl_fixed_t, p_wl_surface_y : c.wl_fixed_t) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_pointer;
+      _ = p_time;
+      _ = p_wl_surface_x;
+      _ = p_wl_surface_y;
+      return;
+   }
+
+   fn _waylandPointerListenerButton(p_data : ? * anyopaque, p_wl_pointer : ? * c.wl_pointer, p_serial : u32, p_time : u32, p_button : u32, p_state : u32) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_pointer;
+      _ = p_serial;
+      _ = p_time;
+      _ = p_button;
+      _ = p_state;
+      return;
+   }
+
+   fn _waylandPointerListenerAxis(p_data : ? * anyopaque, p_wl_pointer : ? * c.wl_pointer, p_time : u32, p_axis : u32, p_value : c.wl_fixed_t) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_pointer;
+      _ = p_time;
+      _ = p_axis;
+      _ = p_value;
+      return;
+   }
+
+   fn _waylandPointerListenerFrame(p_data : ? * anyopaque, p_wl_pointer : ? * c.wl_pointer) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_pointer;
+      return;
+   }
+
+   fn _waylandPointerListenerAxisSource(p_data : ? * anyopaque, p_wl_pointer : ? * c.wl_pointer, p_axis_source : u32) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_pointer;
+      _ = p_axis_source;
+      return;
+   }
+
+   fn _waylandPointerListenerAxisStop(p_data : ? * anyopaque, p_wl_pointer : ? * c.wl_pointer, p_time : u32, p_axis : u32) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_pointer;
+      _ = p_time;
+      _ = p_axis;
+      return;
+   }
+
+   fn _waylandPointerListenerAxisDiscrete(p_data : ? * anyopaque, p_wl_pointer : ? * c.wl_pointer, p_axis : u32, p_discrete : i32) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_pointer;
+      _ = p_axis;
+      _ = p_discrete;
+      return;
+   }
+
+   fn _waylandPointerListenerAxisValue120(p_data : ? * anyopaque, p_wl_pointer : ? * c.wl_pointer, p_axis : u32, p_discrete : i32) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_pointer;
+      _ = p_axis;
+      _ = p_discrete;
+      return;
+   }
+
+   fn _waylandPointerListenerAxisRelativeDirection(p_data : ? * anyopaque, p_wl_pointer : ? * c.wl_pointer, p_axis : u32, p_direction : u32) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_pointer;
+      _ = p_axis;
+      _ = p_direction;
+      return;
+   }
+
    pub fn disconnect(self : @This(), allocator : std.mem.Allocator) void {
-      self._surface_map.map.deinit(allocator);
-      allocator.destroy(self._surface_map);
+      self._wl_surface_map.map.deinit(allocator);
+      allocator.destroy(self._wl_surface_map);
       c.wl_registry_destroy(self._wl_registry);
       c.wl_display_disconnect(self._wl_display);
       return;
@@ -244,12 +388,12 @@ pub const Window = struct {
       _ = c.wl_display_roundtrip(compositor._wl_display);
       _ = c.wl_surface_commit(wl_surface);
 
-      compositor._surface_map.mutex.lock();
-      defer compositor._surface_map.mutex.unlock();
+      compositor._wl_surface_map.mutex.lock();
+      defer compositor._wl_surface_map.mutex.unlock();
 
       const surface_map_key = @intFromPtr(wl_surface);
 
-      try compositor._surface_map.map.put(allocator, surface_map_key, callbacks);
+      try compositor._wl_surface_map.map.put(allocator, surface_map_key, callbacks);
 
       return @This(){
          ._compositor   = compositor,
@@ -300,7 +444,7 @@ pub const Window = struct {
    }
 
    pub fn destroy(self : @This(), allocator : std.mem.Allocator) void {
-      const surface_removed = self._compositor._surface_map.map.remove(@intFromPtr(self._wl_surface));
+      const surface_removed = self._compositor._wl_surface_map.map.remove(@intFromPtr(self._wl_surface));
       if (std.debug.runtime_safety == true and surface_removed == false) {
          @panic("attempted to remove nonexistent surface from compositor surface map");
       }
