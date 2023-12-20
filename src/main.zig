@@ -55,7 +55,7 @@ pub fn main() MainError!void {
    }) catch return error.WindowCreateError;
    defer window.destroy(allocator);
 
-   window.setCursorGrabbed(true);
+   //window.setCursorGrabbed(true);
 
    var renderer = graphics.Renderer.create(allocator, &window, &.{
       .program_name     = PROGRAM_NAME,

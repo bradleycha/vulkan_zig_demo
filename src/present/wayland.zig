@@ -173,8 +173,8 @@ pub const Compositor = struct {
    }
 
    pub fn disconnect(self : @This(), allocator : std.mem.Allocator) void {
-      _ = allocator;
-
+      self._surface_map.map.deinit(allocator);
+      allocator.destroy(self._surface_map);
       c.wl_registry_destroy(self._wl_registry);
       c.wl_display_disconnect(self._wl_display);
       return;
@@ -300,6 +300,11 @@ pub const Window = struct {
    }
 
    pub fn destroy(self : @This(), allocator : std.mem.Allocator) void {
+      const surface_removed = self._compositor._surface_map.map.remove(@intFromPtr(self._wl_surface));
+      if (std.debug.runtime_safety == true and surface_removed == false) {
+         @panic("attempted to remove nonexistent surface from compositor surface map");
+      }
+
       c.xdg_toplevel_destroy(self._xdg_toplevel);
       c.xdg_surface_destroy(self._xdg_surface);
       c.wl_surface_destroy(self._wl_surface);
