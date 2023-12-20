@@ -116,9 +116,14 @@ pub const Compositor = struct {
    // Key is a wl_surface casted with @intFromPtr() so it can work with the
    // hash map.  Synchronization is required since an event could access while
    // a window is being inserted.
-   const WaylandInputCallbacks= struct {
+   const WaylandInputCallbacks = struct {
       mutex       : std.Thread.Mutex = .{},
       surface_map : std.AutoHashMapUnmanaged(usize, * Window._Callbacks) = .{},
+      pointer     : WaylandPointerInputCallbacks = .{},
+   };
+
+   const WaylandPointerInputCallbacks = struct {
+      enter_serial   : u32 = undefined,
    };
 
    fn _waylandRegistryListenerGlobal(p_data : ? * anyopaque, p_wl_registry : ? * c.wl_registry, p_name : u32, p_interface : ? * const u8, p_version : u32) callconv(.C) void {
@@ -235,6 +240,8 @@ pub const Compositor = struct {
       wl_input_callbacks.mutex.lock();
       defer wl_input_callbacks.mutex.unlock();
 
+      wl_input_callbacks.pointer.enter_serial = serial;
+
       const window_callbacks = wl_input_callbacks.surface_map.get(@intFromPtr(wl_surface)) orelse unreachable;
 
       window_callbacks.mutex.lock();
@@ -243,7 +250,6 @@ pub const Compositor = struct {
       window_callbacks.focused = true;
 
       _ = wl_pointer;
-      _ = serial;
       _ = wl_surface_x;
       _ = wl_surface_y;
 
@@ -363,17 +369,19 @@ pub const Compositor = struct {
 };
 
 pub const Window = struct {
-   _compositor       : * Compositor,
-   _wl_surface       : * c.wl_surface,
-   _xdg_surface      : * c.xdg_surface,
-   _xdg_toplevel     : * c.xdg_toplevel,
-   _callbacks        : * _Callbacks,
-   _cursor_grabbed   : bool,
+   _compositor          : * Compositor,
+   _wl_surface          : * c.wl_surface,
+   _xdg_surface         : * c.xdg_surface,
+   _xdg_toplevel        : * c.xdg_toplevel,
+   _callbacks           : * _Callbacks,
+   _cursor_grabbed_old  : bool,
+   _cursor_grabbed      : bool,
 
    const _Callbacks = struct {
       mutex                : std.Thread.Mutex = .{},
       current_resolution   : f_shared.Window.Resolution = .{.width = 0, .height = 0},
       should_close         : bool = false,
+      focused_old          : bool = false,
       focused              : bool = false,
    };
 
@@ -427,12 +435,13 @@ pub const Window = struct {
       try compositor._wl_input_callbacks.surface_map.put(allocator, surface_map_key, callbacks);
 
       return @This(){
-         ._compositor      = compositor,
-         ._wl_surface      = wl_surface,
-         ._xdg_surface     = xdg_surface,
-         ._xdg_toplevel    = xdg_toplevel,
-         ._callbacks       = callbacks,
-         ._cursor_grabbed  = false,
+         ._compositor         = compositor,
+         ._wl_surface         = wl_surface,
+         ._xdg_surface        = xdg_surface,
+         ._xdg_toplevel       = xdg_toplevel,
+         ._callbacks          = callbacks,
+         ._cursor_grabbed_old = false,
+         ._cursor_grabbed     = false,
       };
    }
 
@@ -506,9 +515,11 @@ pub const Window = struct {
          return;
       }
 
-      // TODO: Hide cursor image and lock inside window
-
-      self._cursor_grabbed = grabbed;
+      // Since we have to wait for the cursor to enter our window (to get a
+      // valid serial), we defer the cursor setting to pollEvents() and check
+      // if the window is focused, which garuntees a valid serial.
+      self._cursor_grabbed_old   = self._cursor_grabbed;
+      self._cursor_grabbed       = grabbed;
 
       return;
    }
@@ -533,6 +544,44 @@ pub const Window = struct {
 
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       _ = c.wl_display_roundtrip(self._compositor._wl_display);
+
+      self._callbacks.mutex.lock();
+      defer self._callbacks.mutex.unlock();
+
+      if (self._callbacks.focused == true) {
+         // If the cursor re-entered the window while grabbed, we have to
+         // update the cursor icon to be hidden again.
+         if (self._callbacks.focused_old == false and self._cursor_grabbed == true) {
+            _changeCursorVisibility(self, true);
+         }
+
+         // If a cursor state change was issued, run it
+         if (self._cursor_grabbed_old != self._cursor_grabbed) {
+            _changeCursorVisibility(self, self._cursor_grabbed);
+         }
+      }
+
+      self._callbacks.focused_old = self._callbacks.focused;
+      self._cursor_grabbed_old = self._cursor_grabbed;
+
+      return;
+   }
+
+   fn _changeCursorVisibility(self : * const @This(), hidden : bool) void {
+      self._compositor._wl_input_callbacks.mutex.lock();
+      defer self._compositor._wl_input_callbacks.mutex.unlock();
+      
+      // We use 'orelse unreachable' on wl_pointer because this function should
+      // only ever be called when the cursor is entered into a window, thus we
+      // know wl_pointer is not null.
+      const wl_pointer              = self._compositor._wl_inputs.pointer orelse unreachable;
+      const wl_pointer_enter_serial = self._compositor._wl_input_callbacks.pointer.enter_serial;
+
+      // TODO: Implement the unhiding part.
+      switch (hidden) {
+         true  => c.wl_pointer_set_cursor(wl_pointer, wl_pointer_enter_serial, null, 0, 0),
+         false => c.wl_pointer_set_cursor(wl_pointer, wl_pointer_enter_serial, null, 0, 0),
+      }
 
       return;
    }
