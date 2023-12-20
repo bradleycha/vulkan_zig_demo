@@ -70,11 +70,16 @@ pub const Window = struct {
    _x_window                  : c.xcb_window_t,
    _x_cursor_hidden           : c.xcb_cursor_t,
    _x_atom_wm_delete_window   : c.xcb_atom_t,
-   _cursor_position_prev_x    : i16,
-   _cursor_position_prev_y    : i16,
-   _cursor_inside             : bool,
+   _resolution                : XcbResolution,
+   _cursor_x                  : u16,
+   _cursor_y                  : u16,
    _cursor_grabbed            : bool,
    _should_close              : bool,
+
+   const XcbResolution = struct {
+      width    : u16,
+      height   : u16,
+   };
 
    pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!@This() {
       _ = allocator;
@@ -105,9 +110,7 @@ pub const Window = struct {
          c.XCB_EVENT_MASK_EXPOSURE           |
          c.XCB_EVENT_MASK_STRUCTURE_NOTIFY   |
          c.XCB_EVENT_MASK_POINTER_MOTION     |
-         c.XCB_EVENT_MASK_BUTTON_MOTION      |
-         c.XCB_EVENT_MASK_ENTER_WINDOW       |
-         c.XCB_EVENT_MASK_LEAVE_WINDOW;
+         c.XCB_EVENT_MASK_BUTTON_MOTION;
 
       const x_cookie_window_create = c.xcb_create_window_checked(
          x_connection,                       // connection
@@ -163,12 +166,12 @@ pub const Window = struct {
          x_font_cursor,    // mask_font
          ' ',              // source_char
          ' ',              // mask_char
-         0,                // fore_red
-         0,                // fore_green
-         0,                // fore_blue
-         0,                // back_red
-         0,                // back_green
-         0,                // back_blue
+         undefined,        // fore_red
+         undefined,        // fore_green
+         undefined,        // fore_blue
+         undefined,        // back_red
+         undefined,        // back_green
+         undefined,        // back_blue
       );
 
       const WM_PROTOCOLS      = "WM_PROTOCOLS";
@@ -258,9 +261,9 @@ pub const Window = struct {
          ._x_window                 = x_window,
          ._x_cursor_hidden          = x_cursor_hidden,
          ._x_atom_wm_delete_window  = x_atom_wm_delete_window,
-         ._cursor_position_prev_x   = undefined, // Will be ignored until enter event is sent, which sets this value first
-         ._cursor_position_prev_y   = undefined, // Will be ignored until enter event is sent, which sets this value first
-         ._cursor_inside            = false,
+         ._resolution               = .{.width = width, .height = height},
+         ._cursor_x                 = width / 2,
+         ._cursor_y                 = height / 2,
          ._cursor_grabbed           = false,
          ._should_close             = false,
       };
@@ -280,24 +283,12 @@ pub const Window = struct {
    }
 
    pub fn getResolution(self : * const @This()) f_shared.Window.Resolution {
-      const x_connection   = self._compositor._x_connection;
-      const x_window       = self._x_window;
-
-      const x_cookie_window_geometry = c.xcb_get_geometry(
-         x_connection,
-         x_window,
-      );
-
-      const x_window_geometry = c.xcb_get_geometry_reply(
-         x_connection,
-         x_cookie_window_geometry,
-         null,
-      ) orelse return .{.width = 0, .height = 0}; // Oh crap!
-      defer c.free(x_window_geometry);
+      const width    = self._resolution.width;
+      const height   = self._resolution.height;
 
       return .{
-         .width   = @as(u32, x_window_geometry.*.width),
-         .height  = @as(u32, x_window_geometry.*.height),
+         .width   = @as(u32, width),
+         .height  = @as(u32, height),
       };
    }
 
@@ -364,6 +355,9 @@ pub const Window = struct {
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       const x_connection = self._compositor._x_connection;
 
+      const resolution = self._xQueryResolution();
+      self._resolution = resolution;
+
       self._controller.advance();
 
       var x_generic_event_iterator = c.xcb_poll_for_event(x_connection);
@@ -374,7 +368,40 @@ pub const Window = struct {
          x_generic_event_iterator = c.xcb_poll_for_event(x_connection);
       }
 
+      const center_x = self._resolution.width / 2;
+      const center_y = self._resolution.height / 2;
+
+      // TODO: Move mouse to center of window
+
+      const mouse_dx = @as(i32, center_x) - @as(i32, self._cursor_x);
+      const mouse_dy = @as(i32, center_y) - @as(i32, self._cursor_y);
+
+      self._controller.mouse.dx = @intCast(mouse_dx);
+      self._controller.mouse.dy = @intCast(mouse_dy);
+
       return;
+   }
+
+   fn _xQueryResolution(self : * const @This()) XcbResolution {
+      const x_connection   = self._compositor._x_connection;
+      const x_window       = self._x_window;
+
+      const x_cookie_window_geometry = c.xcb_get_geometry(
+         x_connection,
+         x_window,
+      );
+
+      const x_window_geometry = c.xcb_get_geometry_reply(
+         x_connection,
+         x_cookie_window_geometry,
+         null,
+      ) orelse return .{.width = 0, .height = 0}; // Oh crap!
+      defer c.free(x_window_geometry);
+
+      return .{
+         .width   = x_window_geometry.*.width,
+         .height  = x_window_geometry.*.height,
+      };
    }
 
    fn _handleXEvent(self : * @This(), x_generic_event : * const c.xcb_generic_event_t) f_shared.Window.PollEventsError!void {
@@ -382,8 +409,6 @@ pub const Window = struct {
 
       switch (x_generic_event.response_type & 0x7f) {
          c.XCB_CLIENT_MESSAGE => try _handleXClientMessage(self, @ptrCast(@alignCast(x_generic_event))),
-         c.XCB_ENTER_NOTIFY   => try _handleXEnterNotify(self, @ptrCast(@alignCast(x_generic_event))),
-         c.XCB_LEAVE_NOTIFY   => try _handleXLeaveNotify(self, @ptrCast(@alignCast(x_generic_event))),
          c.XCB_MOTION_NOTIFY  => try _handleXMotionNotify(self, @ptrCast(@alignCast(x_generic_event))),
          else                 => {},
       }
@@ -400,34 +425,8 @@ pub const Window = struct {
    }
 
 
-   fn _handleXEnterNotify(self : * @This(), x_enter_notify_event : * const c.xcb_enter_notify_event_t) f_shared.Window.PollEventsError!void {
-      if (x_enter_notify_event.event != self._x_window) {
-         return;
-      }
-
-      self._cursor_inside = true;
-      self._cursor_position_prev_x = x_enter_notify_event.event_x;
-      self._cursor_position_prev_y = x_enter_notify_event.event_y;
-
-      return;
-   }
-
-   fn _handleXLeaveNotify(self : * @This(), x_leave_notify_event : * const c.xcb_leave_notify_event_t) f_shared.Window.PollEventsError!void {
-      if (x_leave_notify_event.event != self._x_window) {
-         return;
-      }
-
-      self._cursor_inside = false;
-
-      return;
-   }
-
    fn _handleXMotionNotify(self : * @This(), x_motion_notify_event : * const c.xcb_motion_notify_event_t) f_shared.Window.PollEventsError!void {
       if (x_motion_notify_event.event != self._x_window) {
-         return;
-      }
-
-      if (self._cursor_inside == false) {
          return;
       }
 
@@ -438,14 +437,8 @@ pub const Window = struct {
       const x = x_motion_notify_event.event_x;
       const y = x_motion_notify_event.event_y;
 
-      const dx = self._cursor_position_prev_x - x;
-      const dy = self._cursor_position_prev_y - y;
-
-      self._cursor_position_prev_x = x;
-      self._cursor_position_prev_y = y;
-
-      self._controller.mouse.dx = dx;
-      self._controller.mouse.dy = dy;
+      self._cursor_x = @intCast(x);
+      self._cursor_y = @intCast(y);
 
       return;
    }
