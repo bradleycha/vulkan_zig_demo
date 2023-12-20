@@ -54,22 +54,25 @@ pub const Compositor = struct {
    pub const WaylandGlobals = struct {
       compositor  : * c.wl_compositor,
       xdg_wm_base : * c.xdg_wm_base,
+      seat        : * c.wl_seat,
 
       pub const Found = struct {
          compositor  : ? * c.wl_compositor   = null,
          xdg_wm_base : ? * c.xdg_wm_base     = null,
+         seat        : ? * c.wl_seat         = null,
 
          pub fn unwrap(self : * const @This()) ? WaylandGlobals {
             const globals = WaylandGlobals{
                .compositor    = self.compositor    orelse return null,
                .xdg_wm_base   = self.xdg_wm_base   orelse return null,
+               .seat          = self.seat          orelse return null,
             };
 
             return globals;
          }
       };
    };
-   
+
    fn _waylandRegistryListenerGlobal(p_data : ? * anyopaque, p_wl_registry : ? * c.wl_registry, p_name : u32, p_interface : ? * const u8, p_version : u32) callconv(.C) void {
       const wl_globals_found : * WaylandGlobals.Found = @ptrCast(@alignCast(p_data orelse unreachable));
       const wl_registry = p_wl_registry orelse unreachable;
@@ -111,6 +114,25 @@ pub const Compositor = struct {
          const xdg_wm_base : * c.xdg_wm_base = @ptrCast(@alignCast(wl_interface));
 
          wl_globals_found.xdg_wm_base = xdg_wm_base;
+
+         return;
+      }
+
+      blk_seat: {
+         const MINIMUM_VERSION = 1;
+
+         if (c.strcmp(interface, c.wl_seat_interface.name) != 0) {
+            break :blk_seat;
+         }
+
+         if (version < MINIMUM_VERSION) {
+            return;
+         }
+
+         const wl_interface = c.wl_registry_bind(wl_registry, name, &c.wl_seat_interface, MINIMUM_VERSION) orelse return;
+         const wl_seat : * c.wl_seat = @ptrCast(@alignCast(wl_interface));
+
+         wl_globals_found.seat = wl_seat;
 
          return;
       }
@@ -157,10 +179,11 @@ pub const Window = struct {
    _xdg_surface   : * c.xdg_surface,
    _xdg_toplevel  : * c.xdg_toplevel,
    _callbacks     : * _Callbacks,
-   _input_state   : input.InputState,
+   _controller    : input.Controller,
 
    const _Callbacks = struct {
       mutex                : std.Thread.Mutex = .{},
+      controller           : input.Controller = .{},
       current_resolution   : f_shared.Window.Resolution = .{.width = 0, .height = 0},
       should_close         : bool = false,
    };
@@ -213,7 +236,7 @@ pub const Window = struct {
          ._xdg_surface  = xdg_surface,
          ._xdg_toplevel = xdg_toplevel,
          ._callbacks    = callbacks,
-         ._input_state  = .{},
+         ._controller   = .{},
       };
    }
 
@@ -287,9 +310,13 @@ pub const Window = struct {
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       _ = c.wl_display_roundtrip(self._compositor._wl_display);
 
-      self._input_state.buttons.advance();
+      self._callbacks.mutex.lock();
+      defer self._callbacks.mutex.unlock();
 
-      // TODO: Input state
+      // We have to handle input polling like this to prevent race conditions.
+      // This is the reason for the duplicated controller fields.
+      self._controller = self._callbacks.controller;
+      self._callbacks.controller.advance();
 
       return;
    }
@@ -306,8 +333,8 @@ pub const Window = struct {
       return c.vkCreateWaylandSurfaceKHR(vk_instance, &vk_info_create_wayland_surface, vk_allocator, vk_surface);
    }
 
-   pub fn inputState(self : * const @This()) * const input.InputState {
-      return &self._input_state;
+   pub fn controller(self : * const @This()) * const input.Controller {
+      return &self._controller;
    }
 };
 

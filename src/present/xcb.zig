@@ -66,7 +66,7 @@ pub const Compositor = struct {
 
 pub const Window = struct {
    _compositor                : * const Compositor,
-   _input_state               : input.InputState,
+   _controller                : input.Controller,
    _x_window                  : c.xcb_window_t,
    _x_atom_wm_delete_window   : c.xcb_atom_t,
    _should_close              : bool,
@@ -205,7 +205,7 @@ pub const Window = struct {
 
       return @This(){
          ._compositor               = compositor,
-         ._input_state              = .{},
+         ._controller               = .{},
          ._x_window                 = x_window,
          ._x_atom_wm_delete_window  = x_atom_wm_delete_window,
          ._should_close             = false,
@@ -267,9 +267,7 @@ pub const Window = struct {
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       const x_connection = self._compositor._x_connection;
 
-      self._input_state.buttons.advance();
-
-      // TODO: Update input
+      self._controller.advance();
 
       var x_generic_event_iterator = c.xcb_poll_for_event(x_connection);
       while (x_generic_event_iterator) |x_generic_event| {
@@ -283,6 +281,8 @@ pub const Window = struct {
    }
 
    fn _handleXEvent(self : * @This(), x_generic_event : * const c.xcb_generic_event_t) f_shared.Window.PollEventsError!void {
+      // TODO: Handle input events
+
       switch (x_generic_event.response_type & 0x7f) {
          c.XCB_CLIENT_MESSAGE => try _handleXClientMessage(self, @ptrCast(@alignCast(x_generic_event))),
          else                 => {},
@@ -311,8 +311,8 @@ pub const Window = struct {
       return c.vkCreateXcbSurfaceKHR(vk_instance, &vk_info_create_xcb_surface, vk_allocator, vk_surface);
    }
 
-   pub fn inputState(self : * const @This()) * const input.InputState {
-      return &self._input_state;
+   pub fn controller(self : * const @This()) * const input.Controller {
+      return &self._controller;
    }
 };
 

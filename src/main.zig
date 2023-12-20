@@ -55,7 +55,7 @@ pub fn main() MainError!void {
    }) catch return error.WindowCreateError;
    defer window.destroy(allocator);
 
-   const input_state = window.inputState();
+   const controller = window.controller();
 
    var renderer = graphics.Renderer.create(allocator, &window, &.{
       .program_name     = PROGRAM_NAME,
@@ -167,7 +167,7 @@ pub fn main() MainError!void {
       if (window.shouldClose() == true) {
          break :main_loop;
       }
-      if (input_state.buttons.state(.exit).isPressed() == true) {
+      if (controller.buttons.state(.exit).isPressed() == true) {
          break :main_loop;
       }
 

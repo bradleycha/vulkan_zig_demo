@@ -1,10 +1,20 @@
 const std   = @import("std");
 const math  = @import("math");
 
-pub const InputState = struct {
-   axis_move   : math.Vector2(f32)  = math.Vector2(f32).ZERO,
-   axis_look   : math.Vector2(f32)  = math.Vector2(f32).ZERO,
-   buttons     : Buttons            = .{},
+pub const Controller = struct {
+   axies    : Axies              = .{},
+   mouse    : math.Vector2(f32)  = math.Vector2(f32).ZERO,
+   buttons  : Buttons            = .{},
+
+   pub fn advance(self : * @This()) void {
+      self.buttons.advance();
+      return;
+   }
+};
+
+pub const Axies = struct {
+   move  : math.Vector2(f32)  = math.Vector2(f32).ZERO,
+   look  : math.Vector2(f32)  = math.Vector2(f32).ZERO,
 };
 
 pub const Buttons = struct {
