@@ -57,7 +57,16 @@ fn _platformImplementation(comptime containers : PlatformContainers) type {
          title       : [:0] const u8,
       ) void,
 
+      pfn_window_set_cursor_grabbed : * const fn (
+         container   : * containers.window,
+         grabbed     : bool,
+      ) void,
+
       pfn_window_should_close : * const fn (
+         container   : * const containers.window,
+      ) bool,
+
+      pfn_window_is_cursor_grabbed : * const fn (
          container   : * const containers.window,
       ) bool,
 
@@ -97,8 +106,10 @@ const IMPLEMENTATION = blk: {
          .pfn_window_destroy                                               = wayland.Window.destroy,
          .pfn_window_get_resolution                                        = wayland.Window.getResolution,
          .pfn_window_set_title                                             = wayland.Window.setTitle,
+         .pfn_window_set_cursor_grabbed                                    = wayland.Window.setCursorGrabbed,
          .pfn_window_should_close                                          = wayland.Window.shouldClose,
          .pfn_window_poll_events                                           = wayland.Window.pollEvents,
+         .pfn_window_is_cursor_grabbed                                     = wayland.Window.isCursorGrabbed,
          .pfn_window_vulkan_create_surface                                 = wayland.Window.vulkanCreateSurface,
          .pfn_window_controller                                            = wayland.Window.controller,
       },
@@ -117,8 +128,10 @@ const IMPLEMENTATION = blk: {
          .pfn_window_destroy                                               = xcb.Window.destroy,
          .pfn_window_get_resolution                                        = xcb.Window.getResolution,
          .pfn_window_set_title                                             = xcb.Window.setTitle,
+         .pfn_window_set_cursor_grabbed                                    = xcb.Window.setCursorGrabbed,
          .pfn_window_should_close                                          = xcb.Window.shouldClose,
          .pfn_window_poll_events                                           = xcb.Window.pollEvents,
+         .pfn_window_is_cursor_grabbed                                     = xcb.Window.isCursorGrabbed,
          .pfn_window_vulkan_create_surface                                 = xcb.Window.vulkanCreateSurface,
          .pfn_window_controller                                            = xcb.Window.controller,
       },
@@ -191,8 +204,17 @@ pub const Window = struct {
       return;
    }
 
+   pub fn setCursorGrabbed(self : * @This(), grabbed : bool) void {
+      IMPLEMENTATION.pfn_window_set_cursor_grabbed(&self._container, grabbed);
+      return;
+   }
+
    pub fn shouldClose(self : * const @This()) bool {
       return IMPLEMENTATION.pfn_window_should_close(&self._container);
+   }
+
+   pub fn isCursorGrabbed(self : * const @This()) bool {
+      return IMPLEMENTATION.pfn_window_is_cursor_grabbed(&self._container);
    }
    
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {

@@ -300,11 +300,24 @@ pub const Window = struct {
       return;
    }
 
+   pub fn setCursorGrabbed(self : * @This(), grabbed : bool) void {
+      // TODO: Implement
+      _ = self;
+      _ = grabbed;
+      unreachable;
+   }
+
    pub fn shouldClose(self : * const @This()) bool {
       self._callbacks.mutex.lock();
       defer self._callbacks.mutex.unlock();
 
       return self._callbacks.should_close;
+   }
+
+   pub fn isCursorGrabbed(self : * const @This()) bool {
+      // TODO: Implement
+      _ = self;
+      unreachable;
    }
 
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
