@@ -20,7 +20,6 @@ const MainError = error {
 const PROGRAM_NAME                     = "Learn Graphics Programming with Zig!";
 const WINDOW_TITLE_UPDATE_TIME_SECONDS = 1.0;
 const SPIN_SPEED                       = 2.0;
-const MOUSE_SENSITIVITY                = 4.0;
 
 comptime {
    const float_mode = blk: {
@@ -56,9 +55,7 @@ pub fn main() MainError!void {
    }) catch return error.WindowCreateError;
    defer window.destroy(allocator);
 
-   window.setCursorGrabbed(true);
-
-   const controller = window.controller();
+   //window.setCursorGrabbed(true);
 
    var renderer = graphics.Renderer.create(allocator, &window, &.{
       .program_name     = PROGRAM_NAME,
@@ -170,9 +167,6 @@ pub fn main() MainError!void {
       if (window.shouldClose() == true) {
          break :main_loop;
       }
-      if (controller.buttons.state(.exit).isPressed() == true) {
-         break :main_loop;
-      }
 
       const time_delta        = @as(f64, @floatFromInt(timer_delta.lap())) / 1000000000.0;
       const time_window_title = @as(f64, @floatFromInt(timer_window_title.read())) / 1000000000.0;
@@ -192,16 +186,8 @@ pub fn main() MainError!void {
          window.setTitle(title);
       }
 
-      // TODO: Freefly camera translation and toggling window focus / cursor grabbing
-
-      const camera_rotate_pitch  = controller.mouse.dy * MOUSE_SENSITIVITY;
-      const camera_rotate_yaw    = controller.mouse.dx * MOUSE_SENSITIVITY;
-
-      camera.angles.angles.pitch += camera_rotate_pitch  * @as(f32, @floatCast(time_delta));
-      camera.angles.angles.yaw   += camera_rotate_yaw    * @as(f32, @floatCast(time_delta));
-
-      camera.angles.angles.pitch = std.math.clamp(camera.angles.angles.pitch, std.math.pi / -2.0, std.math.pi / 2.0);
-
+      // TODO: Freefly camera and toggling window focus / cursor grabbing
+      
       mesh_transform_test_pyramid.rotation.angles.yaw = theta;
 
       mesh_transform_test_cube.translation.xyz.x      = std.math.cos(theta);

@@ -66,13 +66,10 @@ pub const Compositor = struct {
 
 pub const Window = struct {
    _compositor                : * const Compositor,
-   _controller                : input.Controller,
    _x_window                  : c.xcb_window_t,
    _x_cursor_hidden           : c.xcb_cursor_t,
    _x_atom_wm_delete_window   : c.xcb_atom_t,
    _resolution                : XcbResolution,
-   _cursor_x                  : u16,
-   _cursor_y                  : u16,
    _cursor_grabbed            : bool,
    _should_close              : bool,
 
@@ -107,10 +104,8 @@ pub const Window = struct {
 
       const x_value_mask = c.XCB_CW_EVENT_MASK;
       const x_value_list =
-         c.XCB_EVENT_MASK_EXPOSURE           |
-         c.XCB_EVENT_MASK_STRUCTURE_NOTIFY   |
-         c.XCB_EVENT_MASK_POINTER_MOTION     |
-         c.XCB_EVENT_MASK_BUTTON_MOTION;
+         c.XCB_EVENT_MASK_EXPOSURE |
+         c.XCB_EVENT_MASK_STRUCTURE_NOTIFY;
 
       const x_cookie_window_create = c.xcb_create_window_checked(
          x_connection,                       // connection
@@ -257,13 +252,10 @@ pub const Window = struct {
 
       return @This(){
          ._compositor               = compositor,
-         ._controller               = .{},
          ._x_window                 = x_window,
          ._x_cursor_hidden          = x_cursor_hidden,
          ._x_atom_wm_delete_window  = x_atom_wm_delete_window,
          ._resolution               = .{.width = width, .height = height},
-         ._cursor_x                 = width / 2,
-         ._cursor_y                 = height / 2,
          ._cursor_grabbed           = false,
          ._should_close             = false,
       };
@@ -355,8 +347,6 @@ pub const Window = struct {
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       const x_connection = self._compositor._x_connection;
 
-      self._controller.advance();
-
       var x_generic_event_iterator = c.xcb_poll_for_event(x_connection);
       while (x_generic_event_iterator) |x_generic_event| {
          try _xHandleEvent(self, x_generic_event);
@@ -369,30 +359,18 @@ pub const Window = struct {
       self._resolution = resolution;
 
       if (self._cursor_grabbed == true) {
-         // TODO: This is broken.  If the mouse movement is less than a single
-         // pixel, it will not be detected, leading to a deadzone and inaccuracy.
-
          const center_x = resolution.width / 2;
          const center_y = resolution.height / 2;
 
          _xMoveCursor(self, center_x, center_y);
-
-         const mouse_dx = @as(i32, center_x) - @as(i32, self._cursor_x);
-         const mouse_dy = @as(i32, center_y) - @as(i32, self._cursor_y);
-      
-         self._controller.mouse.dx = @floatFromInt(mouse_dx);
-         self._controller.mouse.dy = @floatFromInt(mouse_dy);
       }
 
       return;
    }
 
    fn _xHandleEvent(self : * @This(), x_generic_event : * const c.xcb_generic_event_t) f_shared.Window.PollEventsError!void {
-      // TODO: Handle more input events
-
       switch (x_generic_event.response_type & 0x7f) {
          c.XCB_CLIENT_MESSAGE => try _xHandleClientMessage(self, @ptrCast(@alignCast(x_generic_event))),
-         c.XCB_MOTION_NOTIFY  => try _xHandleMotionNotify(self, @ptrCast(@alignCast(x_generic_event))),
          else                 => {},
       }
 
@@ -403,25 +381,6 @@ pub const Window = struct {
       if (x_client_message_event.data.data32[0] == self._x_atom_wm_delete_window) {
          self._should_close = true;
       }
-
-      return;
-   }
-
-
-   fn _xHandleMotionNotify(self : * @This(), x_motion_notify_event : * const c.xcb_motion_notify_event_t) f_shared.Window.PollEventsError!void {
-      if (x_motion_notify_event.event != self._x_window) {
-         return;
-      }
-
-      if (self._cursor_grabbed == false) {
-         return;
-      }
-
-      const x = x_motion_notify_event.event_x;
-      const y = x_motion_notify_event.event_y;
-
-      self._cursor_x = @intCast(x);
-      self._cursor_y = @intCast(y);
 
       return;
    }
@@ -477,10 +436,6 @@ pub const Window = struct {
       };
 
       return c.vkCreateXcbSurfaceKHR(vk_instance, &vk_info_create_xcb_surface, vk_allocator, vk_surface);
-   }
-
-   pub fn controller(self : * const @This()) * const input.Controller {
-      return &self._controller;
    }
 };
 

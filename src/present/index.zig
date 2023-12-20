@@ -80,10 +80,6 @@ fn _platformImplementation(comptime containers : PlatformContainers) type {
          vk_allocator   : ? * const c.VkAllocationCallbacks,
          vk_surface     : * c.VkSurfaceKHR,
       ) c.VkResult,
-
-      pfn_window_controller : * const fn (
-         container   : * const containers.window,
-      ) * const input.Controller,
    };
 }
 
@@ -111,7 +107,6 @@ const IMPLEMENTATION = blk: {
          .pfn_window_poll_events                                           = wayland.Window.pollEvents,
          .pfn_window_is_cursor_grabbed                                     = wayland.Window.isCursorGrabbed,
          .pfn_window_vulkan_create_surface                                 = wayland.Window.vulkanCreateSurface,
-         .pfn_window_controller                                            = wayland.Window.controller,
       },
 
       .xcb => break :blk _platformImplementation(.{
@@ -133,7 +128,6 @@ const IMPLEMENTATION = blk: {
          .pfn_window_poll_events                                           = xcb.Window.pollEvents,
          .pfn_window_is_cursor_grabbed                                     = xcb.Window.isCursorGrabbed,
          .pfn_window_vulkan_create_surface                                 = xcb.Window.vulkanCreateSurface,
-         .pfn_window_controller                                            = xcb.Window.controller,
       },
    }
 };
@@ -224,10 +218,6 @@ pub const Window = struct {
 
    pub fn vulkanCreateSurface(self : * @This(), vk_instance : c.VkInstance, vk_allocator : ? * const c.VkAllocationCallbacks, vk_surface : * c.VkSurfaceKHR) c.VkResult {
       return IMPLEMENTATION.pfn_window_vulkan_create_surface(&self._container, vk_instance, vk_allocator, vk_surface);
-   }
-
-   pub fn controller(self : * const @This()) * const input.Controller {
-      return IMPLEMENTATION.pfn_window_controller(&self._container);
    }
 };
 

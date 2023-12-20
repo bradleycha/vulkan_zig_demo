@@ -179,7 +179,6 @@ pub const Window = struct {
    _xdg_surface   : * c.xdg_surface,
    _xdg_toplevel  : * c.xdg_toplevel,
    _callbacks     : * _Callbacks,
-   _controller    : input.Controller,
 
    const _Callbacks = struct {
       mutex                : std.Thread.Mutex = .{},
@@ -236,7 +235,6 @@ pub const Window = struct {
          ._xdg_surface  = xdg_surface,
          ._xdg_toplevel = xdg_toplevel,
          ._callbacks    = callbacks,
-         ._controller   = .{},
       };
    }
 
@@ -323,14 +321,6 @@ pub const Window = struct {
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       _ = c.wl_display_roundtrip(self._compositor._wl_display);
 
-      self._callbacks.mutex.lock();
-      defer self._callbacks.mutex.unlock();
-
-      // We have to handle input polling like this to prevent race conditions.
-      // This is the reason for the duplicated controller fields.
-      self._controller = self._callbacks.controller;
-      self._callbacks.controller.advance();
-
       return;
    }
 
@@ -344,10 +334,6 @@ pub const Window = struct {
       };
 
       return c.vkCreateWaylandSurfaceKHR(vk_instance, &vk_info_create_wayland_surface, vk_allocator, vk_surface);
-   }
-
-   pub fn controller(self : * const @This()) * const input.Controller {
-      return &self._controller;
    }
 };
 
