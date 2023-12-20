@@ -418,7 +418,17 @@ pub const Window = struct {
 
       _ = c.xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, callbacks);
 
-      // TODO: Initial size and fullscreen mode
+      switch (create_info.display_mode) {
+         .windowed   => |resolution| {
+            _ = c.xdg_toplevel_unset_fullscreen(xdg_toplevel);
+            
+            // TODO: Initial resolution?
+            _ = resolution;
+         },
+        .fullscreen => {
+            _ = c.xdg_toplevel_set_fullscreen(xdg_toplevel, null);
+         },
+      }
 
       c.xdg_toplevel_set_title(xdg_toplevel, create_info.title.ptr);
       c.xdg_toplevel_set_app_id(xdg_toplevel, create_info.title.ptr);
@@ -559,6 +569,8 @@ pub const Window = struct {
          if (self._cursor_grabbed_old != self._cursor_grabbed) {
             _changeCursorVisibility(self, self._cursor_grabbed);
          }
+
+         // TODO: Cursor locking?  Lock to center of surface
       }
 
       self._callbacks.focused_old = self._callbacks.focused;
@@ -577,7 +589,9 @@ pub const Window = struct {
       const wl_pointer              = self._compositor._wl_inputs.pointer orelse unreachable;
       const wl_pointer_enter_serial = self._compositor._wl_input_callbacks.pointer.enter_serial;
 
-      // TODO: Implement the unhiding part.
+      // TODO: Implement the unhiding part.  This is made annoying as we need
+      // to create a wl_surface and wl_buffer to then populate with the default
+      // cursor's pixel data.  Passing 'null' for the surface hides the cursor.
       switch (hidden) {
          true  => c.wl_pointer_set_cursor(wl_pointer, wl_pointer_enter_serial, null, 0, 0),
          false => c.wl_pointer_set_cursor(wl_pointer, wl_pointer_enter_serial, null, 0, 0),
