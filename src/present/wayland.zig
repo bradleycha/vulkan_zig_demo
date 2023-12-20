@@ -363,11 +363,12 @@ pub const Compositor = struct {
 };
 
 pub const Window = struct {
-   _compositor    : * Compositor,
-   _wl_surface    : * c.wl_surface,
-   _xdg_surface   : * c.xdg_surface,
-   _xdg_toplevel  : * c.xdg_toplevel,
-   _callbacks     : * _Callbacks,
+   _compositor       : * Compositor,
+   _wl_surface       : * c.wl_surface,
+   _xdg_surface      : * c.xdg_surface,
+   _xdg_toplevel     : * c.xdg_toplevel,
+   _callbacks        : * _Callbacks,
+   _cursor_grabbed   : bool,
 
    const _Callbacks = struct {
       mutex                : std.Thread.Mutex = .{},
@@ -426,11 +427,12 @@ pub const Window = struct {
       try compositor._wl_input_callbacks.surface_map.put(allocator, surface_map_key, callbacks);
 
       return @This(){
-         ._compositor   = compositor,
-         ._wl_surface   = wl_surface,
-         ._xdg_surface  = xdg_surface,
-         ._xdg_toplevel = xdg_toplevel,
-         ._callbacks    = callbacks,
+         ._compositor      = compositor,
+         ._wl_surface      = wl_surface,
+         ._xdg_surface     = xdg_surface,
+         ._xdg_toplevel    = xdg_toplevel,
+         ._callbacks       = callbacks,
+         ._cursor_grabbed  = false,
       };
    }
 
@@ -500,10 +502,15 @@ pub const Window = struct {
    }
 
    pub fn setCursorGrabbed(self : * @This(), grabbed : bool) void {
-      // TODO: Implement
-      _ = self;
-      _ = grabbed;
-      unreachable;
+      if (self._cursor_grabbed == grabbed) {
+         return;
+      }
+
+      // TODO: Hide cursor image and lock inside window
+
+      self._cursor_grabbed = grabbed;
+
+      return;
    }
 
    pub fn shouldClose(self : * const @This()) bool {
@@ -514,9 +521,7 @@ pub const Window = struct {
    }
 
    pub fn isCursorGrabbed(self : * const @This()) bool {
-      // TODO: Implement
-      _ = self;
-      unreachable;
+      return self._cursor_grabbed;
    }
 
    pub fn isFocused(self : * const @This()) bool {
