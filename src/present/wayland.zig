@@ -198,7 +198,6 @@ pub const Window = struct {
 
    const _Callbacks = struct {
       mutex                : std.Thread.Mutex = .{},
-      controller           : input.Controller = .{},
       current_resolution   : f_shared.Window.Resolution = .{.width = 0, .height = 0},
       should_close         : bool = false,
    };
