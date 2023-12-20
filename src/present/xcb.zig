@@ -355,29 +355,72 @@ pub const Window = struct {
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       const x_connection = self._compositor._x_connection;
 
-      const resolution = self._xQueryResolution();
-      self._resolution = resolution;
-
       self._controller.advance();
 
       var x_generic_event_iterator = c.xcb_poll_for_event(x_connection);
       while (x_generic_event_iterator) |x_generic_event| {
-         try self._handleXEvent(x_generic_event);
+         try _xHandleEvent(self, x_generic_event);
 
          c.free(x_generic_event);
          x_generic_event_iterator = c.xcb_poll_for_event(x_connection);
       }
 
-      const center_x = self._resolution.width / 2;
-      const center_y = self._resolution.height / 2;
+      const resolution = _xQueryResolution(self);
+      self._resolution = resolution;
 
-      // TODO: Move mouse to center of window
+      
 
-      const mouse_dx = @as(i32, center_x) - @as(i32, self._cursor_x);
-      const mouse_dy = @as(i32, center_y) - @as(i32, self._cursor_y);
+      if (self._cursor_grabbed == true) {
+         const center_x = resolution.width / 2;
+         const center_y = resolution.height / 2;
 
-      self._controller.mouse.dx = @intCast(mouse_dx);
-      self._controller.mouse.dy = @intCast(mouse_dy);
+         _xMoveCursor(self, center_x, center_y);
+
+         const mouse_dx = @as(i32, center_x) - @as(i32, self._cursor_x);
+         const mouse_dy = @as(i32, center_y) - @as(i32, self._cursor_y);
+      
+         self._controller.mouse.dx = @intCast(mouse_dx);
+         self._controller.mouse.dy = @intCast(mouse_dy);
+      }
+
+      return;
+   }
+
+   fn _xHandleEvent(self : * @This(), x_generic_event : * const c.xcb_generic_event_t) f_shared.Window.PollEventsError!void {
+      // TODO: Handle more input events
+
+      switch (x_generic_event.response_type & 0x7f) {
+         c.XCB_CLIENT_MESSAGE => try _xHandleClientMessage(self, @ptrCast(@alignCast(x_generic_event))),
+         c.XCB_MOTION_NOTIFY  => try _xHandleMotionNotify(self, @ptrCast(@alignCast(x_generic_event))),
+         else                 => {},
+      }
+
+      return;
+   }
+
+   fn _xHandleClientMessage(self : * @This(), x_client_message_event : * const c.xcb_client_message_event_t) f_shared.Window.PollEventsError!void {
+      if (x_client_message_event.data.data32[0] == self._x_atom_wm_delete_window) {
+         self._should_close = true;
+      }
+
+      return;
+   }
+
+
+   fn _xHandleMotionNotify(self : * @This(), x_motion_notify_event : * const c.xcb_motion_notify_event_t) f_shared.Window.PollEventsError!void {
+      if (x_motion_notify_event.event != self._x_window) {
+         return;
+      }
+
+      if (self._cursor_grabbed == false) {
+         return;
+      }
+
+      const x = x_motion_notify_event.event_x;
+      const y = x_motion_notify_event.event_y;
+
+      self._cursor_x = @intCast(x);
+      self._cursor_y = @intCast(y);
 
       return;
    }
@@ -404,41 +447,21 @@ pub const Window = struct {
       };
    }
 
-   fn _handleXEvent(self : * @This(), x_generic_event : * const c.xcb_generic_event_t) f_shared.Window.PollEventsError!void {
-      // TODO: Handle more input events
+   fn _xMoveCursor(self : * const @This(), x : u16, y : u16) void {
+      const x_connection   = self._compositor._x_connection;
+      const x_window       = self._x_window;
 
-      switch (x_generic_event.response_type & 0x7f) {
-         c.XCB_CLIENT_MESSAGE => try _handleXClientMessage(self, @ptrCast(@alignCast(x_generic_event))),
-         c.XCB_MOTION_NOTIFY  => try _handleXMotionNotify(self, @ptrCast(@alignCast(x_generic_event))),
-         else                 => {},
-      }
-
-      return;
-   }
-
-   fn _handleXClientMessage(self : * @This(), x_client_message_event : * const c.xcb_client_message_event_t) f_shared.Window.PollEventsError!void {
-      if (x_client_message_event.data.data32[0] == self._x_atom_wm_delete_window) {
-         self._should_close = true;
-      }
-
-      return;
-   }
-
-
-   fn _handleXMotionNotify(self : * @This(), x_motion_notify_event : * const c.xcb_motion_notify_event_t) f_shared.Window.PollEventsError!void {
-      if (x_motion_notify_event.event != self._x_window) {
-         return;
-      }
-
-      if (self._cursor_grabbed == false) {
-         return;
-      }
-
-      const x = x_motion_notify_event.event_x;
-      const y = x_motion_notify_event.event_y;
-
-      self._cursor_x = @intCast(x);
-      self._cursor_y = @intCast(y);
+      _ = c.xcb_warp_pointer(
+         x_connection,              // conn
+         x_window,                  // src_window
+         x_window,                  // dst_window
+         0,                         // src_x
+         0,                         // src_y
+         self._resolution.width,    // src_width
+         self._resolution.height,   // src_height
+         @intCast(x),               // dst_x
+         @intCast(y),               // dst_y
+      );
 
       return;
    }
