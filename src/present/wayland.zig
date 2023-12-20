@@ -17,9 +17,24 @@ pub const Compositor = struct {
    _wl_display    : * c.wl_display,
    _wl_registry   : * c.wl_registry,
    _wl_globals    : WaylandGlobals,
+   _surface_map   : * _SurfaceMap,
+
+   // Unfortunately we need to store a map of windows and their callback info
+   // inside compositor since libwayland input event handlers only give us an
+   // affected surface.  TL:DR - This is mitigation for a poorly designed C API.
+   // Key is a wl_surface casted with @intFromPtr() so it can work with the
+   // hash map.  Synchronization is required since an event could access while
+   // a window is being inserted.
+   const _SurfaceMap = struct {
+      mutex : std.Thread.Mutex = .{},
+      map   : std.AutoHashMapUnmanaged(usize, * Window._Callbacks) = .{},
+   };
 
    pub fn connect(allocator : std.mem.Allocator) f_shared.Compositor.ConnectError!@This() {
-      _ = allocator;
+      const surface_map = try allocator.create(_SurfaceMap);
+      errdefer allocator.destroy(surface_map);
+
+      surface_map.* = .{};
 
       const wl_display = c.wl_display_connect(null) orelse return error.Unavailable;
       errdefer c.wl_display_disconnect(wl_display);
@@ -48,6 +63,7 @@ pub const Compositor = struct {
          ._wl_display   = wl_display,
          ._wl_registry  = wl_registry,
          ._wl_globals   = wl_globals,
+         ._surface_map  = surface_map,
       };
    }
 
@@ -228,6 +244,13 @@ pub const Window = struct {
       _ = c.wl_surface_commit(wl_surface);
       _ = c.wl_display_roundtrip(compositor._wl_display);
       _ = c.wl_surface_commit(wl_surface);
+
+      compositor._surface_map.mutex.lock();
+      defer compositor._surface_map.mutex.unlock();
+
+      const surface_map_key = @intFromPtr(wl_surface);
+
+      try compositor._surface_map.map.put(allocator, surface_map_key, callbacks);
 
       return @This(){
          ._compositor   = compositor,
