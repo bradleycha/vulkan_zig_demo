@@ -69,6 +69,8 @@ pub const Window = struct {
    _controller                : input.Controller,
    _x_window                  : c.xcb_window_t,
    _x_atom_wm_delete_window   : c.xcb_atom_t,
+   _cursor_position_prev_x    : i16,
+   _cursor_position_prev_y    : i16,
    _should_close              : bool,
 
    pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!@This() {
@@ -96,7 +98,7 @@ pub const Window = struct {
       }
 
       const x_value_mask = c.XCB_CW_EVENT_MASK;
-      const x_value_list = c.XCB_EVENT_MASK_EXPOSURE | c.XCB_EVENT_MASK_STRUCTURE_NOTIFY;
+      const x_value_list = c.XCB_EVENT_MASK_EXPOSURE | c.XCB_EVENT_MASK_STRUCTURE_NOTIFY | c.XCB_EVENT_MASK_POINTER_MOTION | c.XCB_EVENT_MASK_BUTTON_MOTION;
 
       const x_cookie_window_create = c.xcb_create_window_checked(
          x_connection,                       // connection
@@ -208,6 +210,8 @@ pub const Window = struct {
          ._controller               = .{},
          ._x_window                 = x_window,
          ._x_atom_wm_delete_window  = x_atom_wm_delete_window,
+         ._cursor_position_prev_x   = 0,
+         ._cursor_position_prev_y   = 0,
          ._should_close             = false,
       };
    }
@@ -281,10 +285,11 @@ pub const Window = struct {
    }
 
    fn _handleXEvent(self : * @This(), x_generic_event : * const c.xcb_generic_event_t) f_shared.Window.PollEventsError!void {
-      // TODO: Handle input events
+      // TODO: Handle more input events
 
       switch (x_generic_event.response_type & 0x7f) {
          c.XCB_CLIENT_MESSAGE => try _handleXClientMessage(self, @ptrCast(@alignCast(x_generic_event))),
+         c.XCB_MOTION_NOTIFY  => try _handleXMotionNotify(self, @ptrCast(@alignCast(x_generic_event))),
          else                 => {},
       }
 
@@ -295,6 +300,24 @@ pub const Window = struct {
       if (x_client_message_event.data.data32[0] == self._x_atom_wm_delete_window) {
          self._should_close = true;
       }
+
+      return;
+   }
+
+   fn _handleXMotionNotify(self : * @This(), x_motion_notify_event : * const c.xcb_motion_notify_event_t) f_shared.Window.PollEventsError!void {
+      // TODO: Deal with enter / leave events
+
+      const x = x_motion_notify_event.event_x;
+      const y = x_motion_notify_event.event_y;
+
+      const dx = self._cursor_position_prev_x - x;
+      const dy = self._cursor_position_prev_y - y;
+
+      self._cursor_position_prev_x = x;
+      self._cursor_position_prev_y = y;
+
+      self._controller.mouse.dx = dx;
+      self._controller.mouse.dy = dy;
 
       return;
    }

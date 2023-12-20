@@ -20,6 +20,7 @@ const MainError = error {
 const PROGRAM_NAME                     = "Learn Graphics Programming with Zig!";
 const WINDOW_TITLE_UPDATE_TIME_SECONDS = 1.0;
 const SPIN_SPEED                       = 2.0;
+const MOUSE_SENSITIVITY                = 1.0;
 
 comptime {
    const float_mode = blk: {

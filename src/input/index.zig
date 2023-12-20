@@ -2,12 +2,13 @@ const std   = @import("std");
 const math  = @import("math");
 
 pub const Controller = struct {
-   axies    : Axies              = .{},
-   mouse    : math.Vector2(f32)  = math.Vector2(f32).ZERO,
-   buttons  : Buttons            = .{},
+   axies    : Axies     = .{},
+   mouse    : Mouse     = .{},
+   buttons  : Buttons   = .{},
 
    pub fn advance(self : * @This()) void {
       self.buttons.advance();
+      self.mouse.advance();
       return;
    }
 };
@@ -15,6 +16,17 @@ pub const Controller = struct {
 pub const Axies = struct {
    move  : math.Vector2(f32)  = math.Vector2(f32).ZERO,
    look  : math.Vector2(f32)  = math.Vector2(f32).ZERO,
+};
+
+pub const Mouse = struct {
+   dx : i16 = 0,
+   dy : i16 = 0,
+
+   pub fn advance(self : * @This()) void {
+      self.dx = 0;
+      self.dy = 0;
+      return;
+   }
 };
 
 pub const Buttons = struct {
