@@ -368,9 +368,10 @@ pub const Window = struct {
       const resolution = _xQueryResolution(self);
       self._resolution = resolution;
 
-      
-
       if (self._cursor_grabbed == true) {
+         // TODO: This is broken.  If the mouse movement is less than a single
+         // pixel, it will not be detected, leading to a deadzone and inaccuracy.
+
          const center_x = resolution.width / 2;
          const center_y = resolution.height / 2;
 
@@ -379,8 +380,8 @@ pub const Window = struct {
          const mouse_dx = @as(i32, center_x) - @as(i32, self._cursor_x);
          const mouse_dy = @as(i32, center_y) - @as(i32, self._cursor_y);
       
-         self._controller.mouse.dx = @intCast(mouse_dx);
-         self._controller.mouse.dy = @intCast(mouse_dy);
+         self._controller.mouse.dx = @floatFromInt(mouse_dx);
+         self._controller.mouse.dy = @floatFromInt(mouse_dy);
       }
 
       return;

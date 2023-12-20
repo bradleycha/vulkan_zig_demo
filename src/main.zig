@@ -194,8 +194,8 @@ pub fn main() MainError!void {
 
       // TODO: Freefly camera translation and toggling window focus / cursor grabbing
 
-      const camera_rotate_pitch  = @as(f32, @floatFromInt(controller.mouse.dy)) * MOUSE_SENSITIVITY;
-      const camera_rotate_yaw    = @as(f32, @floatFromInt(controller.mouse.dx)) * MOUSE_SENSITIVITY;
+      const camera_rotate_pitch  = controller.mouse.dy * MOUSE_SENSITIVITY;
+      const camera_rotate_yaw    = controller.mouse.dx * MOUSE_SENSITIVITY;
 
       camera.angles.angles.pitch += camera_rotate_pitch  * @as(f32, @floatCast(time_delta));
       camera.angles.angles.yaw   += camera_rotate_yaw    * @as(f32, @floatCast(time_delta));

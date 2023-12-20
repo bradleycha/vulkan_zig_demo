@@ -19,12 +19,12 @@ pub const Axies = struct {
 };
 
 pub const Mouse = struct {
-   dx : i16 = 0,
-   dy : i16 = 0,
+   dx : f32 = 0.0,
+   dy : f32 = 0.0,
 
    pub fn advance(self : * @This()) void {
-      self.dx = 0;
-      self.dy = 0;
+      self.dx = 0.0;
+      self.dy = 0.0;
       return;
    }
 };
