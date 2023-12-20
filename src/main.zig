@@ -200,6 +200,8 @@ pub fn main() MainError!void {
       camera.angles.angles.pitch += camera_rotate_pitch  * @as(f32, @floatCast(time_delta));
       camera.angles.angles.yaw   += camera_rotate_yaw    * @as(f32, @floatCast(time_delta));
 
+      camera.angles.angles.pitch = std.math.clamp(camera.angles.angles.pitch, std.math.pi / -2.0, std.math.pi / 2.0);
+
       mesh_transform_test_pyramid.rotation.angles.yaw = theta;
 
       mesh_transform_test_cube.translation.xyz.x      = std.math.cos(theta);
