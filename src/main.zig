@@ -187,10 +187,6 @@ pub fn main() MainError!void {
       }
 
       // TODO: Freefly camera and toggling window focus / cursor grabbing
-      
-      //if (window.isFocused() == true) {
-      //   std.debug.print("window is focused!\n", .{});
-      //}
 
       mesh_transform_test_pyramid.rotation.angles.yaw = theta;
 
