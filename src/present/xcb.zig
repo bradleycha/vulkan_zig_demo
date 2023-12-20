@@ -68,10 +68,12 @@ pub const Window = struct {
    _compositor                : * const Compositor,
    _controller                : input.Controller,
    _x_window                  : c.xcb_window_t,
+   _x_cursor_hidden           : c.xcb_cursor_t,
    _x_atom_wm_delete_window   : c.xcb_atom_t,
    _cursor_position_prev_x    : i16,
    _cursor_position_prev_y    : i16,
    _cursor_inside             : bool,
+   _cursor_grabbed            : bool,
    _should_close              : bool,
 
    pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!@This() {
@@ -139,6 +141,36 @@ pub const Window = struct {
 
       // TODO: Set fullscreen mode
 
+      const x_font_cursor = c.xcb_generate_id(x_connection);
+      defer _ = c.xcb_close_font(x_connection, x_font_cursor);
+
+      const X_FONT_CURSOR = "fixed";
+
+      const x_cookie_open_font_cursor = c.xcb_open_font_checked(
+         x_connection,        // conn
+         x_font_cursor,       // fid
+         X_FONT_CURSOR.len,   // name_len
+         X_FONT_CURSOR,       // name
+      );
+
+      const x_cursor_hidden = c.xcb_generate_id(x_connection);
+      errdefer _ = c.xcb_free_cursor(x_connection, x_cursor_hidden);
+
+      const x_cookie_create_cursor_hidden = c.xcb_create_glyph_cursor_checked(
+         x_connection,     // conn
+         x_cursor_hidden,  // cid
+         x_font_cursor,    // source_font
+         x_font_cursor,    // mask_font
+         ' ',              // source_char
+         ' ',              // mask_char
+         0,                // fore_red
+         0,                // fore_green
+         0,                // fore_blue
+         0,                // back_red
+         0,                // back_green
+         0,                // back_blue
+      );
+
       const WM_PROTOCOLS      = "WM_PROTOCOLS";
       const WM_DELETE_WINDOW  = "WM_DELETE_WINDOW";
 
@@ -165,6 +197,14 @@ pub const Window = struct {
       }
 
       if (c.xcb_request_check(x_connection, x_cookie_set_title) != null) {
+         return error.PlatformError;
+      }
+
+      if (c.xcb_request_check(x_connection, x_cookie_open_font_cursor) != null) {
+         return error.PlatformError;
+      }
+
+      if (c.xcb_request_check(x_connection, x_cookie_create_cursor_hidden) != null) {
          return error.PlatformError;
       }
 
@@ -216,10 +256,12 @@ pub const Window = struct {
          ._compositor               = compositor,
          ._controller               = .{},
          ._x_window                 = x_window,
+         ._x_cursor_hidden          = x_cursor_hidden,
          ._x_atom_wm_delete_window  = x_atom_wm_delete_window,
          ._cursor_position_prev_x   = undefined, // Will be ignored until enter event is sent, which sets this value first
          ._cursor_position_prev_y   = undefined, // Will be ignored until enter event is sent, which sets this value first
          ._cursor_inside            = false,
+         ._cursor_grabbed           = false,
          ._should_close             = false,
       };
    }
@@ -227,9 +269,11 @@ pub const Window = struct {
    pub fn destroy(self : @This(), allocator : std.mem.Allocator) void {
       _ = allocator;
 
-      const x_connection   = self._compositor._x_connection;
-      const x_window       = self._x_window;
+      const x_connection      = self._compositor._x_connection;
+      const x_window          = self._x_window;
+      const x_cursor_hidden   = self._x_cursor_hidden;
 
+      _ = c.xcb_free_cursor(x_connection, x_cursor_hidden);
       _ = c.xcb_unmap_window(x_connection, x_window);
       _ = c.xcb_destroy_window(x_connection, x_window);
       return;
@@ -273,10 +317,40 @@ pub const Window = struct {
    }
 
    pub fn setCursorGrabbed(self : * @This(), grabbed : bool) void {
-      // TODO: Implement
-      _ = self;
-      _ = grabbed;
-      unreachable;
+      if (grabbed == self._cursor_grabbed) {
+         return;
+      }
+
+      switch (grabbed) {
+         true  => _xCursorHide(self),
+         false => _xCursorUnhide(self),
+      }
+
+      self._cursor_grabbed = grabbed;
+
+      return;
+   }
+
+   fn _xCursorHide(self : * @This()) void {
+      _ = c.xcb_change_window_attributes(
+         self._compositor._x_connection,  // conn
+         self._x_window,                  // window
+         c.XCB_CW_CURSOR,                 // value_mask,
+         &self._x_cursor_hidden,          // value_list,
+      );
+
+      return;
+   }
+
+   fn _xCursorUnhide(self : * @This()) void {
+      _ = c.xcb_change_window_attributes(
+         self._compositor._x_connection,  // conn
+         self._x_window,                  // window
+         c.XCB_CW_CURSOR,                 // value_mask,
+         &c.XCB_CURSOR_NONE,              // value_list,
+      );
+
+      return;
    }
 
    pub fn shouldClose(self : * const @This()) bool {
@@ -284,9 +358,7 @@ pub const Window = struct {
    }
 
    pub fn isCursorGrabbed(self : * const @This()) bool {
-      // TODO: Implement
-      _ = self;
-      unreachable;
+      return self._cursor_grabbed;
    }
 
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
@@ -356,6 +428,10 @@ pub const Window = struct {
       }
 
       if (self._cursor_inside == false) {
+         return;
+      }
+
+      if (self._cursor_grabbed == false) {
          return;
       }
 
