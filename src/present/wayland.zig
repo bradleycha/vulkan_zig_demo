@@ -318,6 +318,12 @@ pub const Window = struct {
       unreachable;
    }
 
+   pub fn isFocused(self : * const @This()) bool {
+      // TODO: Implement
+      _ = self;
+      unreachable;
+   }
+
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       _ = c.wl_display_roundtrip(self._compositor._wl_display);
 

@@ -72,6 +72,7 @@ pub const Window = struct {
    _resolution                : XcbResolution,
    _cursor_grabbed            : bool,
    _should_close              : bool,
+   _focused                   : bool,
 
    const XcbResolution = struct {
       width    : u16,
@@ -104,8 +105,10 @@ pub const Window = struct {
 
       const x_value_mask = c.XCB_CW_EVENT_MASK;
       const x_value_list =
-         c.XCB_EVENT_MASK_EXPOSURE |
-         c.XCB_EVENT_MASK_STRUCTURE_NOTIFY;
+         c.XCB_EVENT_MASK_EXPOSURE           |
+         c.XCB_EVENT_MASK_STRUCTURE_NOTIFY   |
+         c.XCB_EVENT_MASK_ENTER_WINDOW       |
+         c.XCB_EVENT_MASK_LEAVE_WINDOW;
 
       const x_cookie_window_create = c.xcb_create_window_checked(
          x_connection,                       // connection
@@ -258,6 +261,7 @@ pub const Window = struct {
          ._resolution               = .{.width = width, .height = height},
          ._cursor_grabbed           = false,
          ._should_close             = false,
+         ._focused                  = false,
       };
    }
 
@@ -344,6 +348,10 @@ pub const Window = struct {
       return self._cursor_grabbed;
    }
 
+   pub fn isFocused(self : * const @This()) bool {
+      return self._focused;
+   }
+
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       const x_connection = self._compositor._x_connection;
 
@@ -371,6 +379,8 @@ pub const Window = struct {
    fn _xHandleEvent(self : * @This(), x_generic_event : * const c.xcb_generic_event_t) f_shared.Window.PollEventsError!void {
       switch (x_generic_event.response_type & 0x7f) {
          c.XCB_CLIENT_MESSAGE => try _xHandleClientMessage(self, @ptrCast(@alignCast(x_generic_event))),
+         c.XCB_ENTER_NOTIFY   => try _xHandleEnterNotify(self, @ptrCast(@alignCast(x_generic_event))),
+         c.XCB_LEAVE_NOTIFY   => try _xHandleLeaveNotify(self, @ptrCast(@alignCast(x_generic_event))),
          else                 => {},
       }
 
@@ -381,6 +391,26 @@ pub const Window = struct {
       if (x_client_message_event.data.data32[0] == self._x_atom_wm_delete_window) {
          self._should_close = true;
       }
+
+      return;
+   }
+
+   fn _xHandleEnterNotify(self : * @This(), x_enter_notify_event : * const c.xcb_enter_notify_event_t) f_shared.Window.PollEventsError!void {
+      if (x_enter_notify_event.event != self._x_window) {
+         return;
+      }
+
+      self._focused = true;
+
+      return;
+   }
+
+   fn _xHandleLeaveNotify(self : * @This(), x_enter_notify_event : * const c.xcb_enter_notify_event_t) f_shared.Window.PollEventsError!void {
+      if (x_enter_notify_event.event != self._x_window) {
+         return;
+      }
+
+      self._focused = false;
 
       return;
    }

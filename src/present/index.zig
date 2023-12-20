@@ -70,6 +70,10 @@ fn _platformImplementation(comptime containers : PlatformContainers) type {
          container   : * const containers.window,
       ) bool,
 
+      pfn_window_is_focused : * const fn (
+         container   : * const containers.window,
+      ) bool,
+
       pfn_window_poll_events : * const fn (
          container   : * containers.window,
       ) f_shared.Window.PollEventsError!void,
@@ -106,6 +110,7 @@ const IMPLEMENTATION = blk: {
          .pfn_window_should_close                                          = wayland.Window.shouldClose,
          .pfn_window_poll_events                                           = wayland.Window.pollEvents,
          .pfn_window_is_cursor_grabbed                                     = wayland.Window.isCursorGrabbed,
+         .pfn_window_is_focused                                            = wayland.Window.isFocused,
          .pfn_window_vulkan_create_surface                                 = wayland.Window.vulkanCreateSurface,
       },
 
@@ -127,6 +132,7 @@ const IMPLEMENTATION = blk: {
          .pfn_window_should_close                                          = xcb.Window.shouldClose,
          .pfn_window_poll_events                                           = xcb.Window.pollEvents,
          .pfn_window_is_cursor_grabbed                                     = xcb.Window.isCursorGrabbed,
+         .pfn_window_is_focused                                            = xcb.Window.isFocused,
          .pfn_window_vulkan_create_surface                                 = xcb.Window.vulkanCreateSurface,
       },
    }
@@ -209,6 +215,10 @@ pub const Window = struct {
 
    pub fn isCursorGrabbed(self : * const @This()) bool {
       return IMPLEMENTATION.pfn_window_is_cursor_grabbed(&self._container);
+   }
+
+   pub fn isFocused(self : * const @This()) bool {
+      return IMPLEMENTATION.pfn_window_is_focused(&self._container);
    }
    
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
