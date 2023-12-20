@@ -71,6 +71,7 @@ pub const Window = struct {
    _x_atom_wm_delete_window   : c.xcb_atom_t,
    _cursor_position_prev_x    : i16,
    _cursor_position_prev_y    : i16,
+   _cursor_inside             : bool,
    _should_close              : bool,
 
    pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!@This() {
@@ -98,7 +99,13 @@ pub const Window = struct {
       }
 
       const x_value_mask = c.XCB_CW_EVENT_MASK;
-      const x_value_list = c.XCB_EVENT_MASK_EXPOSURE | c.XCB_EVENT_MASK_STRUCTURE_NOTIFY | c.XCB_EVENT_MASK_POINTER_MOTION | c.XCB_EVENT_MASK_BUTTON_MOTION;
+      const x_value_list =
+         c.XCB_EVENT_MASK_EXPOSURE           |
+         c.XCB_EVENT_MASK_STRUCTURE_NOTIFY   |
+         c.XCB_EVENT_MASK_POINTER_MOTION     |
+         c.XCB_EVENT_MASK_BUTTON_MOTION      |
+         c.XCB_EVENT_MASK_ENTER_WINDOW       |
+         c.XCB_EVENT_MASK_LEAVE_WINDOW;
 
       const x_cookie_window_create = c.xcb_create_window_checked(
          x_connection,                       // connection
@@ -210,8 +217,9 @@ pub const Window = struct {
          ._controller               = .{},
          ._x_window                 = x_window,
          ._x_atom_wm_delete_window  = x_atom_wm_delete_window,
-         ._cursor_position_prev_x   = 0,
-         ._cursor_position_prev_y   = 0,
+         ._cursor_position_prev_x   = undefined, // Will be ignored until enter event is sent, which sets this value first
+         ._cursor_position_prev_y   = undefined, // Will be ignored until enter event is sent, which sets this value first
+         ._cursor_inside            = false,
          ._should_close             = false,
       };
    }
@@ -289,6 +297,8 @@ pub const Window = struct {
 
       switch (x_generic_event.response_type & 0x7f) {
          c.XCB_CLIENT_MESSAGE => try _handleXClientMessage(self, @ptrCast(@alignCast(x_generic_event))),
+         c.XCB_ENTER_NOTIFY   => try _handleXEnterNotify(self, @ptrCast(@alignCast(x_generic_event))),
+         c.XCB_LEAVE_NOTIFY   => try _handleXLeaveNotify(self, @ptrCast(@alignCast(x_generic_event))),
          c.XCB_MOTION_NOTIFY  => try _handleXMotionNotify(self, @ptrCast(@alignCast(x_generic_event))),
          else                 => {},
       }
@@ -304,8 +314,37 @@ pub const Window = struct {
       return;
    }
 
+
+   fn _handleXEnterNotify(self : * @This(), x_enter_notify_event : * const c.xcb_enter_notify_event_t) f_shared.Window.PollEventsError!void {
+      if (x_enter_notify_event.event != self._x_window) {
+         return;
+      }
+
+      self._cursor_inside = true;
+      self._cursor_position_prev_x = x_enter_notify_event.event_x;
+      self._cursor_position_prev_y = x_enter_notify_event.event_y;
+
+      return;
+   }
+
+   fn _handleXLeaveNotify(self : * @This(), x_leave_notify_event : * const c.xcb_leave_notify_event_t) f_shared.Window.PollEventsError!void {
+      if (x_leave_notify_event.event != self._x_window) {
+         return;
+      }
+
+      self._cursor_inside = false;
+
+      return;
+   }
+
    fn _handleXMotionNotify(self : * @This(), x_motion_notify_event : * const c.xcb_motion_notify_event_t) f_shared.Window.PollEventsError!void {
-      // TODO: Deal with enter / leave events
+      if (x_motion_notify_event.event != self._x_window) {
+         return;
+      }
+
+      if (self._cursor_inside == false) {
+         return;
+      }
 
       const x = x_motion_notify_event.event_x;
       const y = x_motion_notify_event.event_y;
