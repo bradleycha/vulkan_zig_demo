@@ -58,6 +58,9 @@ pub const Compositor = struct {
       _ = c.wl_display_roundtrip(wl_display);
 
       if (wl_inputs.pointer) |wl_pointer| {
+         const relative_pointer = c.zwp_relative_pointer_manager_v1_get_relative_pointer(wl_globals.relative_pointer_manager, wl_pointer) orelse return error.PlatformError;
+         wl_inputs.relative_pointer = relative_pointer;
+
          const wl_pointer_listener = c.wl_pointer_listener{
             .enter                     = _waylandPointerListenerEnter,
             .leave                     = _waylandPointerListenerLeave,
@@ -72,7 +75,12 @@ pub const Compositor = struct {
             .axis_relative_direction   = _waylandPointerListenerAxisRelativeDirection,
          };
 
+         const zwp_relative_pointer_v1_listener = c.zwp_relative_pointer_v1_listener{
+            .relative_motion  = _waylandRelativePointerListenerRelativeMotion,
+         };
+
          _ = c.wl_pointer_add_listener(wl_pointer, &wl_pointer_listener, wl_input_callbacks);
+         _ = c.zwp_relative_pointer_v1_add_listener(relative_pointer, &zwp_relative_pointer_v1_listener, wl_input_callbacks);
       }
       
       return @This(){
@@ -113,7 +121,8 @@ pub const Compositor = struct {
    };
 
    const WaylandInputs = struct {
-      pointer  : ? * c.wl_pointer = null,
+      pointer           : ? * c.wl_pointer = null,
+      relative_pointer  : ? * c.zwp_relative_pointer_v1  = null,
    };
 
    // Unfortunately we need to store a map of windows and their callback info
@@ -392,6 +401,24 @@ pub const Compositor = struct {
       _ = p_wl_pointer;
       _ = p_axis;
       _ = p_direction;
+      return;
+   }
+
+   fn _waylandRelativePointerListenerRelativeMotion(p_data : ? * anyopaque, p_relative_pointer : ? * c.zwp_relative_pointer_v1, p_utime_hi : u32, p_utime_lo : u32, p_dx : c.wl_fixed_t, p_dy : c.wl_fixed_t, p_dx_unaccel : c.wl_fixed_t, p_dy_unaccel : c.wl_fixed_t) callconv(.C) void {
+      const wl_input_callbacks = @as(* WaylandInputCallbacks, @ptrCast(@alignCast(p_data orelse unreachable)));
+
+      wl_input_callbacks.mutex.lock();
+      defer wl_input_callbacks.mutex.unlock();
+
+      // TODO: Actually use this to store pointer data
+      _ = p_relative_pointer;
+      _ = p_utime_hi;
+      _ = p_utime_lo;
+      _ = p_dx;
+      _ = p_dy;
+      _ = p_dx_unaccel;
+      _ = p_dy_unaccel;
+
       return;
    }
 
