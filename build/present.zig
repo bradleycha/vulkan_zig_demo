@@ -31,7 +31,13 @@ pub const PresentBackend = enum {
          .output_basename  = "xdg-shell",
       });
 
+      const wl_scanner_pointer_constraints = WaylandScannerStep.create(owner, &.{
+         .input_xml        = .{.path = "/usr/share/wayland-protocols/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml"},
+         .output_basename  = "pointer-constraints",
+      });
+
       compile_step.step.dependOn(&wl_scanner_xdg_shell.step);
+      compile_step.step.dependOn(&wl_scanner_pointer_constraints.step);
 
       const cflags : [] [] const u8 = blk: {
          switch (compile_step.optimize) {
@@ -55,7 +61,13 @@ pub const PresentBackend = enum {
          .flags   = cflags,
       });
 
+      compile_step.addCSourceFile(.{
+         .file    = wl_scanner_pointer_constraints.getOutputGlue(),
+         .flags   = cflags,
+      });
+
       compile_step.addIncludePath(wl_scanner_xdg_shell.getOutputDir());
+      compile_step.addIncludePath(wl_scanner_pointer_constraints.getOutputDir());
       
       compile_step.linkSystemLibrary("wayland-client");
 

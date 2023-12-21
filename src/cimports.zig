@@ -16,6 +16,7 @@ pub usingnamespace @cImport({
       .wayland => {
          @cInclude("wayland-client.h");
          @cInclude("xdg-shell.h");
+         @cInclude("pointer-constraints.h");
          @cDefine("VK_USE_PLATFORM_WAYLAND_KHR", {});
       },
       .xcb     => {
