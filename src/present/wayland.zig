@@ -508,13 +508,16 @@ pub const Window = struct {
    }
 
    fn _waylandSetPointerLockPosition(pointer_lock : * c.zwp_locked_pointer_v1, width : u32, height : u32) void {
-      const fixed_width    = @as(i32, @intCast(width  << 8));
-      const fixed_height   = @as(i32, @intCast(height << 8));
+      const center_x = width / 2;
+      const center_y = height / 2;
 
-      const fixed_centered_width    = fixed_width  + 0x7f;
-      const fixed_centered_height   = fixed_height + 0x7f;
+      const fixed_x = @as(i32, @intCast(center_x << 8));
+      const fixed_y = @as(i32, @intCast(center_y << 8));
 
-      c.zwp_locked_pointer_v1_set_cursor_position_hint(pointer_lock, fixed_centered_width, fixed_centered_height);
+      const fixed_centered_x = fixed_x + 0x7f;
+      const fixed_centered_y = fixed_y + 0x7f;
+
+      c.zwp_locked_pointer_v1_set_cursor_position_hint(pointer_lock, fixed_centered_x, fixed_centered_y);
 
       return;
    }
@@ -586,14 +589,6 @@ pub const Window = struct {
       self._cursor_grabbed_old   = self._cursor_grabbed;
       self._cursor_grabbed       = grabbed;
 
-      // Needed to allow cursor updating code to run.
-      {
-         self._callbacks.mutex.lock();
-         defer self._callbacks.mutex.unlock();
-
-         self._callbacks.focused = true;
-      }
-
       return;
    }
 
@@ -613,7 +608,8 @@ pub const Window = struct {
          c.ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT,
       ) orelse return;
 
-      self._callbacks.pointer_lock = pointer_lock;
+      self._callbacks.pointer_lock  = pointer_lock;
+      self._callbacks.focused       = true;
 
       return;
    }
