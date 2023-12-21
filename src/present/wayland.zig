@@ -85,23 +85,26 @@ pub const Compositor = struct {
    }
 
    pub const WaylandGlobals = struct {
-      compositor           : * c.wl_compositor,
-      xdg_wm_base          : * c.xdg_wm_base,
-      seat                 : * c.wl_seat,
-      pointer_constraints  : * c.zwp_pointer_constraints_v1,
+      compositor                 : * c.wl_compositor,
+      xdg_wm_base                : * c.xdg_wm_base,
+      seat                       : * c.wl_seat,
+      pointer_constraints        : * c.zwp_pointer_constraints_v1,
+      relative_pointer_manager   : * c.zwp_relative_pointer_manager_v1,
 
       pub const Found = struct {
-         compositor           : ? * c.wl_compositor               = null,
-         xdg_wm_base          : ? * c.xdg_wm_base                 = null,
-         seat                 : ? * c.wl_seat                     = null,
-         pointer_constraints  : ? * c.zwp_pointer_constraints_v1  = null,
+         compositor                 : ? * c.wl_compositor                     = null,
+         xdg_wm_base                : ? * c.xdg_wm_base                       = null,
+         seat                       : ? * c.wl_seat                           = null,
+         pointer_constraints        : ? * c.zwp_pointer_constraints_v1        = null,
+         relative_pointer_manager   : ? * c.zwp_relative_pointer_manager_v1   = null,
 
          pub fn unwrap(self : * const @This()) ? WaylandGlobals {
             const globals = WaylandGlobals{
-               .compositor          = self.compositor          orelse return null,
-               .xdg_wm_base         = self.xdg_wm_base         orelse return null,
-               .seat                = self.seat                orelse return null,
-               .pointer_constraints = self.pointer_constraints orelse return null,
+               .compositor                = self.compositor                orelse return null,
+               .xdg_wm_base               = self.xdg_wm_base               orelse return null,
+               .seat                      = self.seat                      orelse return null,
+               .pointer_constraints       = self.pointer_constraints       orelse return null,
+               .relative_pointer_manager  = self.relative_pointer_manager  orelse return null,
             };
 
             return globals;
@@ -208,6 +211,25 @@ pub const Compositor = struct {
          const zwp_pointer_constraints_v1 : * c.zwp_pointer_constraints_v1 = @ptrCast(@alignCast(wl_interface));
 
          wl_globals_found.pointer_constraints = zwp_pointer_constraints_v1;
+
+         return;
+      }
+
+      blk_relative_pointer_manager: {
+         const MINIMUM_VERSION = 1;
+
+         if (c.strcmp(interface, c.zwp_relative_pointer_manager_v1_interface.name) != 0) {
+            break :blk_relative_pointer_manager;
+         }
+
+         if (version < MINIMUM_VERSION) {
+            return;
+         }
+
+         const wl_interface = c.wl_registry_bind(wl_registry, name, &c.zwp_relative_pointer_manager_v1_interface, MINIMUM_VERSION) orelse return;
+         const zwp_relative_pointer_manager_v1 : * c.zwp_relative_pointer_manager_v1 = @ptrCast(@alignCast(wl_interface));
+
+         wl_globals_found.relative_pointer_manager = zwp_relative_pointer_manager_v1;
 
          return;
       }

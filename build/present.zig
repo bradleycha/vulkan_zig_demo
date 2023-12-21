@@ -36,8 +36,14 @@ pub const PresentBackend = enum {
          .output_basename  = "pointer-constraints",
       });
 
+      const wl_scanner_relative_pointer = WaylandScannerStep.create(owner, &.{
+         .input_xml        = .{.path = "/usr/share/wayland-protocols/unstable/relative-pointer/relative-pointer-unstable-v1.xml"},
+         .output_basename  = "relative-pointer",
+      });
+
       compile_step.step.dependOn(&wl_scanner_xdg_shell.step);
       compile_step.step.dependOn(&wl_scanner_pointer_constraints.step);
+      compile_step.step.dependOn(&wl_scanner_relative_pointer.step);
 
       const cflags : [] [] const u8 = blk: {
          switch (compile_step.optimize) {
@@ -66,8 +72,14 @@ pub const PresentBackend = enum {
          .flags   = cflags,
       });
 
+      compile_step.addCSourceFile(.{
+         .file    = wl_scanner_relative_pointer.getOutputGlue(),
+         .flags   = cflags,
+      });
+
       compile_step.addIncludePath(wl_scanner_xdg_shell.getOutputDir());
       compile_step.addIncludePath(wl_scanner_pointer_constraints.getOutputDir());
+      compile_step.addIncludePath(wl_scanner_relative_pointer.getOutputDir());
       
       compile_step.linkSystemLibrary("wayland-client");
 
