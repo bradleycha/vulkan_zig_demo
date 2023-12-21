@@ -395,6 +395,7 @@ pub const Window = struct {
    _wl_surface          : * c.wl_surface,
    _xdg_surface         : * c.xdg_surface,
    _xdg_toplevel        : * c.xdg_toplevel,
+   _pointer_lock        : ? * c.zwp_locked_pointer_v1,
    _callbacks           : * _Callbacks,
    _cursor_grabbed_old  : bool,
    _cursor_grabbed      : bool,
@@ -471,6 +472,7 @@ pub const Window = struct {
          ._wl_surface         = wl_surface,
          ._xdg_surface        = xdg_surface,
          ._xdg_toplevel       = xdg_toplevel,
+         ._pointer_lock       = null,
          ._callbacks          = callbacks,
          ._cursor_grabbed_old = false,
          ._cursor_grabbed     = false,
@@ -522,6 +524,10 @@ pub const Window = struct {
          @panic("attempted to remove nonexistent surface from compositor surface map");
       }
 
+      if (self._pointer_lock) |pointer_lock| {
+         c.zwp_locked_pointer_v1_destroy(pointer_lock);
+      }
+
       c.xdg_toplevel_destroy(self._xdg_toplevel);
       c.xdg_surface_destroy(self._xdg_surface);
       c.wl_surface_destroy(self._wl_surface);
@@ -547,11 +553,43 @@ pub const Window = struct {
          return;
       }
 
+      switch (grabbed) {
+         true  => _waylandLockPointer(self),
+         false => _waylandUnlockPointer(self),
+      }
+
       // Since we have to wait for the cursor to enter our window (to get a
       // valid serial), we defer the cursor setting to pollEvents() and check
       // if the window is focused, which garuntees a valid serial.
       self._cursor_grabbed_old   = self._cursor_grabbed;
       self._cursor_grabbed       = grabbed;
+
+      return;
+   }
+
+   fn _waylandLockPointer(self : * @This()) void {
+      if (std.debug.runtime_safety == true and self._pointer_lock != null) {
+         @panic("attempted to apply pointer lock when already locked, this is a bug in the window implementation");
+      }
+
+      const pointer_lock = c.zwp_pointer_constraints_v1_lock_pointer(
+         self._compositor._wl_globals.pointer_constraints,
+         self._wl_surface,
+         self._compositor._wl_inputs.pointer,
+         null,
+         c.ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT,
+      ) orelse return;
+      self._pointer_lock = pointer_lock;
+
+      return;
+   }
+
+   fn _waylandUnlockPointer(self : * @This()) void {
+      // Can reasonably fail if creation errors.
+      const pointer_lock = self._pointer_lock orelse return;
+
+      c.zwp_locked_pointer_v1_destroy(pointer_lock);
+      self._pointer_lock = null;
 
       return;
    }
@@ -592,7 +630,28 @@ pub const Window = struct {
             _changeCursorVisibility(self, self._cursor_grabbed);
          }
 
-         // TODO: Cursor locking?  Lock to center of surface
+         // If the cursor is locked, center it inside the surface
+         if (self._pointer_lock) |pointer_lock| {
+            const resolution = self._callbacks.current_resolution;
+
+            const width    = resolution.width;
+            const height   = resolution.height;
+
+            // Conversion to Wayland 24.8 fixed-point
+            const fixed_width    = @as(i32, @intCast(width  << 8));
+            const fixed_height   = @as(i32, @intCast(height << 8));
+
+            // Center the cursor between subpixels
+            const fixed_centered_width    = fixed_width  + 0x7f;
+            const fixed_centered_height   = fixed_height + 0x7f;
+
+            // Apply the calculated position
+            c.zwp_locked_pointer_v1_set_cursor_position_hint(
+               pointer_lock,
+               fixed_centered_width,
+               fixed_centered_height,
+            );
+         }
       }
 
       self._callbacks.focused_old = self._callbacks.focused;
