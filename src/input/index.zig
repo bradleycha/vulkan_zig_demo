@@ -69,11 +69,15 @@ pub const Buttons = struct {
    }
 };
 
-pub const Button = enum(u4) {
-   exit           = 0b0001,
-   toggle_focus   = 0b0010,
-   jump           = 0b0100,
-   crouch         = 0b1000,
+pub const Button = enum(u8) {
+   exit           = 0b00000001,
+   toggle_focus   = 0b00000010,
+   forward        = 0b00000100,
+   backward       = 0b00001000,
+   left           = 0b00010000,
+   right          = 0b00100000,
+   jump           = 0b01000000,
+   crouch         = 0b10000000,
 
    pub const State = enum(u2) {
       up       = 0b00,

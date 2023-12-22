@@ -58,8 +58,8 @@ pub fn main() MainError!void {
       .exit          = .escape,
       .toggle_focus  = .tab,
       .move_forward  = .w,
-      .move_backward = .a,
-      .move_left     = .s,
+      .move_backward = .s,
+      .move_left     = .a,
       .move_right    = .d,
       .move_up       = .space,
       .move_down     = .left_shift,
@@ -231,12 +231,24 @@ pub fn main() MainError!void {
       // TODO: This should be part of the math library as a 2D matrix transform.
       // Hand-coding it like this is bad, but not as bad as using arctangent junk.
       const camera_move_lateral = blk: {
-         const vector   = controller.axies.move.vector;
-         const x        = vector[0];
-         const y        = vector[1];
-         const angle    = camera.angles.angles.yaw * -1.0;
-         const sin      = std.math.sin(angle);
-         const cos      = std.math.cos(angle);
+         var x : f32 = 0.0;
+         var y : f32 = 0.0;
+         if (controller.buttons.state(.forward).isDown() == true) {
+            y += 1.0;
+         }
+         if (controller.buttons.state(.backward).isDown() == true) {
+            y -= 1.0;
+         }
+         if (controller.buttons.state(.left).isDown() == true) {
+            x -= 1.0;
+         }
+         if (controller.buttons.state(.right).isDown() == true) {
+            x += 1.0;
+         }
+
+         const angle = camera.angles.angles.yaw * -1.0;
+         const sin   = std.math.sin(angle);
+         const cos   = std.math.cos(angle);
 
          const translation = @Vector(2, f32){
             x * cos - y * sin,

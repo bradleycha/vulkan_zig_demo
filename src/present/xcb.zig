@@ -487,22 +487,24 @@ pub const Window = struct {
       }
 
       if (key == @intFromEnum(bind_set.move_forward)) {
-         control.axies.move.xy.y += 1.0;
+         control.buttons.press(.forward);
          return;
       }
 
       if (key == @intFromEnum(bind_set.move_backward)) {
          control.axies.move.xy.y -= 1.0;
+         control.buttons.press(.backward);
          return;
       }
 
       if (key == @intFromEnum(bind_set.move_left)) {
          control.axies.move.xy.x -= 1.0;
+         control.buttons.press(.left);
          return;
       }
       
       if (key == @intFromEnum(bind_set.move_right)) {
-         control.axies.move.xy.x += 1.0;
+         control.buttons.press(.right);
          return;
       }
 
@@ -535,22 +537,22 @@ pub const Window = struct {
       }
 
       if (key == @intFromEnum(bind_set.move_forward)) {
-         control.axies.move.xy.y -= 1.0;
+         control.buttons.release(.forward);
          return;
       }
 
       if (key == @intFromEnum(bind_set.move_backward)) {
-         control.axies.move.xy.y += 1.0;
+         control.buttons.release(.backward);
          return;
       }
 
       if (key == @intFromEnum(bind_set.move_left)) {
-         control.axies.move.xy.x += 1.0;
+         control.buttons.release(.left);
          return;
       }
       
       if (key == @intFromEnum(bind_set.move_right)) {
-         control.axies.move.xy.x -= 1.0;
+         control.buttons.release(.right);
          return;
       }
 
@@ -604,8 +606,8 @@ pub const Bind = enum(c.xcb_keycode_t) {
    escape      = 9,
    tab         = 23,
    w           = 25,
-   a           = 39,
-   s           = 40,
+   a           = 40,
+   s           = 39,
    d           = 38,
    space       = 65,
    left_shift  = 50,
