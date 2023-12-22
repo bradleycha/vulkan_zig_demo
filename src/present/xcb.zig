@@ -109,7 +109,9 @@ pub const Window = struct {
          c.XCB_EVENT_MASK_EXPOSURE           |
          c.XCB_EVENT_MASK_STRUCTURE_NOTIFY   |
          c.XCB_EVENT_MASK_ENTER_WINDOW       |
-         c.XCB_EVENT_MASK_LEAVE_WINDOW;
+         c.XCB_EVENT_MASK_LEAVE_WINDOW       |
+         c.XCB_EVENT_MASK_POINTER_MOTION     |
+         c.XCB_EVENT_MASK_BUTTON_MOTION;
 
       const x_cookie_window_create = c.xcb_create_window_checked(
          x_connection,                       // connection
@@ -370,12 +372,9 @@ pub const Window = struct {
          x_generic_event_iterator = c.xcb_poll_for_event(x_connection);
       }
 
-      const resolution = _xQueryResolution(self);
-      self._resolution = resolution;
-
       if (self._cursor_grabbed == true) {
-         const center_x = resolution.width / 2;
-         const center_y = resolution.height / 2;
+         const center_x = self._resolution.width / 2;
+         const center_y = self._resolution.height / 2;
 
          _xMoveCursor(self, center_x, center_y);
       }
@@ -385,10 +384,12 @@ pub const Window = struct {
 
    fn _xHandleEvent(self : * @This(), x_generic_event : * const c.xcb_generic_event_t) f_shared.Window.PollEventsError!void {
       switch (x_generic_event.response_type & 0x7f) {
-         c.XCB_CLIENT_MESSAGE => try _xHandleClientMessage(self, @ptrCast(@alignCast(x_generic_event))),
-         c.XCB_ENTER_NOTIFY   => try _xHandleEnterNotify(self, @ptrCast(@alignCast(x_generic_event))),
-         c.XCB_LEAVE_NOTIFY   => try _xHandleLeaveNotify(self, @ptrCast(@alignCast(x_generic_event))),
-         else                 => {},
+         c.XCB_CLIENT_MESSAGE    => try _xHandleClientMessage(self, @ptrCast(@alignCast(x_generic_event))),
+         c.XCB_CONFIGURE_NOTIFY  => try _xHandleConfigureNotify(self, @ptrCast(@alignCast(x_generic_event))),
+         c.XCB_ENTER_NOTIFY      => try _xHandleEnterNotify(self, @ptrCast(@alignCast(x_generic_event))),
+         c.XCB_LEAVE_NOTIFY      => try _xHandleLeaveNotify(self, @ptrCast(@alignCast(x_generic_event))),
+         c.XCB_MOTION_NOTIFY     => try _xHandleMotionNotify(self, @ptrCast(@alignCast(x_generic_event))),
+         else                    => {},
       }
 
       return;
@@ -401,6 +402,18 @@ pub const Window = struct {
 
       return;
    }
+
+   fn _xHandleConfigureNotify(self : * @This(), x_configure_notify_event : * const c.xcb_configure_notify_event_t) f_shared.Window.PollEventsError!void {
+      if (x_configure_notify_event.event != self._x_window) {
+         return;
+      }
+
+      self._resolution.width  = x_configure_notify_event.width;
+      self._resolution.height = x_configure_notify_event.height;
+
+      return;
+   }
+
 
    fn _xHandleEnterNotify(self : * @This(), x_enter_notify_event : * const c.xcb_enter_notify_event_t) f_shared.Window.PollEventsError!void {
       if (x_enter_notify_event.event != self._x_window) {
@@ -422,26 +435,18 @@ pub const Window = struct {
       return;
    }
 
-   fn _xQueryResolution(self : * const @This()) XcbResolution {
-      const x_connection   = self._compositor._x_connection;
-      const x_window       = self._x_window;
+   fn _xHandleMotionNotify(self : * @This(), x_motion_notify_event : * const c.xcb_motion_notify_event_t) f_shared.Window.PollEventsError!void {
+      if (x_motion_notify_event.event != self._x_window) {
+         return;
+      }
 
-      const x_cookie_window_geometry = c.xcb_get_geometry(
-         x_connection,
-         x_window,
-      );
+      if (self._cursor_grabbed == false) {
+         return;
+      }
 
-      const x_window_geometry = c.xcb_get_geometry_reply(
-         x_connection,
-         x_cookie_window_geometry,
-         null,
-      ) orelse return .{.width = 0, .height = 0}; // Oh crap!
-      defer c.free(x_window_geometry);
+      // TODO: Implement
 
-      return .{
-         .width   = x_window_geometry.*.width,
-         .height  = x_window_geometry.*.height,
-      };
+      return;
    }
 
    fn _xMoveCursor(self : * const @This(), x : u16, y : u16) void {
