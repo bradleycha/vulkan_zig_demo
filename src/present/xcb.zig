@@ -70,6 +70,7 @@ pub const Window = struct {
    _x_cursor_hidden           : c.xcb_cursor_t,
    _x_atom_wm_delete_window   : c.xcb_atom_t,
    _resolution                : XcbResolution,
+   _controller                : input.Controller,
    _cursor_grabbed            : bool,
    _should_close              : bool,
    _focused                   : bool,
@@ -258,6 +259,7 @@ pub const Window = struct {
          ._x_cursor_hidden          = x_cursor_hidden,
          ._x_atom_wm_delete_window  = x_atom_wm_delete_window,
          ._resolution               = .{.width = width, .height = height},
+         ._controller               = .{},
          ._cursor_grabbed           = false,
          ._should_close             = false,
          ._focused                  = false,
@@ -352,13 +354,13 @@ pub const Window = struct {
    }
 
    pub fn controller(self : * const @This()) * const input.Controller {
-      // TODO: Implement
-      _ = self;
-      unreachable;
+      return &self._controller;
    }
 
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       const x_connection = self._compositor._x_connection;
+
+      self._controller.advance();
 
       var x_generic_event_iterator = c.xcb_poll_for_event(x_connection);
       while (x_generic_event_iterator) |x_generic_event| {

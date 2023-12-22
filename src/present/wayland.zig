@@ -445,6 +445,7 @@ pub const Window = struct {
    _xdg_surface         : * c.xdg_surface,
    _xdg_toplevel        : * c.xdg_toplevel,
    _callbacks           : * _Callbacks,
+   _controller_stored   : input.Controller,
    _cursor_grabbed_old  : bool,
    _cursor_grabbed      : bool,
 
@@ -452,6 +453,7 @@ pub const Window = struct {
       mutex                : std.Thread.Mutex = .{},
       current_resolution   : f_shared.Window.Resolution = .{.width = 0, .height = 0},
       pointer_lock         : ? * c.zwp_locked_pointer_v1 = null,
+      controller           : input.Controller = .{},
       should_close         : bool = false,
       focused_old          : bool = false,
       focused              : bool = false,
@@ -522,6 +524,7 @@ pub const Window = struct {
          ._xdg_surface        = xdg_surface,
          ._xdg_toplevel       = xdg_toplevel,
          ._callbacks          = callbacks,
+         ._controller_stored  = .{},
          ._cursor_grabbed_old = false,
          ._cursor_grabbed     = false,
       };
@@ -695,9 +698,7 @@ pub const Window = struct {
    }
 
    pub fn controller(self : * const @This()) * const input.Controller {
-      // TODO: Implement
-      _ = self;
-      unreachable;
+      return &self._controller_stored;
    }
 
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
@@ -719,8 +720,11 @@ pub const Window = struct {
          }
       }
 
-      self._callbacks.focused_old = self._callbacks.focused;
-      self._cursor_grabbed_old = self._cursor_grabbed;
+      self._callbacks.focused_old   = self._callbacks.focused;
+      self._cursor_grabbed_old      = self._cursor_grabbed;
+      self._controller_stored       = self._callbacks.controller;
+
+      self._callbacks.controller.advance();
 
       return;
    }
