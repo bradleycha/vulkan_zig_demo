@@ -55,8 +55,8 @@ pub const Compositor = struct {
       return;
    }
 
-   pub fn createWindow(self : * @This(), allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!Window {
-      return Window.create(self, allocator, create_info);
+   pub fn createWindow(self : * @This(), allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo, bind_set : * const f_shared.BindSet(Bind)) f_shared.Window.CreateError!Window {
+      return Window.create(self, allocator, create_info, bind_set);
    }
 
    pub fn vulkanGetPhysicalDevicePresentationSupport(self : * const @This(), vk_physical_device : c.VkPhysicalDevice, vk_queue_family_index : u32) c.VkBool32 {
@@ -70,6 +70,7 @@ pub const Window = struct {
    _x_cursor_hidden           : c.xcb_cursor_t,
    _x_atom_wm_delete_window   : c.xcb_atom_t,
    _resolution                : XcbResolution,
+   _bind_set                  : f_shared.BindSet(Bind),
    _controller                : input.Controller,
    _cursor_grabbed            : bool,
    _should_close              : bool,
@@ -80,7 +81,7 @@ pub const Window = struct {
       height   : u16,
    };
 
-   pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!@This() {
+   pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo, bind_set : * const f_shared.BindSet(Bind)) f_shared.Window.CreateError!@This() {
       _ = allocator;
 
       var x_generic_error : ? * c.xcb_generic_error_t = undefined;
@@ -261,6 +262,7 @@ pub const Window = struct {
          ._x_cursor_hidden          = x_cursor_hidden,
          ._x_atom_wm_delete_window  = x_atom_wm_delete_window,
          ._resolution               = .{.width = width, .height = height},
+         ._bind_set                 = bind_set.*,
          ._controller               = .{},
          ._cursor_grabbed           = false,
          ._should_close             = false,
@@ -495,5 +497,16 @@ pub const Window = struct {
 
       return c.vkCreateXcbSurfaceKHR(vk_instance, &vk_info_create_xcb_surface, vk_allocator, vk_surface);
    }
+};
+
+pub const Bind = enum {
+   escape,
+   tab,
+   w,
+   a,
+   s,
+   d,
+   space,
+   left_shift,
 };
 

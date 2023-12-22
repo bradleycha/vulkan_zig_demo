@@ -450,8 +450,8 @@ pub const Compositor = struct {
       return;
    }
 
-   pub fn createWindow(self : * @This(), allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!Window {
-      return Window.create(self, allocator, create_info);
+   pub fn createWindow(self : * @This(), allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo, bind_set : * const f_shared.BindSet(Bind)) f_shared.Window.CreateError!Window {
+      return Window.create(self, allocator, create_info, bind_set);
    }
 
    pub fn vulkanGetPhysicalDevicePresentationSupport(self : * const @This(), vk_physical_device : c.VkPhysicalDevice, vk_queue_family_index : u32) c.VkBool32 {
@@ -465,6 +465,7 @@ pub const Window = struct {
    _xdg_surface         : * c.xdg_surface,
    _xdg_toplevel        : * c.xdg_toplevel,
    _callbacks           : * _Callbacks,
+   _bind_set            : f_shared.BindSet(Bind),
    _controller_stored   : input.Controller,
    _cursor_grabbed_old  : bool,
    _cursor_grabbed      : bool,
@@ -479,7 +480,7 @@ pub const Window = struct {
       focused              : bool = false,
    };
 
-   pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!@This() {
+   pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo, bind_set : * const f_shared.BindSet(Bind)) f_shared.Window.CreateError!@This() {
       // Since we are using listeners outside the scope of this function, we
       // unfortunately have to allocate on the heap, otherwise we won't be able
       // to safely move the struct.
@@ -544,6 +545,7 @@ pub const Window = struct {
          ._xdg_surface        = xdg_surface,
          ._xdg_toplevel       = xdg_toplevel,
          ._callbacks          = callbacks,
+         ._bind_set           = bind_set.*,
          ._controller_stored  = .{},
          ._cursor_grabbed_old = false,
          ._cursor_grabbed     = false,
@@ -811,5 +813,16 @@ pub const Window = struct {
 
       return c.vkCreateWaylandSurfaceKHR(vk_instance, &vk_info_create_wayland_surface, vk_allocator, vk_surface);
    }
+};
+
+pub const Bind = enum {
+   escape,
+   tab,
+   w,
+   a,
+   s,
+   d,
+   space,
+   left_shift,
 };
 

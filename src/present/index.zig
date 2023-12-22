@@ -7,6 +7,7 @@ const c        = @import("cimports");
 const PlatformContainers = struct {
    compositor  : type,
    window      : type,
+   bind        : type,
 };
 
 fn _platformImplementation(comptime containers : PlatformContainers) type {
@@ -35,12 +36,14 @@ fn _platformImplementation(comptime containers : PlatformContainers) type {
          container   : * containers.compositor,
          allocator   : std.mem.Allocator,
          create_info : * const f_shared.Window.CreateInfo,
+         bind_set    : * const f_shared.BindSet(containers.bind),
       ) f_shared.Window.CreateError!containers.window,
 
       pfn_window_create : * const fn (
          compositor  : * containers.compositor,
          allocator   : std.mem.Allocator,
          create_info : * const f_shared.Window.CreateInfo,
+         bind_set    : * const f_shared.BindSet(containers.bind),
       ) f_shared.Window.CreateError!containers.window,
 
       pfn_window_destroy : * const fn (
@@ -99,6 +102,7 @@ const IMPLEMENTATION = blk: {
       .wayland => break :blk _platformImplementation(.{
          .compositor = wayland.Compositor,
          .window     = wayland.Window,
+         .bind       = wayland.Bind,
       }){
          .vulkan_required_extensions_instance                              = &wayland.VULKAN_REQUIRED_EXTENSIONS.Instance,
          .vulkan_required_extensions_device                                = &wayland.VULKAN_REQUIRED_EXTENSIONS.Device,
@@ -122,6 +126,7 @@ const IMPLEMENTATION = blk: {
       .xcb => break :blk _platformImplementation(.{
          .compositor = xcb.Compositor,
          .window     = xcb.Window,
+         .bind       = xcb.Bind,
       }){
          .vulkan_required_extensions_instance                              = &xcb.VULKAN_REQUIRED_EXTENSIONS.Instance,
          .vulkan_required_extensions_device                                = &xcb.VULKAN_REQUIRED_EXTENSIONS.Device,
@@ -168,8 +173,8 @@ pub const Compositor = struct {
       return;
    }
 
-   pub fn createWindow(self : * @This(), allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!Window {
-      return Window.create(self, allocator, create_info);
+   pub fn createWindow(self : * @This(), allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo, bind_set : * const f_shared.BindSet(IMPLEMENTATION.containers.bind)) f_shared.Window.CreateError!Window {
+      return Window.create(self, allocator, create_info, bind_set);
    }
 
    pub fn vulkanGetPhysicalDevicePresentationSupport(self : * const @This(), vk_physical_device : c.VkPhysicalDevice, vk_queue_family_index : u32) c.VkBool32 {
@@ -192,8 +197,8 @@ pub const Window = struct {
 
    pub const PollEventsError = f_shared.Window.PollEventsError;
 
-   pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo) f_shared.Window.CreateError!@This() {
-      return @This(){._container = try IMPLEMENTATION.pfn_window_create(&compositor._container, allocator, create_info)};
+   pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo, bind_set : * const f_shared.BindSet(IMPLEMENTATION.containers.bind)) f_shared.Window.CreateError!@This() {
+      return @This(){._container = try IMPLEMENTATION.pfn_window_create(&compositor._container, allocator, create_info, bind_set)};
    }
    
    pub fn destroy(self : @This(), allocator : std.mem.Allocator) void {

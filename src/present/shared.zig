@@ -40,3 +40,19 @@ pub const Window = struct {
    };
 };
 
+pub fn BindSet(comptime bind_type : type) type {
+   // TODO: Check bind type for inconsistencies, maybe generate the bind enum
+   // from a comptime map?
+
+   return struct {
+      exit           : bind_type,
+      toggle_focus   : bind_type,
+      move_forward   : bind_type,
+      move_backward  : bind_type,
+      move_left      : bind_type,
+      move_right     : bind_type,
+      move_up        : bind_type,
+      move_down      : bind_type,
+   };
+}
+

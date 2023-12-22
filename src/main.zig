@@ -53,6 +53,15 @@ pub fn main() MainError!void {
    var window = compositor.createWindow(allocator, &.{
       .title         = PROGRAM_NAME,
       .display_mode  = .{.windowed = .{.width = 1280, .height = 720}},
+   }, &.{
+      .exit          = .escape,
+      .toggle_focus  = .tab,
+      .move_forward  = .w,
+      .move_backward = .a,
+      .move_left     = .s,
+      .move_right    = .d,
+      .move_up       = .space,
+      .move_down     = .left_shift,
    }) catch return error.WindowCreateError;
    defer window.destroy(allocator);
 
