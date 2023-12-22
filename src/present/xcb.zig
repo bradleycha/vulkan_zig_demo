@@ -112,7 +112,9 @@ pub const Window = struct {
          c.XCB_EVENT_MASK_ENTER_WINDOW       |
          c.XCB_EVENT_MASK_LEAVE_WINDOW       |
          c.XCB_EVENT_MASK_POINTER_MOTION     |
-         c.XCB_EVENT_MASK_BUTTON_MOTION;
+         c.XCB_EVENT_MASK_BUTTON_MOTION      |
+         c.XCB_EVENT_MASK_KEY_PRESS          |
+         c.XCB_EVENT_MASK_KEY_RELEASE;
 
       const x_cookie_window_create = c.xcb_create_window_checked(
          x_connection,                       // connection
@@ -391,6 +393,8 @@ pub const Window = struct {
          c.XCB_ENTER_NOTIFY      => try _xHandleEnterNotify(self, @ptrCast(@alignCast(x_generic_event))),
          c.XCB_LEAVE_NOTIFY      => try _xHandleLeaveNotify(self, @ptrCast(@alignCast(x_generic_event))),
          c.XCB_MOTION_NOTIFY     => try _xHandleMotionNotify(self, @ptrCast(@alignCast(x_generic_event))),
+         c.XCB_KEY_PRESS         => try _xHandleKeyPress(self, @ptrCast(@alignCast(x_generic_event))),
+         c.XCB_KEY_RELEASE       => try _xHandleKeyRelease(self, @ptrCast(@alignCast(x_generic_event))),
          else                    => {},
       }
 
@@ -467,6 +471,103 @@ pub const Window = struct {
       return;
    }
 
+
+   fn _xHandleKeyPress(self : * @This(), x_key_press_event: * const c.xcb_key_press_event_t) f_shared.Window.PollEventsError!void {
+      const key      = x_key_press_event.detail;
+      const bind_set = &self._bind_set;
+      const control  = &self._controller;
+
+      if (key == @intFromEnum(bind_set.exit)) {
+         control.buttons.press(.exit);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.toggle_focus)) {
+         control.buttons.press(.toggle_focus);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.move_forward)) {
+         control.axies.move.xy.y += 1.0;
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.move_backward)) {
+         control.axies.move.xy.y -= 1.0;
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.move_left)) {
+         control.axies.move.xy.x -= 1.0;
+         return;
+      }
+      
+      if (key == @intFromEnum(bind_set.move_right)) {
+         control.axies.move.xy.x += 1.0;
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.move_up)) {
+         control.buttons.press(.jump);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.move_down)) {
+         control.buttons.press(.crouch);
+         return;
+      }
+
+      return;
+   }
+
+   fn _xHandleKeyRelease(self : * @This(), x_key_release_event: * const c.xcb_key_release_event_t) f_shared.Window.PollEventsError!void {
+      const key      = x_key_release_event.detail;
+      const bind_set = &self._bind_set;
+      const control  = &self._controller;
+
+      if (key == @intFromEnum(bind_set.exit)) {
+         control.buttons.release(.exit);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.toggle_focus)) {
+         control.buttons.release(.toggle_focus);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.move_forward)) {
+         control.axies.move.xy.y -= 1.0;
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.move_backward)) {
+         control.axies.move.xy.y += 1.0;
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.move_left)) {
+         control.axies.move.xy.x += 1.0;
+         return;
+      }
+      
+      if (key == @intFromEnum(bind_set.move_right)) {
+         control.axies.move.xy.x -= 1.0;
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.move_up)) {
+         control.buttons.release(.jump);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.move_down)) {
+         control.buttons.release(.crouch);
+         return;
+      }
+
+      return;
+   }
+
    fn _xMoveCursor(self : * const @This(), x : u16, y : u16) void {
       const x_connection   = self._compositor._x_connection;
       const x_window       = self._x_window;
@@ -499,14 +600,15 @@ pub const Window = struct {
    }
 };
 
-pub const Bind = enum {
-   escape,
-   tab,
-   w,
-   a,
-   s,
-   d,
-   space,
-   left_shift,
+// TODO: Find a better way to do this?
+pub const Bind = enum(c.xcb_keycode_t) {
+   escape      = 9,
+   tab         = 23,
+   w           = 25,
+   a           = 38,
+   s           = 39,
+   d           = 40,
+   space       = 65,
+   left_shift  = 50,
 };
 

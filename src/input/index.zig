@@ -35,7 +35,6 @@ pub const Buttons = struct {
 
    pub fn advance(self : * @This()) void {
       self._state_prev = self._state_curr;
-      self._state_curr = 0;
       return;
    }
 
@@ -51,11 +50,23 @@ pub const Buttons = struct {
 
       return state_enum;
    }
+
+   pub fn press(self : * @This(), button : Button) void {
+      self._state_curr |= @intFromEnum(button);
+      return;
+   }
+
+   pub fn release(self : * @This(), button : Button) void {
+      self._state_curr &= ~@intFromEnum(button);
+      return;
+   }
 };
 
-pub const Button = enum(u2) {
-   exit           = 0b01,
-   toggle_focus   = 0b10,
+pub const Button = enum(u4) {
+   exit           = 0b0001,
+   toggle_focus   = 0b0010,
+   jump           = 0b0100,
+   crouch         = 0b1000,
 
    pub const State = enum(u2) {
       up       = 0b00,
@@ -64,7 +75,7 @@ pub const Button = enum(u2) {
       released = 0b10,
 
       pub fn isUp(self : @This()) bool {
-         return @intFromEnum(self) | 0b01 == 0;
+         return @intFromEnum(self) & 0b01 == 0;
       }
 
       pub fn isPressed(self : @This()) bool {

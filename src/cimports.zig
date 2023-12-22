@@ -15,6 +15,7 @@ pub usingnamespace @cImport({
    switch (options.present_backend) {
       .wayland => {
          @cInclude("wayland-client.h");
+         @cInclude("xkbcommon/xkbcommon.h");
          @cInclude("xdg-shell.h");
          @cInclude("pointer-constraints.h");
          @cInclude("relative-pointer.h");

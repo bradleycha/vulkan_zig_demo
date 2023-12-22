@@ -82,6 +82,7 @@ pub const PresentBackend = enum {
       compile_step.addIncludePath(wl_scanner_relative_pointer.getOutputDir());
       
       compile_step.linkSystemLibrary("wayland-client");
+      compile_step.linkSystemLibrary("xkbcommon");
 
       return;
    }

@@ -21,6 +21,7 @@ const PROGRAM_NAME                     = "Learn Graphics Programming with Zig!";
 const WINDOW_TITLE_UPDATE_TIME_SECONDS = 1.0;
 const SPIN_SPEED                       = 2.0;
 const MOUSE_SENSITIVITY                = 8.0;
+const MOVE_SPEED                       = 5.0;
 
 comptime {
    const float_mode = blk: {
@@ -64,8 +65,6 @@ pub fn main() MainError!void {
       .move_down     = .left_shift,
    }) catch return error.WindowCreateError;
    defer window.destroy(allocator);
-
-   window.setCursorGrabbed(true);
 
    const controller = window.controller();
 
@@ -180,6 +179,14 @@ pub fn main() MainError!void {
          break :main_loop;
       }
 
+      if (controller.buttons.state(.exit).isPressed() == true) {
+         break :main_loop;
+      }
+
+      if (controller.buttons.state(.toggle_focus).isPressed() == true) {
+         window.setCursorGrabbed(!window.isCursorGrabbed());
+      }
+
       const time_delta        = @as(f64, @floatFromInt(timer_delta.lap())) / 1000000000.0;
       const time_window_title = @as(f64, @floatFromInt(timer_window_title.read())) / 1000000000.0;
 
@@ -198,7 +205,7 @@ pub fn main() MainError!void {
          window.setTitle(title);
       }
 
-      // TODO: Freefly camera and toggling window focus / cursor grabbing
+      // TODO: Lateral camera movement
 
       const mouse_rotate_x = controller.mouse.dx * MOUSE_SENSITIVITY * -1.0;
       const mouse_rotate_y = controller.mouse.dy * MOUSE_SENSITIVITY * -1.0;
@@ -212,6 +219,14 @@ pub fn main() MainError!void {
       camera.angles.angles.pitch = std.math.clamp(camera.angles.angles.pitch, -std.math.pi / 2.0, std.math.pi / 2.0);
 
       mesh_transform_test_pyramid.rotation.angles.yaw = theta;
+
+      if (controller.buttons.state(.jump).isDown() == true) {
+         camera.position.xyz.y -= MOVE_SPEED * @as(f32, @floatCast(time_delta));
+      }
+
+      if (controller.buttons.state(.crouch).isDown() == true) {
+         camera.position.xyz.y += MOVE_SPEED * @as(f32, @floatCast(time_delta));
+      }
 
       mesh_transform_test_cube.translation.xyz.x      = std.math.cos(theta);
       mesh_transform_test_cube.translation.xyz.z      = std.math.sin(theta);
