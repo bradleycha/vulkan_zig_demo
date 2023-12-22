@@ -75,9 +75,9 @@ pub fn main() MainError!void {
       .shader_vertex    = resources.shaders.VERTEX,
       .shader_fragment  = resources.shaders.FRAGMENT,
       .clear_color      = .{.color = .{.channels = .{
-         .r = 0.0,
-         .g = 0.0,
-         .b = 0.0,
+         .r = 0.1,
+         .g = 0.2,
+         .b = 0.5,
          .a = 1.0,
       }}},
    }) catch return error.RendererCreateError;
