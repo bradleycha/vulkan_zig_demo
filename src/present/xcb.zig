@@ -604,9 +604,9 @@ pub const Bind = enum(c.xcb_keycode_t) {
    escape      = 9,
    tab         = 23,
    w           = 25,
-   a           = 38,
-   s           = 39,
-   d           = 40,
+   a           = 39,
+   s           = 40,
+   d           = 38,
    space       = 65,
    left_shift  = 50,
 };
