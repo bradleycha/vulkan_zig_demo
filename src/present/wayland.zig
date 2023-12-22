@@ -694,6 +694,12 @@ pub const Window = struct {
       return self._callbacks.focused;
    }
 
+   pub fn controller(self : * const @This()) * const input.Controller {
+      // TODO: Implement
+      _ = self;
+      unreachable;
+   }
+
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
       _ = c.wl_display_roundtrip(self._compositor._wl_display);
 

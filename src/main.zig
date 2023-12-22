@@ -20,6 +20,7 @@ const MainError = error {
 const PROGRAM_NAME                     = "Learn Graphics Programming with Zig!";
 const WINDOW_TITLE_UPDATE_TIME_SECONDS = 1.0;
 const SPIN_SPEED                       = 2.0;
+const MOUSE_SENSITIVITY                = 1.0;
 
 comptime {
    const float_mode = blk: {
@@ -56,6 +57,8 @@ pub fn main() MainError!void {
    defer window.destroy(allocator);
 
    window.setCursorGrabbed(true);
+
+   const controller = window.controller();
 
    var renderer = graphics.Renderer.create(allocator, &window, &.{
       .program_name     = PROGRAM_NAME,
@@ -187,6 +190,15 @@ pub fn main() MainError!void {
       }
 
       // TODO: Freefly camera and toggling window focus / cursor grabbing
+
+      const mouse_rotate_x = controller.mouse.dx * MOUSE_SENSITIVITY;
+      const mouse_rotate_y = controller.mouse.dy * MOUSE_SENSITIVITY;
+
+      const camera_rotate_x = mouse_rotate_x;
+      const camera_rotate_y = mouse_rotate_y;
+
+      camera.angles.angles.pitch += camera_rotate_y * @as(f32, @floatCast(time_delta));
+      camera.angles.angles.yaw   += camera_rotate_x * @as(f32, @floatCast(time_delta));
 
       mesh_transform_test_pyramid.rotation.angles.yaw = theta;
 

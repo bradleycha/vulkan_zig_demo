@@ -144,7 +144,6 @@ pub const Window = struct {
 
       const x_font_cursor = c.xcb_generate_id(x_connection);
       defer _ = c.xcb_close_font(x_connection, x_font_cursor);
-
       const X_FONT_CURSOR = "fixed";
 
       const x_cookie_open_font_cursor = c.xcb_open_font_checked(
@@ -350,6 +349,12 @@ pub const Window = struct {
 
    pub fn isFocused(self : * const @This()) bool {
       return self._focused;
+   }
+
+   pub fn controller(self : * const @This()) * const input.Controller {
+      // TODO: Implement
+      _ = self;
+      unreachable;
    }
 
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {

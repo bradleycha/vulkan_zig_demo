@@ -73,6 +73,10 @@ fn _platformImplementation(comptime containers : PlatformContainers) type {
       pfn_window_is_focused : * const fn (
          container   : * const containers.window,
       ) bool,
+      
+      pfn_window_controller : * const fn (
+         container   : * const containers.window,
+      ) * const input.Controller,
 
       pfn_window_poll_events : * const fn (
          container   : * containers.window,
@@ -108,6 +112,7 @@ const IMPLEMENTATION = blk: {
          .pfn_window_set_title                                             = wayland.Window.setTitle,
          .pfn_window_set_cursor_grabbed                                    = wayland.Window.setCursorGrabbed,
          .pfn_window_should_close                                          = wayland.Window.shouldClose,
+         .pfn_window_controller                                            = wayland.Window.controller,
          .pfn_window_poll_events                                           = wayland.Window.pollEvents,
          .pfn_window_is_cursor_grabbed                                     = wayland.Window.isCursorGrabbed,
          .pfn_window_is_focused                                            = wayland.Window.isFocused,
@@ -130,6 +135,7 @@ const IMPLEMENTATION = blk: {
          .pfn_window_set_title                                             = xcb.Window.setTitle,
          .pfn_window_set_cursor_grabbed                                    = xcb.Window.setCursorGrabbed,
          .pfn_window_should_close                                          = xcb.Window.shouldClose,
+         .pfn_window_controller                                            = xcb.Window.controller,
          .pfn_window_poll_events                                           = xcb.Window.pollEvents,
          .pfn_window_is_cursor_grabbed                                     = xcb.Window.isCursorGrabbed,
          .pfn_window_is_focused                                            = xcb.Window.isFocused,
@@ -219,6 +225,10 @@ pub const Window = struct {
 
    pub fn isFocused(self : * const @This()) bool {
       return IMPLEMENTATION.pfn_window_is_focused(&self._container);
+   }
+
+   pub fn controller(self : * const @This()) * const input.Controller {
+      return IMPLEMENTATION.pfn_window_controller(&self._container);
    }
    
    pub fn pollEvents(self : * @This()) f_shared.Window.PollEventsError!void {
