@@ -444,7 +444,23 @@ pub const Window = struct {
          return;
       }
 
-      // TODO: Implement
+      // !!! This is the reason mouse movement is so janky on XCB.  As far as
+      // I know, there's no way to get subpixel cursor movements, so the
+      // highest precision available to use are whole pixel deltas, which leads
+      // to very jagged/rough movement when the mouse movement is small.
+      const x_previous  = @as(i32, @intCast(self._resolution.width   / 2));
+      const y_previous  = @as(i32, @intCast(self._resolution.height  / 2));
+      const x_current   = @as(i32, @intCast(x_motion_notify_event.event_x));
+      const y_current   = @as(i32, @intCast(x_motion_notify_event.event_y));
+
+      const dx_integer = x_current - x_previous;
+      const dy_integer = y_current - y_previous;
+
+      const dx = @as(f32, @floatFromInt(dx_integer));
+      const dy = @as(f32, @floatFromInt(dy_integer));
+
+      self._controller.mouse.dx += dx;
+      self._controller.mouse.dy += dy;
 
       return;
    }
