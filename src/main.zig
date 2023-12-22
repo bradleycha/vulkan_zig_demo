@@ -20,7 +20,7 @@ const MainError = error {
 const PROGRAM_NAME                     = "Learn Graphics Programming with Zig!";
 const WINDOW_TITLE_UPDATE_TIME_SECONDS = 1.0;
 const SPIN_SPEED                       = 2.0;
-const MOUSE_SENSITIVITY                = 1.0;
+const MOUSE_SENSITIVITY                = 8.0;
 
 comptime {
    const float_mode = blk: {
@@ -191,8 +191,8 @@ pub fn main() MainError!void {
 
       // TODO: Freefly camera and toggling window focus / cursor grabbing
 
-      const mouse_rotate_x = controller.mouse.dx * MOUSE_SENSITIVITY;
-      const mouse_rotate_y = controller.mouse.dy * MOUSE_SENSITIVITY;
+      const mouse_rotate_x = controller.mouse.dx * MOUSE_SENSITIVITY * -1.0;
+      const mouse_rotate_y = controller.mouse.dy * MOUSE_SENSITIVITY * -1.0;
 
       const camera_rotate_x = mouse_rotate_x;
       const camera_rotate_y = mouse_rotate_y;

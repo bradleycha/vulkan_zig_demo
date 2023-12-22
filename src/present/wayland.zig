@@ -23,7 +23,18 @@ pub const Compositor = struct {
    pub fn connect(allocator : std.mem.Allocator) f_shared.Compositor.ConnectError!@This() {
       const wl_input_callbacks = try allocator.create(WaylandInputCallbacks);
       errdefer allocator.destroy(wl_input_callbacks);
-      wl_input_callbacks.* = .{};
+
+      wl_input_callbacks.* = .{
+         .mutex         = .{},
+         .surface_map   = .{},
+         .pointer       = .{
+            // All set as undefined because it's up to the windowing code to
+            // not attempt to read this data while unfocused.
+            .enter_serial  = undefined,
+            .dx            = undefined,
+            .dy            = undefined,
+         }
+      };
 
       const wl_display = c.wl_display_connect(null) orelse return error.Unavailable;
       errdefer c.wl_display_disconnect(wl_display);
@@ -132,13 +143,15 @@ pub const Compositor = struct {
    // hash map.  Synchronization is required since an event could access while
    // a window is being inserted.
    const WaylandInputCallbacks = struct {
-      mutex       : std.Thread.Mutex = .{},
-      surface_map : std.AutoHashMapUnmanaged(usize, * Window._Callbacks) = .{},
-      pointer     : WaylandPointerInputCallbacks = .{},
+      mutex       : std.Thread.Mutex,
+      surface_map : std.AutoHashMapUnmanaged(usize, * Window._Callbacks),
+      pointer     : WaylandPointerInputCallbacks,
    };
 
    const WaylandPointerInputCallbacks = struct {
-      enter_serial   : u32 = undefined,
+      enter_serial   : u32,
+      dx             : c.wl_fixed_t,
+      dy             : c.wl_fixed_t,
    };
 
    fn _waylandRegistryListenerGlobal(p_data : ? * anyopaque, p_wl_registry : ? * c.wl_registry, p_name : u32, p_interface : ? * const u8, p_version : u32) callconv(.C) void {
@@ -293,7 +306,11 @@ pub const Compositor = struct {
       wl_input_callbacks.mutex.lock();
       defer wl_input_callbacks.mutex.unlock();
 
-      wl_input_callbacks.pointer.enter_serial = serial;
+      wl_input_callbacks.pointer = .{
+         .enter_serial  = serial,
+         .dx            = 0,
+         .dy            = 0,
+      };
 
       const window_callbacks = wl_input_callbacks.surface_map.get(@intFromPtr(wl_surface)) orelse unreachable;
 
@@ -405,17 +422,20 @@ pub const Compositor = struct {
    }
 
    fn _waylandRelativePointerListenerRelativeMotion(p_data : ? * anyopaque, p_relative_pointer : ? * c.zwp_relative_pointer_v1, p_utime_hi : u32, p_utime_lo : u32, p_dx : c.wl_fixed_t, p_dy : c.wl_fixed_t, p_dx_unaccel : c.wl_fixed_t, p_dy_unaccel : c.wl_fixed_t) callconv(.C) void {
-      const wl_input_callbacks = @as(* WaylandInputCallbacks, @ptrCast(@alignCast(p_data orelse unreachable)));
+      const wl_input_callbacks   = @as(* WaylandInputCallbacks, @ptrCast(@alignCast(p_data orelse unreachable)));
+      const relative_pointer     = p_relative_pointer orelse unreachable;
+      const dx                   = p_dx;
+      const dy                   = p_dy;
 
       wl_input_callbacks.mutex.lock();
       defer wl_input_callbacks.mutex.unlock();
 
-      // TODO: Actually use this to store pointer data
-      _ = p_relative_pointer;
+      wl_input_callbacks.pointer.dx += dx;
+      wl_input_callbacks.pointer.dy += dy;
+
+      _ = relative_pointer;
       _ = p_utime_hi;
       _ = p_utime_lo;
-      _ = p_dx;
-      _ = p_dy;
       _ = p_dx_unaccel;
       _ = p_dy_unaccel;
 
@@ -707,6 +727,8 @@ pub const Window = struct {
       self._callbacks.mutex.lock();
       defer self._callbacks.mutex.unlock();
 
+      // !!! Important - Reading the pointer callback data while unfocused
+      // will read uninitialized/garbage data.
       if (self._callbacks.focused == true) {
          // If the cursor re-entered the window while grabbed, we have to
          // update the cursor icon to be hidden again.
@@ -717,6 +739,34 @@ pub const Window = struct {
          // If a cursor state change was issued, run it
          if (self._cursor_grabbed_old != self._cursor_grabbed) {
             _changeCursorVisibility(self, self._cursor_grabbed);
+         }
+
+         // If the cursor is grabbed, copy over the mouse movement
+         if (self._cursor_grabbed == true) {
+            self._compositor._wl_input_callbacks.mutex.lock();
+            defer self._compositor._wl_input_callbacks.mutex.unlock();
+
+            const wl_input_pointer  = &self._compositor._wl_input_callbacks.pointer;
+            const controller_mouse  = &self._callbacks.controller.mouse;
+
+            const dx_fixed = wl_input_pointer.dx;
+            const dy_fixed = wl_input_pointer.dy;
+
+            const dx_unscaled = @as(f32, @floatFromInt(dx_fixed));
+            const dy_unscaled = @as(f32, @floatFromInt(dy_fixed));
+
+            // Conversion from 24.8 fixed-point, done this way to preserve fractional portion
+            const FIXED_POINT_SCALE_FACTOR = 1.0 / @as(comptime_float, @floatFromInt(1 << 8));
+
+            const dx = dx_unscaled * FIXED_POINT_SCALE_FACTOR;
+            const dy = dy_unscaled * FIXED_POINT_SCALE_FACTOR;
+
+            controller_mouse.dx = dx;
+            controller_mouse.dy = dy;
+
+            // Hack fix, why doesn't wl_pointer::frame trigger?
+            wl_input_pointer.dx = 0;
+            wl_input_pointer.dy = 0;
          }
       }
 
