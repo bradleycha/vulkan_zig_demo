@@ -187,7 +187,7 @@ pub fn main() MainError!void {
          window.setCursorGrabbed(!window.isCursorGrabbed());
       }
 
-      const time_delta        = @as(f64, @floatFromInt(timer_delta.lap())) / 1000000000.0;
+      const time_delta        = @as(f32, @floatFromInt(timer_delta.lap())) / 1000000000.0;
       const time_window_title = @as(f64, @floatFromInt(timer_window_title.read())) / 1000000000.0;
 
       if (time_window_title > WINDOW_TITLE_UPDATE_TIME_SECONDS) {
@@ -205,61 +205,9 @@ pub fn main() MainError!void {
          window.setTitle(title);
       }
 
-      // TODO: Lateral camera movement
-
-      const mouse_rotate_x = controller.mouse.dx * MOUSE_SENSITIVITY * -1.0;
-      const mouse_rotate_y = controller.mouse.dy * MOUSE_SENSITIVITY * -1.0;
-
-      const camera_rotate_x = mouse_rotate_x;
-      const camera_rotate_y = mouse_rotate_y;
-
-      camera.angles.angles.pitch += camera_rotate_y * @as(f32, @floatCast(time_delta));
-      camera.angles.angles.yaw   += camera_rotate_x * @as(f32, @floatCast(time_delta));
-
-      camera.angles.angles.pitch = std.math.clamp(camera.angles.angles.pitch, -std.math.pi / 2.0, std.math.pi / 2.0);
+      updateFreeflyCamera(camera, controller, time_delta);
 
       mesh_transform_test_pyramid.rotation.angles.yaw = theta;
-
-      if (controller.buttons.state(.jump).isDown() == true) {
-         camera.position.xyz.y -= MOVE_SPEED * @as(f32, @floatCast(time_delta));
-      }
-
-      if (controller.buttons.state(.crouch).isDown() == true) {
-         camera.position.xyz.y += MOVE_SPEED * @as(f32, @floatCast(time_delta));
-      }
-
-      // TODO: This should be part of the math library as a 2D matrix transform.
-      // Hand-coding it like this is bad, but not as bad as using arctangent junk.
-      const camera_move_lateral = blk: {
-         var x : f32 = 0.0;
-         var y : f32 = 0.0;
-         if (controller.buttons.state(.forward).isDown() == true) {
-            y += 1.0;
-         }
-         if (controller.buttons.state(.backward).isDown() == true) {
-            y -= 1.0;
-         }
-         if (controller.buttons.state(.left).isDown() == true) {
-            x -= 1.0;
-         }
-         if (controller.buttons.state(.right).isDown() == true) {
-            x += 1.0;
-         }
-
-         const angle = camera.angles.angles.yaw * -1.0;
-         const sin   = std.math.sin(angle);
-         const cos   = std.math.cos(angle);
-
-         const translation = @Vector(2, f32){
-            x * cos - y * sin,
-            x * sin + y * cos,
-         };
-
-         break :blk translation * @as(@Vector(2, f32), @splat(@floatCast(time_delta * MOVE_SPEED)));
-      };
-
-      camera.position.xyz.x += camera_move_lateral[0];
-      camera.position.xyz.z += camera_move_lateral[1];
 
       mesh_transform_test_cube.translation.xyz.x      = std.math.cos(theta);
       mesh_transform_test_cube.translation.xyz.z      = std.math.sin(theta);
@@ -303,5 +251,86 @@ fn chooseBackingAllocator() std.mem.Allocator {
    }
 
    return std.heap.raw_c_allocator;
+}
+
+const FreeflyCameraInput = struct {
+   move     : math.Vector2(f32)  = math.Vector2(f32).ZERO,
+   look     : math.Vector2(f32)  = math.Vector2(f32).ZERO,
+   ascend   : f32                = 0.0,
+};
+
+fn updateFreeflyCamera(camera : * graphics.Camera, controller : * const input.Controller, time_delta : f32) void {
+   const inputs = calculateFreeflyCameraInput(controller);
+
+   camera.angles.vector += blk: {
+      const base     = inputs.look.vector;
+      const scaled   = base * @as(@Vector(2, f32), @splat(MOUSE_SENSITIVITY * -1.0 * time_delta));
+      const shuffled = @Vector(3, f32){
+         scaled[1],
+         scaled[0],
+         0.0,
+      };
+
+      break :blk shuffled;
+   };
+
+   camera.position.vector += blk: {
+      const horizontal  = inputs.move.vector;
+      const vertical    = inputs.ascend;
+
+      // TODO: Use the math library to construct a rotation matrix instead of
+      // coding it by hand.
+      const yaw = camera.angles.angles.yaw;
+      const sin = std.math.sin(yaw);
+      const cos = std.math.cos(yaw);
+      const horizontal_rotated = @Vector(2, f32){
+         horizontal[1] * sin + horizontal[0] * cos,
+         horizontal[1] * cos - horizontal[0] * sin,
+      };
+
+      const combined = @Vector(3, f32){
+         horizontal_rotated[0],
+         vertical,
+         horizontal_rotated[1],
+      };
+
+      const scaled = combined * @as(@Vector(3, f32), @splat(MOVE_SPEED * time_delta));
+
+      break :blk scaled;
+   };
+
+   return;
+}
+
+fn calculateFreeflyCameraInput(controller : * const input.Controller) FreeflyCameraInput {
+   var inputs = FreeflyCameraInput{};
+
+   if (controller.buttons.state(.jump).isDown() == true) {
+      inputs.ascend -= 1.0;
+   }
+   if (controller.buttons.state(.crouch).isDown() == true) {
+      inputs.ascend += 1.0;
+   }
+   if (controller.buttons.state(.forward).isDown() == true) {
+      inputs.move.xy.y += 1.0;
+   }
+   if (controller.buttons.state(.backward).isDown() == true) {
+      inputs.move.xy.y -= 1.0;
+   }
+   if (controller.buttons.state(.left).isDown() == true) {
+      inputs.move.xy.x -= 1.0;
+   }
+   if (controller.buttons.state(.right).isDown() == true) {
+      inputs.move.xy.x += 1.0;
+   }
+
+   inputs.move.vector += controller.axies.move.vector;
+   inputs.look.vector += controller.axies.look.vector;
+   inputs.look.vector += controller.mouse.move_delta.vector;
+
+   // Don't want movement magnitude > 1
+   inputs.move = inputs.move.normalizeZero();
+
+   return inputs;
 }
 

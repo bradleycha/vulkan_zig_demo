@@ -465,8 +465,7 @@ pub const Window = struct {
       const dx = @as(f32, @floatFromInt(dx_integer));
       const dy = @as(f32, @floatFromInt(dy_integer));
 
-      self._controller.mouse.dx += dx;
-      self._controller.mouse.dy += dy;
+      self._controller.mouse.move_delta = .{.vector = .{dx, dy}};
 
       return;
    }

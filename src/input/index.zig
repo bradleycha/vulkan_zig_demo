@@ -26,12 +26,10 @@ pub const Axies = struct {
 };
 
 pub const Mouse = struct {
-   dx : f32 = 0.0,
-   dy : f32 = 0.0,
+   move_delta  : math.Vector2(f32) = math.Vector2(f32).ZERO,
 
    pub fn advance(self : * @This()) void {
-      self.dx = 0.0;
-      self.dy = 0.0;
+      self.move_delta = math.Vector2(f32).ZERO;
       return;
    }
 };

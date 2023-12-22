@@ -763,8 +763,7 @@ pub const Window = struct {
             const dx = dx_unscaled * FIXED_POINT_SCALE_FACTOR;
             const dy = dy_unscaled * FIXED_POINT_SCALE_FACTOR;
 
-            controller_mouse.dx = dx;
-            controller_mouse.dy = dy;
+            controller_mouse.move_delta = .{.vector = .{dx, dy}};
 
             // Hack fix, why doesn't wl_pointer::frame trigger?
             wl_input_pointer.dx = 0;
