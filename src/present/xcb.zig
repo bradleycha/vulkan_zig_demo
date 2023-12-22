@@ -471,7 +471,6 @@ pub const Window = struct {
       return;
    }
 
-
    fn _xHandleKeyPress(self : * @This(), x_key_press_event: * const c.xcb_key_press_event_t) f_shared.Window.PollEventsError!void {
       const key      = x_key_press_event.detail;
       const bind_set = &self._bind_set;

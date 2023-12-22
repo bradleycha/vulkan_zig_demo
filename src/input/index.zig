@@ -7,8 +7,9 @@ pub const Controller = struct {
    buttons  : Buttons   = .{},
 
    pub fn advance(self : * @This()) void {
-      self.buttons.advance();
+      self.axies.normalize();
       self.mouse.advance();
+      self.buttons.advance();
       return;
    }
 };
@@ -16,6 +17,12 @@ pub const Controller = struct {
 pub const Axies = struct {
    move  : math.Vector2(f32)  = math.Vector2(f32).ZERO,
    look  : math.Vector2(f32)  = math.Vector2(f32).ZERO,
+
+   pub fn normalize(self : * @This()) void {
+      self.move = self.move.normalizeZero();
+      self.look = self.look.normalizeZero();
+      return;
+   }
 };
 
 pub const Mouse = struct {

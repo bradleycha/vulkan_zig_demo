@@ -228,6 +228,27 @@ pub fn main() MainError!void {
          camera.position.xyz.y += MOVE_SPEED * @as(f32, @floatCast(time_delta));
       }
 
+      // TODO: This should be part of the math library as a 2D matrix transform.
+      // Hand-coding it like this is bad, but not as bad as using arctangent junk.
+      const camera_move_lateral = blk: {
+         const vector   = controller.axies.move.vector;
+         const x        = vector[0];
+         const y        = vector[1];
+         const angle    = camera.angles.angles.yaw * -1.0;
+         const sin      = std.math.sin(angle);
+         const cos      = std.math.cos(angle);
+
+         const translation = @Vector(2, f32){
+            x * cos - y * sin,
+            x * sin + y * cos,
+         };
+
+         break :blk translation * @as(@Vector(2, f32), @splat(@floatCast(time_delta * MOVE_SPEED)));
+      };
+
+      camera.position.xyz.x += camera_move_lateral[0];
+      camera.position.xyz.z += camera_move_lateral[1];
+
       mesh_transform_test_cube.translation.xyz.x      = std.math.cos(theta);
       mesh_transform_test_cube.translation.xyz.z      = std.math.sin(theta);
       mesh_transform_test_cube.rotation.angles.pitch  = theta;
