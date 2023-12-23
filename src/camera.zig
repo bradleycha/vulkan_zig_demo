@@ -3,16 +3,19 @@ const math  = @import("math");
 const input = @import("input");
 
 const MOUSE_SENSITIVITY          = 8.0;
-const MOVE_SPEED_BASE            = 3.0;
+const MOVE_SPEED_BASE            = 10.0;
 const MOVE_SPEED_FAST_MULTIPLIER = 5.0;
-const MOVE_SPEED_SLOW_MULTIPLIER = 0.1;
+const MOVE_SPEED_SLOW_MULTIPLIER = 0.4;
 const LOOK_SPEED_BASE            = 1.5;
 const LOOK_SPEED_FAST_MULTIPLIER = 4.0;
 const LOOK_SPEED_SLOW_MULTIPLIER = 0.2;
+const DECELERATION_RATE          = 1.5;
+const SPEED_CAP_SCALE            = 4.0;
 const CAMERA_PITCH_RANGE         = std.math.pi;
 
 pub const FreeflyCamera = struct {
    position : math.Vector3(f32)  = math.Vector3(f32).ZERO,
+   velocity : math.Vector3(f32)  = math.Vector3(f32).ZERO,
    angles   : math.Vector3(f32)  = math.Vector3(f32).ZERO,
 
    pub fn toMatrix(self : * const @This()) math.Matrix4(f32) {
@@ -27,9 +30,12 @@ pub const FreeflyCamera = struct {
    pub fn update(self : * @This(), controller : * const input.Controller, time_delta : f32) void {
       const inputs = _calculateFreeflyCameraInput(controller);
 
-      self.angles.vector += blk: {
+      const time_delta_vector_2 = @as(@Vector(2, f32), @splat(time_delta));
+      const time_delta_vector_3 = @as(@Vector(3, f32), @splat(time_delta));
+
+      const angles_delta = blk: {
          const base     = inputs.look.vector;
-         const scaled   = base * @as(@Vector(2, f32), @splat(time_delta));
+         const scaled   = base * time_delta_vector_2;
          const shuffled = @Vector(3, f32){
             scaled[1],
             scaled[0],
@@ -39,44 +45,66 @@ pub const FreeflyCamera = struct {
          break :blk shuffled;
       };
 
-      self.position.vector += blk: {
-         const horizontal = @Vector(2, f32){inputs.move.xyz.x, inputs.move.xyz.z};
-         const vertical = inputs.move.xyz.y;
+      self.angles.vector += angles_delta;
+      self.angles.angles.pitch = std.math.clamp(self.angles.angles.pitch, CAMERA_PITCH_RANGE * -0.5, CAMERA_PITCH_RANGE * 0.5);
 
-         const yaw = self.angles.angles.yaw;
-         const sin = std.math.sin(yaw);
-         const cos = std.math.cos(yaw);
-         const horizontal_rotated = @Vector(2, f32){
-            horizontal[1] * sin + horizontal[0] * cos,
-            horizontal[1] * cos - horizontal[0] * sin,
+      const velocity_delta = blk: {
+         const base  = inputs.move.vector;
+         const yaw   = self.angles.angles.yaw;
+         const sin   = std.math.sin(yaw);
+         const cos   = std.math.cos(yaw);
+
+         const yaw_rotated = @Vector(3, f32){
+            base[2] * sin + base[0] * cos,
+            base[1],
+            base[2] * cos - base[0] * sin,
          };
 
-         const combined = @Vector(3, f32){
-            horizontal_rotated[0],
-            vertical,
-            horizontal_rotated[1],
-         };
+         const decay = self.velocity.normalizeZero().vector * @as(@Vector(3, f32), @splat(DECELERATION_RATE * -1.0));
 
-         const scaled = combined * @as(@Vector(3, f32), @splat(time_delta));
+         const final = (yaw_rotated + decay) * time_delta_vector_3;
+
+         break :blk final;
+      };
+
+      const position_delta = blk: {
+         // Be careful here!  This time, we are NOT calculating the area of a
+         // rectangle, but the area of a trapezoid.  Thus, we need to use the
+         // area formula of a trapezoid with base lengths "base" and "base + delta"
+         // and height "time_delta".
+
+         const prev     = self.velocity.vector;
+         const curr     = prev + velocity_delta;
+         const average  = (prev + curr) * @as(@Vector(3, f32), @splat(0.5));
+         const scaled   = average * time_delta_vector_3;
 
          break :blk scaled;
       };
+      
+      self.velocity.vector += velocity_delta;
 
-      self.angles.angles.pitch = std.math.clamp(self.angles.angles.pitch, CAMERA_PITCH_RANGE * -0.5, CAMERA_PITCH_RANGE * 0.5);
+      const velocity_magnitude = self.velocity.magnitude();
+      if (velocity_magnitude > inputs.speed_cap) {
+         self.velocity.vector = self.velocity.vector * @as(@Vector(3, f32), @splat(inputs.speed_cap / velocity_magnitude));
+      }
+
+      self.position.vector += position_delta;
 
       return;
    }
 };
 
 const _FreeflyCameraInput = struct {
-   move : math.Vector3(f32),
-   look : math.Vector2(f32),
+   move        : math.Vector3(f32),
+   look        : math.Vector2(f32),
+   speed_cap   : f32,
 };
 
 fn _calculateFreeflyCameraInput(controller : * const input.Controller) _FreeflyCameraInput {
    var inputs = _FreeflyCameraInput{
-      .move = math.Vector3(f32).ZERO,
-      .look = math.Vector2(f32).ZERO,
+      .move       = math.Vector3(f32).ZERO,
+      .look       = math.Vector2(f32).ZERO,
+      .speed_cap  = 0.0,
    };
 
    if (controller.buttons.state(.jump).isDown() == true) {
@@ -138,6 +166,7 @@ fn _calculateFreeflyCameraInput(controller : * const input.Controller) _FreeflyC
 
    inputs.move.vector *= vector_multiplier_move;
    inputs.look.vector *= vector_multiplier_look;
+   inputs.speed_cap = scalar_multiplier_move * (1.0 / SPEED_CAP_SCALE);
 
    // Add mouse movement at the end to skip over speed modifiers and normalization.
    const mouse_look = controller.mouse.move_delta.vector * @as(@Vector(2, f32), @splat(MOUSE_SENSITIVITY * -1.0));
