@@ -24,16 +24,14 @@ pub const Compositor = struct {
       const wl_input_callbacks = try allocator.create(WaylandInputCallbacks);
       errdefer allocator.destroy(wl_input_callbacks);
 
+      // Input structs are undefined as they will be initialized when the enter
+      // events are sent.  It is up to the window to not read this data before
+      // gaining focus.
       wl_input_callbacks.* = .{
          .mutex         = .{},
          .surface_map   = .{},
-         .pointer       = .{
-            // All set as undefined because it's up to the windowing code to
-            // not attempt to read this data while unfocused.
-            .enter_serial  = undefined,
-            .dx            = undefined,
-            .dy            = undefined,
-         }
+         .pointer       = undefined,
+         .keyboard      = undefined,
       };
 
       const wl_display = c.wl_display_connect(null) orelse return error.Unavailable;
@@ -93,6 +91,19 @@ pub const Compositor = struct {
          _ = c.wl_pointer_add_listener(wl_pointer, &wl_pointer_listener, wl_input_callbacks);
          _ = c.zwp_relative_pointer_v1_add_listener(relative_pointer, &zwp_relative_pointer_v1_listener, wl_input_callbacks);
       }
+
+      if (wl_inputs.keyboard) |wl_keyboard| {
+         const wl_keyboard_listener = c.wl_keyboard_listener{
+            .keymap        = _waylandKeyboardListenerKeymap,
+            .enter         = _waylandKeyboardListenerEnter,
+            .leave         = _waylandKeyboardListenerLeave,
+            .key           = _waylandKeyboardListenerKey,
+            .modifiers     = _waylandKeyboardListenerModifiers,
+            .repeat_info   = _waylandKeyboardListenerRepeatInfo,
+         };
+
+         _ = c.wl_keyboard_add_listener(wl_keyboard, &wl_keyboard_listener, wl_input_callbacks);
+      }
       
       return @This(){
          ._wl_display         = wl_display,
@@ -132,8 +143,9 @@ pub const Compositor = struct {
    };
 
    const WaylandInputs = struct {
-      pointer           : ? * c.wl_pointer = null,
+      pointer           : ? * c.wl_pointer               = null,
       relative_pointer  : ? * c.zwp_relative_pointer_v1  = null,
+      keyboard          : ? * c.wl_keyboard              = null,
    };
 
    // Unfortunately we need to store a map of windows and their callback info
@@ -146,12 +158,17 @@ pub const Compositor = struct {
       mutex       : std.Thread.Mutex,
       surface_map : std.AutoHashMapUnmanaged(usize, * Window._Callbacks),
       pointer     : WaylandPointerInputCallbacks,
+      keyboard    : WaylandKeyboardInputCallbacks,
    };
 
    const WaylandPointerInputCallbacks = struct {
       enter_serial   : u32,
       dx             : c.wl_fixed_t,
       dy             : c.wl_fixed_t,
+   };
+   
+   const WaylandKeyboardInputCallbacks = struct {
+      enter_serial   : u32,
    };
 
    fn _waylandRegistryListenerGlobal(p_data : ? * anyopaque, p_wl_registry : ? * c.wl_registry, p_name : u32, p_interface : ? * const u8, p_version : u32) callconv(.C) void {
@@ -283,6 +300,11 @@ pub const Compositor = struct {
       if (capabilities & c.WL_SEAT_CAPABILITY_POINTER != 0) blk: {
          const wl_pointer = c.wl_seat_get_pointer(wl_seat) orelse break :blk;
          wl_inputs.pointer = wl_pointer;
+      }
+
+      if (capabilities & c.WL_SEAT_CAPABILITY_KEYBOARD != 0) blk: {
+         const wl_keyboard = c.wl_seat_get_keyboard(wl_seat) orelse break :blk;
+         wl_inputs.keyboard = wl_keyboard;
       }
 
       return;
@@ -439,6 +461,61 @@ pub const Compositor = struct {
       _ = p_dx_unaccel;
       _ = p_dy_unaccel;
 
+      return;
+   }
+
+   fn _waylandKeyboardListenerKeymap(p_data : ? * anyopaque, p_wl_keyboard : ? * c.wl_keyboard, p_format : c.wl_keyboard_keymap_format, p_fd : c_int, p_size : u32) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_keyboard;
+      _ = p_format;
+      _ = p_fd;
+      _ = p_size;
+      return;
+   }
+
+   fn _waylandKeyboardListenerEnter(p_data : ? * anyopaque, p_wl_keyboard : ? * c.wl_keyboard, p_serial : u32, p_wl_surface : ? * c.wl_surface, p_keys : ? * c.wl_array) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_keyboard;
+      _ = p_serial;
+      _ = p_wl_surface;
+      _ = p_keys;
+      return;
+   }
+
+   fn _waylandKeyboardListenerLeave(p_data : ? * anyopaque, p_wl_keyboard : ? * c.wl_keyboard, p_serial : u32, p_wl_surface : ? * c.wl_surface) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_keyboard;
+      _ = p_serial;
+      _ = p_wl_surface;
+      return;
+   }
+
+   fn _waylandKeyboardListenerKey(p_data : ? * anyopaque, p_wl_keyboard : ? * c.wl_keyboard, p_serial : u32, p_time : u32, p_key : u32, p_state : c.wl_keyboard_key_state) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_keyboard;
+      _ = p_serial;
+      _ = p_time;
+      _ = p_key;
+      _ = p_state;
+      return;
+   }
+
+   fn _waylandKeyboardListenerModifiers(p_data : ? * anyopaque, p_wl_keyboard : ? * c.wl_keyboard, p_serial : u32, p_mods_depressed : u32, p_mods_latched : u32, p_mods_locked : u32, p_group : u32) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_keyboard;
+      _ = p_serial;
+      _ = p_mods_depressed;
+      _ = p_mods_latched;
+      _ = p_mods_locked;
+      _ = p_group;
+      return;
+   }
+
+   fn _waylandKeyboardListenerRepeatInfo(p_data : ? * anyopaque, p_wl_keyboard : ? * c.wl_keyboard, p_rate : i32, p_delay : i32) callconv(.C) void {
+      _ = p_data;
+      _ = p_wl_keyboard;
+      _ = p_rate;
+      _ = p_delay;
       return;
    }
 
