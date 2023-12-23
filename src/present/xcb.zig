@@ -486,24 +486,22 @@ pub const Window = struct {
       }
 
       if (key == @intFromEnum(bind_set.move_forward)) {
-         control.buttons.press(.forward);
+         control.buttons.press(.move_forward);
          return;
       }
 
       if (key == @intFromEnum(bind_set.move_backward)) {
-         control.axies.move.xy.y -= 1.0;
-         control.buttons.press(.backward);
+         control.buttons.press(.move_backward);
          return;
       }
 
       if (key == @intFromEnum(bind_set.move_left)) {
-         control.axies.move.xy.x -= 1.0;
-         control.buttons.press(.left);
+         control.buttons.press(.move_left);
          return;
       }
       
       if (key == @intFromEnum(bind_set.move_right)) {
-         control.buttons.press(.right);
+         control.buttons.press(.move_right);
          return;
       }
 
@@ -514,6 +512,36 @@ pub const Window = struct {
 
       if (key == @intFromEnum(bind_set.move_down)) {
          control.buttons.press(.crouch);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.look_up)) {
+         control.buttons.press(.look_up);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.look_down)) {
+         control.buttons.press(.look_down);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.look_left)) {
+         control.buttons.press(.look_left);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.look_right)) {
+         control.buttons.press(.look_right);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.accelerate)) {
+         control.buttons.press(.accelerate);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.decelerate)) {
+         control.buttons.press(.decelerate);
          return;
       }
 
@@ -540,22 +568,22 @@ pub const Window = struct {
       }
 
       if (key == @intFromEnum(bind_set.move_forward)) {
-         control.buttons.release(.forward);
+         control.buttons.release(.move_forward);
          return;
       }
 
       if (key == @intFromEnum(bind_set.move_backward)) {
-         control.buttons.release(.backward);
+         control.buttons.release(.move_backward);
          return;
       }
 
       if (key == @intFromEnum(bind_set.move_left)) {
-         control.buttons.release(.left);
+         control.buttons.release(.move_left);
          return;
       }
       
       if (key == @intFromEnum(bind_set.move_right)) {
-         control.buttons.release(.right);
+         control.buttons.release(.move_right);
          return;
       }
 
@@ -566,6 +594,36 @@ pub const Window = struct {
 
       if (key == @intFromEnum(bind_set.move_down)) {
          control.buttons.release(.crouch);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.look_up)) {
+         control.buttons.release(.look_up);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.look_down)) {
+         control.buttons.release(.look_down);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.look_left)) {
+         control.buttons.release(.look_left);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.look_right)) {
+         control.buttons.release(.look_right);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.accelerate)) {
+         control.buttons.release(.accelerate);
+         return;
+      }
+
+      if (key == @intFromEnum(bind_set.decelerate)) {
+         control.buttons.release(.decelerate);
          return;
       }
 
@@ -611,14 +669,20 @@ pub const Window = struct {
 
 // TODO: Find a better way to do this?
 pub const Bind = enum(c.xcb_keycode_t) {
-   escape      = 9,
-   tab         = 23,
-   w           = 25,
-   r           = 27,
-   a           = 40,
-   s           = 39,
-   d           = 38,
-   space       = 65,
-   left_shift  = 50,
+   escape         = 9,
+   tab            = 23,
+   w              = 25,
+   r              = 27,
+   a              = 40,
+   s              = 39,
+   d              = 38,
+   space          = 65,
+   left_shift     = 50,
+   left_control   = 37,
+   left_alt       = 64,
+   arrow_up       = 111,
+   arrow_down     = 116,
+   arrow_left     = 113,
+   arrow_right    = 114,
 };
 

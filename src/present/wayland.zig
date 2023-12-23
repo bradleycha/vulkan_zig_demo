@@ -565,22 +565,22 @@ pub const Compositor = struct {
       }
 
       if (key_code == @intFromEnum(bind_set.move_forward)) {
-         controller.buttons.press(.forward);
+         controller.buttons.press(.move_forward);
          return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_backward)) {
-         controller.buttons.press(.backward);
+         controller.buttons.press(.move_backward);
          return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_left)) {
-         controller.buttons.press(.left);
+         controller.buttons.press(.move_left);
          return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_right)) {
-         controller.buttons.press(.right);
+         controller.buttons.press(.move_right);
          return;
       }
 
@@ -592,6 +592,34 @@ pub const Compositor = struct {
       if (key_code == @intFromEnum(bind_set.move_down)) {
          controller.buttons.press(.crouch);
          return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.look_up)) {
+         controller.buttons.press(.look_up);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.look_down)) {
+         controller.buttons.press(.look_down);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.look_left)) {
+         controller.buttons.press(.look_left);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.look_right)) {
+         controller.buttons.press(.look_right);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.accelerate)) {
+         controller.buttons.press(.accelerate);
+      }
+
+      if (key_code == @intFromEnum(bind_set.decelerate)) {
+         controller.buttons.press(.decelerate);
       }
 
       if (key_code == @intFromEnum(bind_set.respawn)) {
@@ -614,22 +642,22 @@ pub const Compositor = struct {
       }
 
       if (key_code == @intFromEnum(bind_set.move_forward)) {
-         controller.buttons.release(.forward);
+         controller.buttons.release(.move_forward);
          return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_backward)) {
-         controller.buttons.release(.backward);
+         controller.buttons.release(.move_backward);
          return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_left)) {
-         controller.buttons.release(.left);
+         controller.buttons.release(.move_left);
          return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_right)) {
-         controller.buttons.release(.right);
+         controller.buttons.release(.move_right);
          return;
       }
 
@@ -641,6 +669,34 @@ pub const Compositor = struct {
       if (key_code == @intFromEnum(bind_set.move_down)) {
          controller.buttons.release(.crouch);
          return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.look_up)) {
+         controller.buttons.release(.look_up);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.look_down)) {
+         controller.buttons.release(.look_down);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.look_left)) {
+         controller.buttons.release(.look_left);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.look_right)) {
+         controller.buttons.release(.look_right);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.accelerate)) {
+         controller.buttons.release(.accelerate);
+      }
+
+      if (key_code == @intFromEnum(bind_set.decelerate)) {
+         controller.buttons.release(.decelerate);
       }
 
       if (key_code == @intFromEnum(bind_set.respawn)) {
@@ -1044,14 +1100,20 @@ pub const Window = struct {
 // TODO: This will not work.  We have to use a keymap for this to work on
 // anything other than my specific Hyprland installation.
 pub const Bind = enum(u32) {
-   escape      = 1,
-   tab         = 15,
-   w           = 17,
-   r           = 19,
-   a           = 32,
-   s           = 31,
-   d           = 30,
-   space       = 57,
-   left_shift  = 42,
+   escape         = 1,
+   tab            = 15,
+   w              = 17,
+   r              = 19,
+   a              = 32,
+   s              = 31,
+   d              = 30,
+   space          = 57,
+   left_shift     = 42,
+   left_control   = 29,
+   left_alt       = 56,
+   arrow_up       = 103,
+   arrow_down     = 108,
+   arrow_left     = 105,
+   arrow_right    = 106,
 };
 

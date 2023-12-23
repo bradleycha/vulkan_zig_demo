@@ -74,6 +74,12 @@ pub fn main() MainError!void {
       .move_right    = .d,
       .move_up       = .space,
       .move_down     = .left_shift,
+      .look_up       = .arrow_up,
+      .look_down     = .arrow_down,
+      .look_left     = .arrow_left,
+      .look_right    = .arrow_right,
+      .accelerate    = .left_control,
+      .decelerate    = .left_alt,
       .respawn       = .r
    }) catch return error.WindowCreateError;
    defer window.destroy(allocator);

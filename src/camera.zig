@@ -2,9 +2,14 @@ const std   = @import("std");
 const math  = @import("math");
 const input = @import("input");
 
-const MOUSE_SENSITIVITY    = 8.0;
-const MOVE_SPEED           = 5.0;
-const CAMERA_PITCH_RANGE   = std.math.pi;
+const MOUSE_SENSITIVITY          = 8.0;
+const MOVE_SPEED_BASE            = 3.0;
+const MOVE_SPEED_FAST_MULTIPLIER = 5.0;
+const MOVE_SPEED_SLOW_MULTIPLIER = 0.1;
+const LOOK_SPEED_BASE            = 1.5;
+const LOOK_SPEED_FAST_MULTIPLIER = 4.0;
+const LOOK_SPEED_SLOW_MULTIPLIER = 0.2;
+const CAMERA_PITCH_RANGE         = std.math.pi;
 
 pub const FreeflyCamera = struct {
    position : math.Vector3(f32)  = math.Vector3(f32).ZERO,
@@ -24,7 +29,7 @@ pub const FreeflyCamera = struct {
 
       self.angles.vector += blk: {
          const base     = inputs.look.vector;
-         const scaled   = base * @as(@Vector(2, f32), @splat(MOUSE_SENSITIVITY * -1.0 * time_delta));
+         const scaled   = base * @as(@Vector(2, f32), @splat(time_delta));
          const shuffled = @Vector(3, f32){
             scaled[1],
             scaled[0],
@@ -54,7 +59,7 @@ pub const FreeflyCamera = struct {
             horizontal_rotated[1],
          };
 
-         const scaled = combined * @as(@Vector(3, f32), @splat(MOVE_SPEED * time_delta));
+         const scaled = combined * @as(@Vector(3, f32), @splat(time_delta));
 
          break :blk scaled;
       };
@@ -84,25 +89,64 @@ fn _calculateFreeflyCameraInput(controller : * const input.Controller) _FreeflyC
    if (controller.buttons.state(.crouch).isDown() == true) {
       inputs.ascend += 1.0;
    }
-   if (controller.buttons.state(.forward).isDown() == true) {
+   if (controller.buttons.state(.move_forward).isDown() == true) {
       inputs.move.xy.y += 1.0;
    }
-   if (controller.buttons.state(.backward).isDown() == true) {
+   if (controller.buttons.state(.move_backward).isDown() == true) {
       inputs.move.xy.y -= 1.0;
    }
-   if (controller.buttons.state(.left).isDown() == true) {
+   if (controller.buttons.state(.move_left).isDown() == true) {
       inputs.move.xy.x -= 1.0;
    }
-   if (controller.buttons.state(.right).isDown() == true) {
+   if (controller.buttons.state(.move_right).isDown() == true) {
       inputs.move.xy.x += 1.0;
+   }
+   if (controller.buttons.state(.look_up).isDown() == true) {
+      inputs.look.xy.y += 1.0;
+   }
+   if (controller.buttons.state(.look_down).isDown() == true) {
+      inputs.look.xy.y -= 1.0;
+   }
+   if (controller.buttons.state(.look_left).isDown() == true) {
+      inputs.look.xy.x += 1.0;
+   }
+   if (controller.buttons.state(.look_right).isDown() == true) {
+      inputs.look.xy.x -= 1.0;
    }
 
    inputs.move.vector += controller.axies.move.vector;
    inputs.look.vector += controller.axies.look.vector;
-   inputs.look.vector += controller.mouse.move_delta.vector;
 
-   // Don't want movement magnitude > 1
+   // Don't want base input magnitudes > 1
    inputs.move = inputs.move.normalizeZero();
+   inputs.look = inputs.look.normalizeZero();
+
+   const MOVE_SPEED_BASE_VECTOR              = @as(@Vector(2, f32), @splat(MOVE_SPEED_BASE));
+   const MOVE_SPEED_FAST_MULTIPLIER_VECTOR   = @as(@Vector(2, f32), @splat(MOVE_SPEED_FAST_MULTIPLIER));
+   const MOVE_SPEED_SLOW_MULTIPLIER_VECTOR   = @as(@Vector(2, f32), @splat(MOVE_SPEED_SLOW_MULTIPLIER));
+   const LOOK_SPEED_BASE_VECTOR              = @as(@Vector(2, f32), @splat(LOOK_SPEED_BASE));
+   const LOOK_SPEED_FAST_MULTIPLIER_VECTOR   = @as(@Vector(2, f32), @splat(LOOK_SPEED_FAST_MULTIPLIER));
+   const LOOK_SPEED_SLOW_MULTIPLIER_VECTOR   = @as(@Vector(2, f32), @splat(LOOK_SPEED_SLOW_MULTIPLIER));
+
+   inputs.move.vector   *= MOVE_SPEED_BASE_VECTOR;
+   inputs.look.vector   *= LOOK_SPEED_BASE_VECTOR;
+   inputs.ascend        *= MOVE_SPEED_BASE;
+
+   if (controller.buttons.state(.accelerate).isDown() == true) {
+      inputs.move.vector   *= MOVE_SPEED_FAST_MULTIPLIER_VECTOR;
+      inputs.look.vector   *= LOOK_SPEED_FAST_MULTIPLIER_VECTOR;
+      inputs.ascend        *= MOVE_SPEED_FAST_MULTIPLIER;
+   }
+
+   if (controller.buttons.state(.decelerate).isDown() == true) {
+      inputs.move.vector   *= MOVE_SPEED_SLOW_MULTIPLIER_VECTOR;
+      inputs.look.vector   *= LOOK_SPEED_SLOW_MULTIPLIER_VECTOR;
+      inputs.ascend        *= MOVE_SPEED_SLOW_MULTIPLIER;
+   }
+
+   // Add mouse movement at the end to skip over speed modifiers and normalization.
+   const mouse_look = controller.mouse.move_delta.vector * @as(@Vector(2, f32), @splat(MOUSE_SENSITIVITY * -1.0));
+   inputs.look.vector += mouse_look;
 
    return inputs;
 }
