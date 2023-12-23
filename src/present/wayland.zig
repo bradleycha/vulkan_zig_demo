@@ -168,7 +168,7 @@ pub const Compositor = struct {
    };
    
    const WaylandKeyboardInputCallbacks = struct {
-      enter_serial   : u32,
+      focused_window_callbacks   : * Window._Callbacks,
    };
 
    fn _waylandRegistryListenerGlobal(p_data : ? * anyopaque, p_wl_registry : ? * c.wl_registry, p_name : u32, p_interface : ? * const u8, p_version : u32) callconv(.C) void {
@@ -474,29 +474,170 @@ pub const Compositor = struct {
    }
 
    fn _waylandKeyboardListenerEnter(p_data : ? * anyopaque, p_wl_keyboard : ? * c.wl_keyboard, p_serial : u32, p_wl_surface : ? * c.wl_surface, p_keys : ? * c.wl_array) callconv(.C) void {
-      _ = p_data;
-      _ = p_wl_keyboard;
-      _ = p_serial;
-      _ = p_wl_surface;
-      _ = p_keys;
+      const wl_input_callbacks   = @as(* WaylandInputCallbacks, @ptrCast(@alignCast(p_data orelse unreachable)));
+      const wl_keyboard          = p_wl_keyboard orelse unreachable;
+      const serial               = p_serial;
+      const wl_surface           = p_wl_surface orelse unreachable;
+      const keys                 = p_keys orelse unreachable;
+
+      wl_input_callbacks.mutex.lock();
+      defer wl_input_callbacks.mutex.unlock();
+
+      const window_callbacks = wl_input_callbacks.surface_map.get(@intFromPtr(wl_surface)) orelse unreachable;
+
+      wl_input_callbacks.keyboard.focused_window_callbacks = window_callbacks;
+
+      window_callbacks.mutex.lock();
+      defer window_callbacks.mutex.unlock();
+
+      window_callbacks.keyboard_focused = true;
+
+      _ = wl_keyboard;
+      _ = serial;
+      _ = keys;
+      
       return;
    }
 
    fn _waylandKeyboardListenerLeave(p_data : ? * anyopaque, p_wl_keyboard : ? * c.wl_keyboard, p_serial : u32, p_wl_surface : ? * c.wl_surface) callconv(.C) void {
-      _ = p_data;
-      _ = p_wl_keyboard;
-      _ = p_serial;
-      _ = p_wl_surface;
+      const wl_input_callbacks   = @as(* WaylandInputCallbacks, @ptrCast(@alignCast(p_data orelse unreachable)));
+      const wl_keyboard          = p_wl_keyboard orelse unreachable;
+      const serial               = p_serial;
+      const wl_surface           = p_wl_surface orelse unreachable;
+
+      wl_input_callbacks.mutex.lock();
+      defer wl_input_callbacks.mutex.unlock();
+
+      const window_callbacks = wl_input_callbacks.surface_map.get(@intFromPtr(wl_surface)) orelse unreachable;
+
+      window_callbacks.mutex.lock();
+      defer window_callbacks.mutex.unlock();
+
+      window_callbacks.keyboard_focused = false;
+
+      _ = wl_keyboard;
+      _ = serial;
+
       return;
    }
 
    fn _waylandKeyboardListenerKey(p_data : ? * anyopaque, p_wl_keyboard : ? * c.wl_keyboard, p_serial : u32, p_time : u32, p_key : u32, p_state : c.wl_keyboard_key_state) callconv(.C) void {
-      _ = p_data;
-      _ = p_wl_keyboard;
-      _ = p_serial;
-      _ = p_time;
-      _ = p_key;
-      _ = p_state;
+      const wl_input_callbacks   = @as(* WaylandInputCallbacks, @ptrCast(@alignCast(p_data orelse unreachable)));
+      const wl_keyboard          = p_wl_keyboard orelse unreachable;
+      const serial               = p_serial;
+      const time                 = p_time;
+      const key                  = p_key;
+      const state                = p_state;
+
+      wl_input_callbacks.mutex.lock();
+      defer wl_input_callbacks.mutex.unlock();
+
+      const window_callbacks = wl_input_callbacks.keyboard.focused_window_callbacks;
+
+      window_callbacks.mutex.lock();
+      defer window_callbacks.mutex.unlock();
+
+      const controller  = &window_callbacks.controller;
+      const bind_set    = &window_callbacks.bind_set;
+
+      switch (state) {
+         c.WL_KEYBOARD_KEY_STATE_RELEASED => _releaseKey(controller, bind_set, key),
+         c.WL_KEYBOARD_KEY_STATE_PRESSED  => _pressKey(controller, bind_set, key),
+         else                             => unreachable,
+      }
+
+      _ = wl_keyboard;
+      _ = serial;
+      _ = time;
+
+      return;
+   }
+
+   fn _pressKey(controller : * input.Controller, bind_set : * const f_shared.BindSet(Bind), key_code : u32) void {
+      if (key_code == @intFromEnum(bind_set.exit)) {
+         controller.buttons.press(.exit);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.toggle_focus)) {
+         controller.buttons.press(.toggle_focus);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.move_forward)) {
+         controller.buttons.press(.forward);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.move_backward)) {
+         controller.buttons.press(.backward);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.move_left)) {
+         controller.buttons.press(.left);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.move_right)) {
+         controller.buttons.press(.right);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.move_up)) {
+         controller.buttons.press(.jump);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.move_down)) {
+         controller.buttons.press(.crouch);
+         return;
+      }
+
+      return;
+   }
+
+   fn _releaseKey(controller : * input.Controller, bind_set : * const f_shared.BindSet(Bind), key_code : u32) void {
+      if (key_code == @intFromEnum(bind_set.exit)) {
+         controller.buttons.release(.exit);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.toggle_focus)) {
+         controller.buttons.release(.toggle_focus);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.move_forward)) {
+         controller.buttons.release(.forward);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.move_backward)) {
+         controller.buttons.release(.backward);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.move_left)) {
+         controller.buttons.release(.left);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.move_right)) {
+         controller.buttons.release(.right);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.move_up)) {
+         controller.buttons.release(.jump);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.move_down)) {
+         controller.buttons.release(.crouch);
+         return;
+      }
+
       return;
    }
 
@@ -542,7 +683,6 @@ pub const Window = struct {
    _xdg_surface         : * c.xdg_surface,
    _xdg_toplevel        : * c.xdg_toplevel,
    _callbacks           : * _Callbacks,
-   _bind_set            : f_shared.BindSet(Bind),
    _controller_stored   : input.Controller,
    _cursor_grabbed_old  : bool,
    _cursor_grabbed      : bool,
@@ -551,6 +691,7 @@ pub const Window = struct {
       mutex                : std.Thread.Mutex = .{},
       current_resolution   : f_shared.Window.Resolution = .{.width = 0, .height = 0},
       pointer_lock         : ? * c.zwp_locked_pointer_v1 = null,
+      bind_set             : f_shared.BindSet(Bind),
       controller           : input.Controller = .{},
       should_close         : bool = false,
       cursor_focused_old   : bool = false,
@@ -565,7 +706,7 @@ pub const Window = struct {
 
       const callbacks = try allocator.create(_Callbacks);
       errdefer allocator.destroy(callbacks);
-      callbacks.* = .{};
+      callbacks.* = .{.bind_set = bind_set.*};
 
       const wl_surface = c.wl_compositor_create_surface(compositor._wl_globals.compositor) orelse return error.PlatformError;
       errdefer c.wl_surface_destroy(wl_surface);
@@ -623,7 +764,6 @@ pub const Window = struct {
          ._xdg_surface        = xdg_surface,
          ._xdg_toplevel       = xdg_toplevel,
          ._callbacks          = callbacks,
-         ._bind_set           = bind_set.*,
          ._controller_stored  = .{},
          ._cursor_grabbed_old = false,
          ._cursor_grabbed     = false,
@@ -891,14 +1031,16 @@ pub const Window = struct {
    }
 };
 
-pub const Bind = enum {
-   escape,
-   tab,
-   w,
-   a,
-   s,
-   d,
-   space,
-   left_shift,
+// TODO: This will not work.  We have to use a keymap for this to work on
+// anything other than my specific Hyprland installation.
+pub const Bind = enum(u32) {
+   escape      = 1,
+   tab         = 15,
+   w           = 17,
+   a           = 32,
+   s           = 31,
+   d           = 30,
+   space       = 57,
+   left_shift  = 42,
 };
 

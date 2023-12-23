@@ -66,8 +66,6 @@ pub fn main() MainError!void {
    }) catch return error.WindowCreateError;
    defer window.destroy(allocator);
 
-   window.setCursorGrabbed(true);
-
    const controller = window.controller();
 
    var renderer = graphics.Renderer.create(allocator, &window, &.{
