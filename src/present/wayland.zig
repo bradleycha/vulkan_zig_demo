@@ -339,7 +339,7 @@ pub const Compositor = struct {
       window_callbacks.mutex.lock();
       defer window_callbacks.mutex.unlock();
 
-      window_callbacks.focused = true;
+      window_callbacks.cursor_focused = true;
 
       _ = wl_pointer;
       _ = wl_surface_x;
@@ -362,7 +362,7 @@ pub const Compositor = struct {
       window_callbacks.mutex.lock();
       defer window_callbacks.mutex.unlock();
 
-      window_callbacks.focused = false;
+      window_callbacks.cursor_focused = false;
 
       _ = wl_pointer;
       _ = serial;
@@ -553,8 +553,9 @@ pub const Window = struct {
       pointer_lock         : ? * c.zwp_locked_pointer_v1 = null,
       controller           : input.Controller = .{},
       should_close         : bool = false,
-      focused_old          : bool = false,
-      focused              : bool = false,
+      cursor_focused_old   : bool = false,
+      cursor_focused       : bool = false,
+      keyboard_focused     : bool = false,
    };
 
    pub fn create(compositor : * Compositor, allocator : std.mem.Allocator, create_info : * const f_shared.Window.CreateInfo, bind_set : * const f_shared.BindSet(Bind)) f_shared.Window.CreateError!@This() {
@@ -759,8 +760,7 @@ pub const Window = struct {
          c.ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT,
       ) orelse return;
 
-      self._callbacks.pointer_lock  = pointer_lock;
-      self._callbacks.focused       = true;
+      self._callbacks.pointer_lock = pointer_lock;
 
       return;
    }
@@ -793,7 +793,7 @@ pub const Window = struct {
       self._callbacks.mutex.lock();
       defer self._callbacks.mutex.unlock();
 
-      return self._callbacks.focused;
+      return self._callbacks.cursor_focused;
    }
 
    pub fn controller(self : * const @This()) * const input.Controller {
@@ -808,10 +808,10 @@ pub const Window = struct {
 
       // !!! Important - Reading the pointer callback data while unfocused
       // will read uninitialized/garbage data.
-      if (self._callbacks.focused == true) {
+      if (self._callbacks.cursor_focused == true) {
          // If the cursor re-entered the window while grabbed, we have to
          // update the cursor icon to be hidden again.
-         if (self._callbacks.focused_old == false and self._cursor_grabbed == true) {
+         if (self._callbacks.cursor_focused_old == false and self._cursor_grabbed == true) {
             _changeCursorVisibility(self, true);
          }
 
@@ -820,8 +820,8 @@ pub const Window = struct {
             _changeCursorVisibility(self, self._cursor_grabbed);
          }
 
-         // If the cursor is grabbed, copy over the mouse movement
-         if (self._cursor_grabbed == true) {
+         // If the cursor is focused and grabbed, copy over the mouse movement
+         if (self._callbacks.cursor_focused == true and self._cursor_grabbed == true) {
             self._compositor._wl_input_callbacks.mutex.lock();
             defer self._compositor._wl_input_callbacks.mutex.unlock();
 
@@ -848,9 +848,9 @@ pub const Window = struct {
          }
       }
 
-      self._callbacks.focused_old   = self._callbacks.focused;
-      self._cursor_grabbed_old      = self._cursor_grabbed;
-      self._controller_stored       = self._callbacks.controller;
+      self._callbacks.cursor_focused_old  = self._callbacks.cursor_focused;
+      self._cursor_grabbed_old            = self._cursor_grabbed;
+      self._controller_stored             = self._callbacks.controller;
 
       self._callbacks.controller.advance();
 
