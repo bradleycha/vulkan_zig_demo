@@ -970,8 +970,8 @@ pub const Window = struct {
             _changeCursorVisibility(self, self._cursor_grabbed);
          }
 
-         // If the cursor is focused and grabbed, copy over the mouse movement
-         if (self._callbacks.cursor_focused == true and self._cursor_grabbed == true) {
+         // If the cursor is grabbed, copy over the mouse movement
+         if (self._cursor_grabbed == true) {
             self._compositor._wl_input_callbacks.mutex.lock();
             defer self._compositor._wl_input_callbacks.mutex.unlock();
 

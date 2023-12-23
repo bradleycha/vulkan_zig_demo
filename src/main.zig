@@ -22,6 +22,7 @@ const WINDOW_TITLE_UPDATE_TIME_SECONDS = 1.0;
 const SPIN_SPEED                       = 2.0;
 const MOUSE_SENSITIVITY                = 8.0;
 const MOVE_SPEED                       = 5.0;
+const CAMERA_PITCH_RANGE               = std.math.pi;
 const CAMERA_SPAWN_POINT               = graphics.Camera{
    .position = .{.xyz = .{
       .x =  1.0,
@@ -304,6 +305,8 @@ fn updateFreeflyCamera(camera : * graphics.Camera, controller : * const input.Co
 
       break :blk scaled;
    };
+
+   camera.angles.angles.pitch = std.math.clamp(camera.angles.angles.pitch, CAMERA_PITCH_RANGE * -0.5, CAMERA_PITCH_RANGE * 0.5);
 
    return;
 }
