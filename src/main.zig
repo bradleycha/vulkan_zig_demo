@@ -6,6 +6,7 @@ const input       = @import("input");
 const present     = @import("present");
 const graphics    = @import("graphics");
 const resources   = @import("resources");
+const camera      = @import("camera.zig");
 
 const MainError = error {
    OutOfMemory,
@@ -20,10 +21,7 @@ const MainError = error {
 const PROGRAM_NAME                     = "Learn Graphics Programming with Zig!";
 const WINDOW_TITLE_UPDATE_TIME_SECONDS = 1.0;
 const SPIN_SPEED                       = 2.0;
-const MOUSE_SENSITIVITY                = 8.0;
-const MOVE_SPEED                       = 5.0;
-const CAMERA_PITCH_RANGE               = std.math.pi;
-const CAMERA_SPAWN_POINT               = Camera{
+const CAMERA_SPAWN_POINT               = camera.FreeflyCamera{
    .position = .{.xyz = .{
       .x =  1.0,
       .y =  0.0,
@@ -117,7 +115,7 @@ pub fn main() MainError!void {
 
    std.log.info("initialization complete, entering main loop", .{});
 
-   var camera = CAMERA_SPAWN_POINT;
+   var freefly_camera = CAMERA_SPAWN_POINT;
 
    mesh_matrix_test_plane.* = math.Transform(f32).toMatrix(&.{
       .translation = .{.xyz = .{
@@ -189,7 +187,7 @@ pub fn main() MainError!void {
       }
 
       if (controller.buttons.state(.respawn).isPressed() == true) {
-         camera = CAMERA_SPAWN_POINT;
+         freefly_camera = CAMERA_SPAWN_POINT;
       }
 
       const time_delta        = @as(f32, @floatFromInt(timer_delta.lap())) / 1000000000.0;
@@ -210,9 +208,9 @@ pub fn main() MainError!void {
          window.setTitle(title);
       }
 
-      updateFreeflyCamera(&camera, controller, time_delta);
+      freefly_camera.update(controller, time_delta);
 
-      renderer.viewTransformMut().* = camera.toMatrix();
+      renderer.viewTransformMut().* = freefly_camera.toMatrix();
 
       mesh_transform_test_pyramid.rotation.angles.yaw = theta;
 
@@ -258,102 +256,5 @@ fn chooseBackingAllocator() std.mem.Allocator {
    }
 
    return std.heap.raw_c_allocator;
-}
-
-const Camera = struct {
-   position : math.Vector3(f32)  = math.Vector3(f32).ZERO,
-   angles   : math.Vector3(f32)  = math.Vector3(f32).ZERO,
-
-   pub fn toMatrix(self : * const @This()) math.Matrix4(f32) {
-      const matrix_position   = math.Matrix4(f32).createTranslation(&self.position);
-      const matrix_angles     = math.Matrix4(f32).createRotation(&self.angles);
-
-      const matrix = matrix_angles.multiplyMatrix(&matrix_position);
-
-      return matrix;
-   }
-};
-
-const FreeflyCameraInput = struct {
-   move     : math.Vector2(f32)  = math.Vector2(f32).ZERO,
-   look     : math.Vector2(f32)  = math.Vector2(f32).ZERO,
-   ascend   : f32                = 0.0,
-};
-
-fn updateFreeflyCamera(camera : * Camera, controller : * const input.Controller, time_delta : f32) void {
-   const inputs = calculateFreeflyCameraInput(controller);
-
-   camera.angles.vector += blk: {
-      const base     = inputs.look.vector;
-      const scaled   = base * @as(@Vector(2, f32), @splat(MOUSE_SENSITIVITY * -1.0 * time_delta));
-      const shuffled = @Vector(3, f32){
-         scaled[1],
-         scaled[0],
-         0.0,
-      };
-
-      break :blk shuffled;
-   };
-
-   camera.position.vector += blk: {
-      const horizontal  = inputs.move.vector;
-      const vertical    = inputs.ascend;
-
-      // TODO: Use the math library to construct a rotation matrix instead of
-      // coding it by hand.
-      const yaw = camera.angles.angles.yaw;
-      const sin = std.math.sin(yaw);
-      const cos = std.math.cos(yaw);
-      const horizontal_rotated = @Vector(2, f32){
-         horizontal[1] * sin + horizontal[0] * cos,
-         horizontal[1] * cos - horizontal[0] * sin,
-      };
-
-      const combined = @Vector(3, f32){
-         horizontal_rotated[0],
-         vertical,
-         horizontal_rotated[1],
-      };
-
-      const scaled = combined * @as(@Vector(3, f32), @splat(MOVE_SPEED * time_delta));
-
-      break :blk scaled;
-   };
-
-   camera.angles.angles.pitch = std.math.clamp(camera.angles.angles.pitch, CAMERA_PITCH_RANGE * -0.5, CAMERA_PITCH_RANGE * 0.5);
-
-   return;
-}
-
-fn calculateFreeflyCameraInput(controller : * const input.Controller) FreeflyCameraInput {
-   var inputs = FreeflyCameraInput{};
-
-   if (controller.buttons.state(.jump).isDown() == true) {
-      inputs.ascend -= 1.0;
-   }
-   if (controller.buttons.state(.crouch).isDown() == true) {
-      inputs.ascend += 1.0;
-   }
-   if (controller.buttons.state(.forward).isDown() == true) {
-      inputs.move.xy.y += 1.0;
-   }
-   if (controller.buttons.state(.backward).isDown() == true) {
-      inputs.move.xy.y -= 1.0;
-   }
-   if (controller.buttons.state(.left).isDown() == true) {
-      inputs.move.xy.x -= 1.0;
-   }
-   if (controller.buttons.state(.right).isDown() == true) {
-      inputs.move.xy.x += 1.0;
-   }
-
-   inputs.move.vector += controller.axies.move.vector;
-   inputs.look.vector += controller.axies.look.vector;
-   inputs.look.vector += controller.mouse.move_delta.vector;
-
-   // Don't want movement magnitude > 1
-   inputs.move = inputs.move.normalizeZero();
-
-   return inputs;
 }
 
