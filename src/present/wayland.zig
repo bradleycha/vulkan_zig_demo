@@ -594,6 +594,11 @@ pub const Compositor = struct {
          return;
       }
 
+      if (key_code == @intFromEnum(bind_set.respawn)) {
+         controller.buttons.press(.respawn);
+         return;
+      }
+
       return;
    }
 
@@ -635,6 +640,11 @@ pub const Compositor = struct {
 
       if (key_code == @intFromEnum(bind_set.move_down)) {
          controller.buttons.release(.crouch);
+         return;
+      }
+
+      if (key_code == @intFromEnum(bind_set.respawn)) {
+         controller.buttons.release(.respawn);
          return;
       }
 
@@ -1037,6 +1047,7 @@ pub const Bind = enum(u32) {
    escape      = 1,
    tab         = 15,
    w           = 17,
+   r           = 19,
    a           = 32,
    s           = 31,
    d           = 30,

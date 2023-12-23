@@ -22,6 +22,18 @@ const WINDOW_TITLE_UPDATE_TIME_SECONDS = 1.0;
 const SPIN_SPEED                       = 2.0;
 const MOUSE_SENSITIVITY                = 8.0;
 const MOVE_SPEED                       = 5.0;
+const CAMERA_SPAWN_POINT               = graphics.Camera{
+   .position = .{.xyz = .{
+      .x =  1.0,
+      .y =  0.0,
+      .z = -2.5,
+   }},
+   .angles = .{.angles = .{
+      .pitch   = 0.0,
+      .yaw     = std.math.pi / -10.0,
+      .roll    = 0.0,
+   }},
+};
 
 comptime {
    const float_mode = blk: {
@@ -63,6 +75,7 @@ pub fn main() MainError!void {
       .move_right    = .d,
       .move_up       = .space,
       .move_down     = .left_shift,
+      .respawn       = .r
    }) catch return error.WindowCreateError;
    defer window.destroy(allocator);
 
@@ -125,18 +138,7 @@ pub fn main() MainError!void {
 
    var theta : f32 = 0.0;
 
-   camera.* = .{
-      .position = .{.xyz = .{
-         .x =  1.0,
-         .y =  0.0,
-         .z = -2.5,
-      }},
-      .angles = .{.angles = .{
-         .pitch   = 0.0,
-         .yaw     = std.math.pi / -10.0,
-         .roll    = 0.0,
-      }},
-   };
+   camera.* = CAMERA_SPAWN_POINT;
 
    var mesh_transform_test_pyramid = math.Transform(f32){
       .translation = .{.xyz = .{
@@ -185,6 +187,10 @@ pub fn main() MainError!void {
 
       if (controller.buttons.state(.toggle_focus).isPressed() == true) {
          window.setCursorGrabbed(!window.isCursorGrabbed());
+      }
+
+      if (controller.buttons.state(.respawn).isPressed() == true) {
+         camera.* = CAMERA_SPAWN_POINT;
       }
 
       const time_delta        = @as(f32, @floatFromInt(timer_delta.lap())) / 1000000000.0;

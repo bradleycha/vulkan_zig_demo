@@ -517,6 +517,10 @@ pub const Window = struct {
          return;
       }
 
+      if (key == @intFromEnum(bind_set.respawn)) {
+         control.buttons.press(.respawn);
+      }
+
       return;
    }
 
@@ -565,6 +569,11 @@ pub const Window = struct {
          return;
       }
 
+      if (key == @intFromEnum(bind_set.respawn)) {
+         control.buttons.release(.respawn);
+         return;
+      }
+
       return;
    }
 
@@ -605,6 +614,7 @@ pub const Bind = enum(c.xcb_keycode_t) {
    escape      = 9,
    tab         = 23,
    w           = 25,
+   r           = 27,
    a           = 40,
    s           = 39,
    d           = 38,

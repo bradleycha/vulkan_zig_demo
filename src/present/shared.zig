@@ -53,6 +53,7 @@ pub fn BindSet(comptime bind_type : type) type {
       move_right     : bind_type,
       move_up        : bind_type,
       move_down      : bind_type,
+      respawn        : bind_type,
    };
 }
 
