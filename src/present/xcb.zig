@@ -477,72 +477,58 @@ pub const Window = struct {
 
       if (key == @intFromEnum(bind_set.exit)) {
          control.buttons.press(.exit);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.toggle_focus)) {
          control.buttons.press(.toggle_focus);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.move_forward)) {
          control.buttons.press(.move_forward);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.move_backward)) {
          control.buttons.press(.move_backward);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.move_left)) {
          control.buttons.press(.move_left);
-         return;
       }
       
       if (key == @intFromEnum(bind_set.move_right)) {
          control.buttons.press(.move_right);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.move_up)) {
          control.buttons.press(.jump);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.move_down)) {
          control.buttons.press(.crouch);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.look_up)) {
          control.buttons.press(.look_up);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.look_down)) {
          control.buttons.press(.look_down);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.look_left)) {
          control.buttons.press(.look_left);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.look_right)) {
          control.buttons.press(.look_right);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.accelerate)) {
          control.buttons.press(.accelerate);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.decelerate)) {
          control.buttons.press(.decelerate);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.respawn)) {
@@ -559,77 +545,62 @@ pub const Window = struct {
 
       if (key == @intFromEnum(bind_set.exit)) {
          control.buttons.release(.exit);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.toggle_focus)) {
          control.buttons.release(.toggle_focus);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.move_forward)) {
          control.buttons.release(.move_forward);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.move_backward)) {
          control.buttons.release(.move_backward);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.move_left)) {
          control.buttons.release(.move_left);
-         return;
       }
       
       if (key == @intFromEnum(bind_set.move_right)) {
          control.buttons.release(.move_right);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.move_up)) {
          control.buttons.release(.jump);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.move_down)) {
          control.buttons.release(.crouch);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.look_up)) {
          control.buttons.release(.look_up);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.look_down)) {
          control.buttons.release(.look_down);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.look_left)) {
          control.buttons.release(.look_left);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.look_right)) {
          control.buttons.release(.look_right);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.accelerate)) {
          control.buttons.release(.accelerate);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.decelerate)) {
          control.buttons.release(.decelerate);
-         return;
       }
 
       if (key == @intFromEnum(bind_set.respawn)) {
          control.buttons.release(.respawn);
-         return;
       }
 
       return;

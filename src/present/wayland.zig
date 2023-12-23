@@ -556,62 +556,50 @@ pub const Compositor = struct {
    fn _pressKey(controller : * input.Controller, bind_set : * const f_shared.BindSet(Bind), key_code : u32) void {
       if (key_code == @intFromEnum(bind_set.exit)) {
          controller.buttons.press(.exit);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.toggle_focus)) {
          controller.buttons.press(.toggle_focus);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_forward)) {
          controller.buttons.press(.move_forward);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_backward)) {
          controller.buttons.press(.move_backward);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_left)) {
          controller.buttons.press(.move_left);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_right)) {
          controller.buttons.press(.move_right);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_up)) {
          controller.buttons.press(.jump);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_down)) {
          controller.buttons.press(.crouch);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.look_up)) {
          controller.buttons.press(.look_up);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.look_down)) {
          controller.buttons.press(.look_down);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.look_left)) {
          controller.buttons.press(.look_left);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.look_right)) {
          controller.buttons.press(.look_right);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.accelerate)) {
@@ -624,7 +612,6 @@ pub const Compositor = struct {
 
       if (key_code == @intFromEnum(bind_set.respawn)) {
          controller.buttons.press(.respawn);
-         return;
       }
 
       return;
@@ -633,62 +620,50 @@ pub const Compositor = struct {
    fn _releaseKey(controller : * input.Controller, bind_set : * const f_shared.BindSet(Bind), key_code : u32) void {
       if (key_code == @intFromEnum(bind_set.exit)) {
          controller.buttons.release(.exit);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.toggle_focus)) {
          controller.buttons.release(.toggle_focus);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_forward)) {
          controller.buttons.release(.move_forward);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_backward)) {
          controller.buttons.release(.move_backward);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_left)) {
          controller.buttons.release(.move_left);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_right)) {
          controller.buttons.release(.move_right);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_up)) {
          controller.buttons.release(.jump);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.move_down)) {
          controller.buttons.release(.crouch);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.look_up)) {
          controller.buttons.release(.look_up);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.look_down)) {
          controller.buttons.release(.look_down);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.look_left)) {
          controller.buttons.release(.look_left);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.look_right)) {
          controller.buttons.release(.look_right);
-         return;
       }
 
       if (key_code == @intFromEnum(bind_set.accelerate)) {
@@ -701,7 +676,6 @@ pub const Compositor = struct {
 
       if (key_code == @intFromEnum(bind_set.respawn)) {
          controller.buttons.release(.respawn);
-         return;
       }
 
       return;
