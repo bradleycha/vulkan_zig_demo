@@ -14,7 +14,6 @@ const CAMERA_PITCH_RANGE         = std.math.pi;
 
 pub const FreeflyCamera = struct {
    position : math.Vector3(f32)  = math.Vector3(f32).ZERO,
-   velocity : math.Vector3(f32)  = math.Vector3(f32).ZERO,
    angles   : math.Vector3(f32)  = math.Vector3(f32).ZERO,
 
    pub fn toMatrix(self : * const @This()) math.Matrix4(f32) {
@@ -27,12 +26,17 @@ pub const FreeflyCamera = struct {
    }
 
    pub fn update(self : * @This(), controller : * const input.Controller, time_delta : f32) void {
+      const time_delta_vector = @as(@Vector(3, f32), @splat(time_delta));
+
       const inputs = _calculateInput(controller);
 
-      const new_angles = _calculateNewAngles(&self.angles, &inputs, time_delta);
-      self.angles = new_angles;
+      const angles_delta = _calculateAnglesDelta(&inputs);
+      self.angles.vector += angles_delta.vector * time_delta_vector;
 
-      // TODO: Everything velocity/position
+      const target_velocity = _calculateTargetVelocity(&inputs, &self.angles);
+
+      // TODO: Acceleration and smoothing
+      self.position.vector += target_velocity.vector * time_delta_vector;
 
       return;
    }
@@ -103,15 +107,30 @@ fn _calculateInput(controller : * const input.Controller) _FreeflyCameraInput {
    return inputs;
 }
 
-fn _calculateNewAngles(old_angles : * const math.Vector3(f32), inputs : * const _FreeflyCameraInput, time_delta : f32) math.Vector3(f32) {
+fn _calculateAnglesDelta(inputs : * const _FreeflyCameraInput) math.Vector3(f32) {
    const delta_angles = math.Vector3(f32){.angles = .{
-      .pitch   = inputs.look.xy.y * time_delta,
-      .yaw     = inputs.look.xy.x * time_delta,
+      .pitch   = inputs.look.xy.y,
+      .yaw     = inputs.look.xy.x,
       .roll    = 0.0,
    }};
 
-   const new_angles = old_angles.vector + delta_angles.vector;
-   
-   return .{.vector = new_angles};
+   return delta_angles;
+}
+
+fn _calculateTargetVelocity(inputs : * const _FreeflyCameraInput, current_angles : * const math.Vector3(f32)) math.Vector3(f32) {
+   const velocity = inputs.move;
+
+   const yaw      = current_angles.angles.yaw;
+   const sin_yaw  = std.math.sin(yaw);
+   const cos_yaw  = std.math.cos(yaw);
+
+   // Rotates the x/z move vector to face the same direction as the camera yaw.
+   const velocity_rotated = math.Vector3(f32){.xyz = .{
+      .x = velocity.xyz.z * sin_yaw + velocity.xyz.x * cos_yaw,
+      .y = velocity.xyz.y,
+      .z = velocity.xyz.z * cos_yaw - velocity.xyz.x * sin_yaw,
+   }};
+
+   return velocity_rotated;
 }
 
