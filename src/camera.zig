@@ -3,18 +3,29 @@ const math  = @import("math");
 const input = @import("input");
 
 const MOUSE_SENSITIVITY          = 8.0;
-const MOVE_SPEED_BASE            = 1.0;
+const MOVE_SPEED_BASE            = 2.0;
 const MOVE_SPEED_FAST_MULTIPLIER = 5.0;
 const MOVE_SPEED_SLOW_MULTIPLIER = 0.2;
 const LOOK_SPEED_BASE            = 1.5;
 const LOOK_SPEED_FAST_MULTIPLIER = 4.0;
-const LOOK_SPEED_SLOW_MULTIPLIER = 0.2;
-const ACCELERATION_EXPONENT_BASE = 2.0;
+const LOOK_SPEED_SLOW_MULTIPLIER = 0.3;
+const ACCELERATION_BASE          = 0.995;
 const CAMERA_PITCH_RANGE         = std.math.pi;
 
+comptime {
+   if (MOUSE_SENSITIVITY <= 0.0) {
+      @compileError("mouse sensitivity must be positive and non-zero");
+   }
+
+   if (ACCELERATION_BASE > 1.0) {
+      @compileError("acceleration base must be less than or equal to zero");
+   }
+}
+
 pub const FreeflyCamera = struct {
-   position : math.Vector3(f32)  = math.Vector3(f32).ZERO,
-   angles   : math.Vector3(f32)  = math.Vector3(f32).ZERO,
+   position : math.Vector3(f32) = math.Vector3(f32).ZERO,
+   velocity : math.Vector3(f32) = math.Vector3(f32).ZERO,
+   angles   : math.Vector3(f32) = math.Vector3(f32).ZERO,
 
    pub fn toMatrix(self : * const @This()) math.Matrix4(f32) {
       const matrix_position   = math.Matrix4(f32).createTranslation(&self.position);
@@ -33,10 +44,22 @@ pub const FreeflyCamera = struct {
       const angles_delta = _calculateAnglesDelta(&inputs);
       self.angles.vector += angles_delta.vector * time_delta_vector;
 
-      const target_velocity = _calculateTargetVelocity(&inputs, &self.angles);
+      self.angles.angles.pitch = std.math.clamp(self.angles.angles.pitch, CAMERA_PITCH_RANGE * -0.5, CAMERA_PITCH_RANGE * 0.5);
 
-      // TODO: Acceleration and smoothing
-      self.position.vector += target_velocity.vector * time_delta_vector;
+      const velocity_target   = _calculateTargetVelocity(&inputs, &self.angles);
+      const velocity_current  = self.velocity;
+      const velocity_delta    = velocity_target.vector - velocity_current.vector;
+
+      const acceleration = velocity_delta * @as(@Vector(3, f32), @splat(ACCELERATION_BASE));
+      const acceleration_accumulate = acceleration * time_delta_vector;
+
+      const velocity_prev        = self.velocity.vector;
+      const velocity_curr        = velocity_prev + acceleration_accumulate;
+      const velocity_average     = (velocity_prev + velocity_curr) * @as(@Vector(3, f32), @splat(0.5));
+      const velocity_accumulate  = velocity_average * time_delta_vector;
+
+      self.velocity.vector = velocity_curr;
+      self.position.vector += velocity_accumulate;
 
       return;
    }
