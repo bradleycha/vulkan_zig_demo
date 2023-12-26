@@ -9,7 +9,7 @@ const MOVE_SPEED_SLOW_MULTIPLIER = 0.2;
 const LOOK_SPEED_BASE            = 1.5;
 const LOOK_SPEED_FAST_MULTIPLIER = 4.0;
 const LOOK_SPEED_SLOW_MULTIPLIER = 0.3;
-const ACCELERATION_BASE          = 0.995;
+const VELOCITY_APPROACH_RATE     = 0.5;
 const CAMERA_PITCH_RANGE         = std.math.pi;
 
 comptime {
@@ -17,8 +17,8 @@ comptime {
       @compileError("mouse sensitivity must be positive and non-zero");
    }
 
-   if (ACCELERATION_BASE > 1.0) {
-      @compileError("acceleration base must be less than or equal to zero");
+   if (VELOCITY_APPROACH_RATE <= 0.0 or VELOCITY_APPROACH_RATE >= 1.0) {
+      @compileError("velocity approach rate must be between 0 and 1, exclusive");
    }
 }
 
@@ -46,20 +46,79 @@ pub const FreeflyCamera = struct {
 
       self.angles.angles.pitch = std.math.clamp(self.angles.angles.pitch, CAMERA_PITCH_RANGE * -0.5, CAMERA_PITCH_RANGE * 0.5);
 
-      const velocity_target   = _calculateTargetVelocity(&inputs, &self.angles);
-      const velocity_current  = self.velocity;
-      const velocity_delta    = velocity_target.vector - velocity_current.vector;
 
-      const acceleration = velocity_delta * @as(@Vector(3, f32), @splat(ACCELERATION_BASE));
-      const acceleration_accumulate = acceleration * time_delta_vector;
+      // We want our camera to approach a given velocity using exponential decay.
+      // This means our velocity and position calculations are much more complex
+      // than just multiplying by delta time since our function is exponential.
+      // For this, I derived a general formula for calculating a value using a
+      // recursive approach and its accumulation with respect to delta time:
+      //
+      // -----------------------------------------------------------------------
+      // f(t)  = the value we are modelling at time point 't'
+      // a(n)  = the value on the 'n'th frame
+      // b(n)  = the accumulation of the value on the 'n'th frame
+      // dt    = the time the previous frame took to complete
+      //
+      // a(n+1) = f(f^-1(a(n)) + dt)
+      // b(n+1) = b(n) + Int(f(t)dt, f^-1(a(n)), f^-1(a(n)) + dt)
+      // -----------------------------------------------------------------------
+      //
+      // To model our exponential decay, I chose the following function to model
+      // velocity:
+      //
+      // f(t) = C + A*B^t, t >= 0
+      //
+      // A = initial velocity - target velocity
+      // B = rate of decay, 0 < B < 1
+      // C = target velocity
+      //
+      // If we plug our function into the above formula, we get the following:
+      //
+      // a(n) = current velocity
+      // b(n) = current position
+      //
+      // a(n+1) = C + (a(n) - C)*B^dt
+      // b(n+1) = b(n) + C*dt + (1/ln(B))(a(n+1) - a(n))
+      //
+      // Note how if given a(0) and b(0), we don't have to store the difference
+      // between initial velocity and target velocity.  In addition, this can
+      // all be easily extended to Zig vector types since we use addition,
+      // subtraction, and multiplication for everything except B^dt, which can
+      // just be @splat()'d and multiplied like usual.
+      //
+      // Also worth noting we shouldn't use bases too close to 0 or 1 due to
+      // floating-point inaccuracy causing our code to break down.  A base
+      // closer to 0.5 will have better accuracy.
 
-      const velocity_prev        = self.velocity.vector;
-      const velocity_curr        = velocity_prev + acceleration_accumulate;
-      const velocity_average     = (velocity_prev + velocity_curr) * @as(@Vector(3, f32), @splat(0.5));
-      const velocity_accumulate  = velocity_average * time_delta_vector;
+      const velocity_target = _calculateTargetVelocity(&inputs, &self.angles).vector;
 
-      self.velocity.vector = velocity_curr;
-      self.position.vector += velocity_accumulate;
+      // B^dt
+      const time_delta_exponent = std.math.pow(f32, VELOCITY_APPROACH_RATE, time_delta);
+      const time_delta_exponent_vector = @as(@Vector(3, f32), @splat(time_delta_exponent));
+
+      // a(n) and a(n+1)
+      const velocity_curr = self.velocity.vector;
+      const velocity_next = velocity_target + (velocity_curr - velocity_target) * time_delta_exponent_vector;
+
+      // b(n)
+      const position_curr = self.position.vector;
+
+      // 1/ln(B)
+      const base_logarithm_reciprocal = 1.0 / std.math.log(f32, std.math.e, VELOCITY_APPROACH_RATE);
+      const base_logarithm_reciprocal_vector = @as(@Vector(3, f32), @splat(base_logarithm_reciprocal));
+
+      // C*dt
+      const position_accumulate_linear = velocity_target * time_delta_vector;
+
+      // (1/ln(B))(a(n+1) - a(n))
+      const position_accumulate_exponential = base_logarithm_reciprocal_vector * (velocity_next - velocity_curr);
+
+      // b(n+1)
+      const position_next = position_curr + position_accumulate_linear + position_accumulate_exponential;
+
+      // Happy new years and cheers to 2024!
+      self.velocity.vector = velocity_next;
+      self.position.vector = position_next;
 
       return;
    }
