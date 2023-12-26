@@ -9,7 +9,7 @@ const MOVE_SPEED_SLOW_MULTIPLIER = 0.2;
 const LOOK_SPEED_BASE            = 1.5;
 const LOOK_SPEED_FAST_MULTIPLIER = 4.0;
 const LOOK_SPEED_SLOW_MULTIPLIER = 0.3;
-const VELOCITY_APPROACH_RATE     = 0.5;
+const VELOCITY_APPROACH_RATE     = 0.25;
 const CAMERA_PITCH_RANGE         = std.math.pi;
 
 comptime {
@@ -45,7 +45,6 @@ pub const FreeflyCamera = struct {
       self.angles.vector += angles_delta.vector * time_delta_vector;
 
       self.angles.angles.pitch = std.math.clamp(self.angles.angles.pitch, CAMERA_PITCH_RANGE * -0.5, CAMERA_PITCH_RANGE * 0.5);
-
 
       // We want our camera to approach a given velocity using exponential decay.
       // This means our velocity and position calculations are much more complex
