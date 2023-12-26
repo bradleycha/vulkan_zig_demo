@@ -103,17 +103,33 @@ pub fn main() MainError!void {
 
    std.log.info("loading resources", .{});
 
-   var asset_load_buffers : graphics.Renderer.AssetLoadBuffersStatic(3) = undefined;
-   renderer.loadMeshMultiple(&.{
-      &resources.meshes.MESH_TEST_PLANE,
-      &resources.meshes.MESH_TEST_PYRAMID,
-      &resources.meshes.MESH_TEST_CUBE,
-   }, &asset_load_buffers.toPointers()) catch return error.ResourceLoadError;
-   defer renderer.unloadMeshMultiple(asset_load_buffers.mesh_handles[0..3]);
+   var asset_load_buffers_array : graphics.AssetLoader.LoadBuffersArrayStatic(&.{
+      .meshes     = 3,
+      .textures   = 0,
+   }) = undefined;
 
-   const mesh_handle_test_plane     = asset_load_buffers.mesh_handles[0];
-   const mesh_handle_test_pyramid   = asset_load_buffers.mesh_handles[1];
-   const mesh_handle_test_cube      = asset_load_buffers.mesh_handles[2];
+   renderer.loadAssets(&asset_load_buffers_array.getBuffers(), &.{
+      .meshes     = &.{
+         .{
+            .push_constants   = undefined,
+            .data             = &resources.meshes.MESH_TEST_PLANE,
+         },
+         .{
+            .push_constants   = undefined,
+            .data             = &resources.meshes.MESH_TEST_PYRAMID,
+         },
+         .{
+            .push_constants   = undefined,
+            .data             = &resources.meshes.MESH_TEST_CUBE,
+         },
+      },
+      .textures   = &.{},
+   }) catch return error.ResourceLoadError;
+   defer renderer.unloadAssets(&asset_load_buffers_array.handles);
+
+   const mesh_handle_test_plane     = asset_load_buffers_array.handles[0];
+   const mesh_handle_test_pyramid   = asset_load_buffers_array.handles[1];
+   const mesh_handle_test_cube      = asset_load_buffers_array.handles[2];
 
    const mesh_matrix_test_plane     = renderer.meshTransformMatrixMut(mesh_handle_test_plane);
    const mesh_matrix_test_pyramid   = renderer.meshTransformMatrixMut(mesh_handle_test_pyramid);

@@ -1,10 +1,9 @@
-const std            = @import("std");
-const builtin        = @import("builtin");
-const present        = @import("present");
-const vulkan         = @import("vulkan/index.zig");
-const f_asset_server = @import("asset_server.zig");
-const math           = @import("math");
-const c              = @import("cimports");
+const std      = @import("std");
+const builtin  = @import("builtin");
+const present  = @import("present");
+const vulkan   = @import("vulkan/index.zig");
+const math     = @import("math");
+const c        = @import("cimports");
 
 const FRAMES_IN_FLIGHT = 2;
 
@@ -24,6 +23,8 @@ pub const ShaderSource = vulkan.ShaderSource;
 pub const ClearColor = vulkan.ClearColor;
 
 pub const ImageSource = vulkan.ImageSource;
+
+pub const AssetLoader = @import("asset_loader.zig");
 
 pub const Renderer = struct {
    _allocator                          : std.mem.Allocator,
@@ -45,7 +46,7 @@ pub const Renderer = struct {
    _vulkan_memory_heap_transfer        : vulkan.MemoryHeapTransfer,
    _vulkan_uniform_allocations         : vulkan.UniformAllocations(FRAMES_IN_FLIGHT),
    _vulkan_descriptor_sets             : vulkan.DescriptorSets(FRAMES_IN_FLIGHT),
-   _asset_server                       : f_asset_server.AssetServer,
+   _asset_loader                       : AssetLoader,
    _window                             : * const present.Window,
    _refresh_mode                       : RefreshMode,
    _clear_color                        : ClearColor,
@@ -83,7 +84,7 @@ pub const Renderer = struct {
       VulkanMemoryHeapTransferCreateError,
       VulkanUniformAllocationsCreateError,
       VulkanDescriptorSetsCreateError,
-      AssetServerCreateError,
+      AssetLoaderCreateError,
    };
 
    pub fn create(allocator : std.mem.Allocator, window : * present.Window, create_info : * const CreateInfo) CreateError!@This() {
@@ -236,11 +237,14 @@ pub const Renderer = struct {
       }) catch return error.VulkanDescriptorSetsCreateError;
       errdefer vulkan_descriptor_sets.destroy(vk_device);
 
-      var asset_server = f_asset_server.AssetServer.create(&.{
+      var asset_loader = AssetLoader.create(&.{
          .vk_device                 = vk_device,
-         .vk_transfer_command_pool  = vulkan_command_pools.transfer,
-      }) catch return error.AssetServerCreateError;
-      errdefer asset_server.destroy(allocator, vk_device, vulkan_command_pools.transfer);
+         .vk_command_pool_transfer  = vulkan_command_pools.transfer,
+      }) catch return error.AssetLoaderCreateError;
+      errdefer asset_loader.destroy(allocator, &.{
+         .vk_device                 = vk_device,
+         .vk_command_pool_transfer  = vulkan_command_pools.transfer,
+      });
 
       return @This(){
          ._allocator                         = allocator,
@@ -262,7 +266,7 @@ pub const Renderer = struct {
          ._vulkan_memory_heap_transfer       = vulkan_memory_heap_transfer,
          ._vulkan_uniform_allocations        = vulkan_uniform_allocations,
          ._vulkan_descriptor_sets            = vulkan_descriptor_sets,
-         ._asset_server                      = asset_server,
+         ._asset_loader                      = asset_loader,
          ._window                            = window,
          ._transform_view                    = transform_view,
          ._transform_projection              = transform_projection,
@@ -282,7 +286,11 @@ pub const Renderer = struct {
 
       _ = c.vkDeviceWaitIdle(vk_device);
 
-      self_mut._asset_server.destroy(allocator, vk_device, self._vulkan_command_pools.transfer);
+      self_mut._asset_loader.destroy(allocator, &.{
+         .vk_device                 = vk_device,
+         .vk_command_pool_transfer  = self._vulkan_command_pools.transfer,
+      });
+
       self._vulkan_descriptor_sets.destroy(vk_device);
       self._vulkan_uniform_allocations.destroy(allocator, &self_mut._vulkan_memory_heap_transfer, &self_mut._vulkan_memory_heap_draw);
       self_mut._vulkan_memory_heap_transfer.destroy(allocator, vk_device);
@@ -301,46 +309,38 @@ pub const Renderer = struct {
       return;
    }
 
-   pub const AssetLoadBuffersStatic = f_asset_server.AssetServer.LoadBuffersStatic;
-
-   pub const AssetLoadBuffersDynamic = f_asset_server.AssetServer.LoadBuffersDynamic;
-
-   pub const AssetLoadBuffersPointers = f_asset_server.AssetServer.LoadBuffersPointers;
-
-   pub const AssetLoadError = f_asset_server.AssetServer.LoadError;
-
-   pub const MeshHandle = f_asset_server.AssetServer.MeshHandle;
-
-   pub const TextureHandle = f_asset_server.AssetServer.TextureHandle;
-
-   pub fn loadMeshMultiple(self : * @This(), meshes : [] const * const types.Mesh, load_buffers_pointers : * const AssetLoadBuffersPointers) AssetLoadError!void {
-      return self._asset_server.loadMeshMultiple(self._allocator, &.{
-         .meshes                 = meshes,
-         .load_buffers_pointers  = load_buffers_pointers,
-         .vk_device              = self._vulkan_device.vk_device,
-         .vk_queue_transfer      = self._vulkan_device.queues.transfer,
-         .heap_draw              = &self._vulkan_memory_heap_draw,
-         .heap_transfer          = &self._vulkan_memory_heap_transfer,
+   pub fn loadAssets(self : * @This(), load_buffers : * const AssetLoader.LoadBuffers, load_items : * const AssetLoader.LoadItems) AssetLoader.LoadError!void {
+      return self._asset_loader.load(load_buffers, load_items, &.{
+         // Will pass required objects here in the future
       });
    }
 
-   pub fn unloadMeshMultiple(self : * @This(), meshes : [] const MeshHandle) void {
-      return self._asset_server.unloadMeshMultiple(self._allocator, &.{
-         .meshes        = meshes,
-         .vk_device     = self._vulkan_device.vk_device,
-         .heap_draw     = &self._vulkan_memory_heap_draw,
-         .heap_transfer = &self._vulkan_memory_heap_transfer,
+   pub fn unloadAssets(self : * @This(), handles : [] const AssetLoader.Handle) void {
+      return self._asset_loader.unload(handles, &.{
+         // Will pass required objects here in the future
       });
    }
 
-   pub fn meshTransformMatrix(self : * const @This(), mesh_handle : MeshHandle) * const math.Matrix4(f32) {
-      const object = self._asset_server.getMesh(mesh_handle);
-
-      return &object.push_constants.transform_mesh;
+   pub fn getAsset(self : * const @This(), handle : AssetLoader.Handle) * const AssetLoader.LoadItem {
+      return self._asset_loader.get(handle);
    }
 
-   pub fn meshTransformMatrixMut(self : * @This(), mesh_handle : MeshHandle) * math.Matrix4(f32) {
-      return @constCast(self.meshTransformMatrix(mesh_handle));
+   pub fn getAssetMut(self : * @This(), handle : AssetLoader.Handle) * AssetLoader.LoadItem {
+      return self._asset_loader.getMut(handle);
+   }
+
+   pub fn meshTransformMatrix(self : * const @This(), mesh_handle : AssetLoader.Handle) * const math.Matrix4(f32) {
+      const load_item = self.getAsset(mesh_handle);
+      const mesh = &load_item.variant.mesh;
+
+      return &mesh.push_constants.transform_mesh;
+   }
+
+   pub fn meshTransformMatrixMut(self : * @This(), mesh_handle : AssetLoader.Handle) * math.Matrix4(f32) {
+      const load_item = self.getAssetMut(mesh_handle);
+      const mesh = &load_item.variant.mesh;
+
+      return &mesh.push_constants.transform_mesh;
    }
 
    pub fn viewTransform(self : * const @This()) * const math.Matrix4(f32) {
@@ -360,13 +360,13 @@ pub const Renderer = struct {
       VulkanUniformsTransferError,
    };
 
-   pub fn drawFrame(self : * @This(), mesh_handles : [] const MeshHandle) DrawError!void {
+   pub fn drawFrame(self : * @This(), mesh_handles : [] const AssetLoader.Handle) DrawError!void {
       while (try _drawFrameWithSwapchainUpdates(self, mesh_handles) == false) {}
       return;
    }
 };
 
-fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Renderer.MeshHandle) Renderer.DrawError!bool {
+fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const AssetLoader.Handle) Renderer.DrawError!bool {
    var vk_result : c.VkResult = undefined;
 
    const frame_index = self._frame_index;
@@ -437,15 +437,15 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
       else                             => unreachable,
    }
 
-   self._asset_server.cleanupFreeMemory(self._allocator, vk_device, &self._vulkan_memory_heap_transfer);
-
-   for (mesh_handles) |handle| {
-      self._asset_server.pollMeshLoadStatus(vk_device, handle);
-   }
-
    const transform_view_projection = self._transform_projection.multiplyMatrix(&self._transform_view);
 
    self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer).transform_view_projection = transform_view_projection;
+
+   for (mesh_handles) |mesh_handle| {
+      self._asset_loader.poll(mesh_handle, &.{
+
+      });
+   }
 
    try _recordRenderPass(mesh_handles, &.{
       .vk_command_buffer            = vk_command_buffer,
@@ -458,7 +458,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ren
       .allocation_uniform_transfer  = allocation_uniform_transfer,
       .allocation_uniform_draw      = allocation_uniform_draw,
       .clear_color                  = &self._clear_color,
-      .asset_server                 = &self._asset_server,
+      .asset_loader                 = &self._asset_loader,
    });
 
    const vk_info_submit_render_pass = c.VkSubmitInfo{
@@ -598,10 +598,10 @@ const RecordInfo = struct {
    allocation_uniform_transfer   : vulkan.MemoryHeap.Allocation,
    allocation_uniform_draw       : vulkan.MemoryHeap.Allocation,
    clear_color                   : * const ClearColor,
-   asset_server                  : * const f_asset_server.AssetServer,
+   asset_loader                  : * const AssetLoader,
 };
 
-fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : * const RecordInfo) Renderer.DrawError!void {
+fn _recordRenderPass(mesh_handles : [] const AssetLoader.Handle, record_info : * const RecordInfo) Renderer.DrawError!void {
    var vk_result : c.VkResult = undefined;
 
    const vk_command_buffer             = record_info.vk_command_buffer;
@@ -616,7 +616,7 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
    const allocation_uniform_transfer   = record_info.allocation_uniform_transfer;
    const allocation_uniform_draw       = record_info.allocation_uniform_draw;
    const clear_color                   = record_info.clear_color;
-   const asset_server                  = record_info.asset_server;
+   const asset_loader                  = record_info.asset_loader;
 
    const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
       .sType            = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -692,24 +692,25 @@ fn _recordRenderPass(mesh_handles : [] const Renderer.MeshHandle, record_info : 
    c.vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
 
    for (mesh_handles) |mesh_handle| {
-      const mesh_object = asset_server.getMesh(mesh_handle);
+      const load_item = asset_loader.get(mesh_handle);
+      const mesh = &load_item.variant.mesh;
 
       // If the mesh is in the middle of loading, don't draw it but also don't
       // block the thread.  Simply skip over it in the draw command.
-      if (mesh_object.load_status == .pending) {
+      if (load_item.status == .pending) {
          continue;
       }
 
-      const vk_buffer_draw_offset_vertex  = @as(u64, mesh_object.allocation.offset);
-      const vk_buffer_draw_offset_index   = @as(u64, mesh_object.allocation.offset + mesh_object.allocation.bytes - mesh_object.indices * @sizeOf(types.Mesh.IndexElement));
+      const vk_buffer_draw_offset_vertex  = @as(u64, mesh.allocation.offset);
+      const vk_buffer_draw_offset_index   = @as(u64, mesh.allocation.offset + mesh.allocation.bytes - mesh.indices * @sizeOf(types.Mesh.IndexElement));
 
-      c.vkCmdPushConstants(vk_command_buffer, vk_pipeline_layout, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(types.PushConstants), &mesh_object.push_constants);
+      c.vkCmdPushConstants(vk_command_buffer, vk_pipeline_layout, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(types.PushConstants), &mesh.push_constants);
 
       c.vkCmdBindVertexBuffers(vk_command_buffer, 0, 1, &vk_buffer_draw, &vk_buffer_draw_offset_vertex);
 
       c.vkCmdBindIndexBuffer(vk_command_buffer, vk_buffer_draw, vk_buffer_draw_offset_index, c.VK_INDEX_TYPE_UINT16);
 
-      c.vkCmdDrawIndexed(vk_command_buffer, mesh_object.indices, 1, 0, 0, 0);
+      c.vkCmdDrawIndexed(vk_command_buffer, mesh.indices, 1, 0, 0, 0);
    }
 
    c.vkCmdEndRenderPass(vk_command_buffer);
