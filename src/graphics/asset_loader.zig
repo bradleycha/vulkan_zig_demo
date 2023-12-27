@@ -252,12 +252,14 @@ pub const LoadBuffers = blk: {
 };
 
 const _LoadBuffersChecked = struct {
-   counts   : LoadBuffersArraySize,
-   handles  : [*] Handle,
+   counts                     : LoadBuffersArraySize,
+   handles                    : [*] Handle,
+   mesh_buffer_copy_regions   : [*] c.VkBufferCopy,
 };
 
 const _LoadBuffersUnchecked = struct {
-   handles  : [*] Handle,
+   handles                    : [*] Handle,
+   mesh_buffer_copy_regions   : [*] c.VkBufferCopy,
 };
 
 pub const LoadBuffersArraySize = struct {
@@ -267,12 +269,14 @@ pub const LoadBuffersArraySize = struct {
 
 pub fn LoadBuffersArrayStatic(comptime COUNTS : * const LoadBuffersArraySize) type {
    return struct {
-      handles  : [COUNTS.meshes + COUNTS.textures] Handle,
+      handles                    : [COUNTS.meshes + COUNTS.textures] Handle,
+      mesh_buffer_copy_regions   : [COUNTS.meshes]                   c.VkBufferCopy,
 
       pub fn getBuffers(self : * @This()) LoadBuffers {
          var load_buffers : LoadBuffers = undefined;
 
-         load_buffers.handles = &self.handles;
+         load_buffers.handles                   = &self.handles;
+         load_buffers.mesh_buffer_copy_regions  = &self.mesh_buffer_copy_regions;
 
          if (@hasField(LoadBuffers, "counts") == true) {
             load_buffers.counts = COUNTS.*;
@@ -388,11 +392,64 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
    const handles_meshes    = load_buffers.handles[0..load_items.meshes.len];
    const handles_textures  = load_buffers.handles[load_items.meshes.len..load_items.textures.len];
 
-   // TODO: Implement 4-7
-   _ = handles_meshes;
+   // Offset into the transfer allocation, used to accumulate all our data
+   var transfer_allocation_offset : u32 = 0;
+
+   // Initialize all the mesh load items
+   for (load_items.meshes, handles_meshes, load_buffers.mesh_buffer_copy_regions, 0..load_items.meshes.len) |*mesh, handle_mesh, *mesh_buffer_copy_region, i| {
+      errdefer for (handles_meshes[0..i]) |mesh_handle_old| {
+         const mesh_load_item = self.getMut(mesh_handle_old).variant.mesh;
+
+         memory_heap_draw.memory_heap.free(allocator, mesh_load_item.allocation);
+      };
+
+      const load_item = _getAllowDestroyedMut(self, handle_mesh);
+
+      const mesh_bytes     = _calculateMeshBytes(mesh);
+      const mesh_pointers  = _calculateMeshPointers(&mesh_bytes, transfer_allocation_offset, memory_heap_transfer.mapping);
+
+      // Attempt to create the draw heap allocation
+      const allocation_draw = try memory_heap_draw.memory_heap.allocate(allocator, &.{
+         .alignment  = MESH_BYTE_ALIGNMENT,
+         .bytes      = mesh_bytes.total,
+      });
+      errdefer memory_heap_draw.memory_heap.free(allocator, allocation_draw);
+
+      // Copy from user buffer into transfer allocation
+      @memcpy(mesh_pointers.vertices, mesh.data.vertices);
+      @memcpy(mesh_pointers.indices, mesh.data.indices);
+
+      // Record the copy command info
+      mesh_buffer_copy_region.* = .{
+         .srcOffset  = allocation_transfer.offset + transfer_allocation_offset,
+         .dstOffset  = allocation_draw.offset,
+         .size       = mesh_bytes.total,
+      };
+
+      // Initialize the load item
+      load_item.* = .{
+         .status  = .pending,
+         .variant = .{.mesh = .{
+            .push_constants   = mesh.push_constants orelse undefined,
+            .allocation       = allocation_draw,
+            .indices          = @intCast(mesh.data.indices.len),
+         }},
+      };
+
+      // Advance within the transfer allocation
+      transfer_allocation_offset += mesh_bytes.total_aligned;
+   }
+   errdefer for (handles_meshes) |mesh_handle| {
+      const mesh_load_item = &self.getMut(mesh_handle).variant.mesh;
+
+      memory_heap_draw.memory_heap.free(allocator, mesh_load_item.allocation);
+   };
+
+   // TODO: Deal with texture loading
+
+   // TODO: Implement 5-7
    _ = handles_textures;
    _ = vk_queue_transfer;
-   _ = memory_heap_draw;
    unreachable;
 }
 
@@ -463,6 +520,24 @@ fn _calculateMeshBytes(mesh : * const LoadItems.Mesh) MeshBytes {
    };
 }
 
+const MeshPointers = struct {
+   vertices : [*] root.types.Vertex,
+   indices  : [*] root.types.Mesh.IndexElement,
+};
+
+fn _calculateMeshPointers(mesh_bytes : * const MeshBytes, offset : u32, mapping : * anyopaque) MeshPointers {
+   const mapping_int          = @intFromPtr(mapping);
+   const mapping_int_offset   = mapping_int + offset;
+
+   const vertices_int   = mapping_int_offset + mesh_bytes.vertices;
+   const indices_int    = vertices_int + mesh_bytes.indices;
+
+   const vertices = @as([*] root.types.Vertex, @ptrFromInt(vertices_int));
+   const indices  = @as([*] root.types.Mesh.IndexElement, @ptrFromInt(indices_int));
+
+   return .{.vertices = vertices, .indices = indices};
+}
+
 const TextureBytesAlignment = struct {
    alignment      : u32,
    total          : u32,
@@ -517,7 +592,7 @@ fn _assignUniqueHandles(self : * AssetLoader, allocator : std.mem.Allocator, han
 fn _freeTrailingDestroyedLoadItems(self : * AssetLoader, allocator : std.mem.Allocator) void {
    var trimmed_length = self.load_items.items.len;
 
-   while (trimmed_length != 0 and self.load_items[trimmed_length - 1].status != .destroyed) {
+   while (trimmed_length != 0 and self.load_items.items[trimmed_length - 1].status != .destroyed) {
       trimmed_length -= 1;
    }
 
