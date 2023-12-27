@@ -309,13 +309,13 @@ pub const Renderer = struct {
       return;
    }
 
-   pub fn loadAssets(self : * @This(), load_buffers : * const AssetLoader.LoadBuffers, load_items : * const AssetLoader.LoadItems) AssetLoader.LoadError!void {
+   pub fn loadAssets(self : * @This(), load_buffers : * const AssetLoader.LoadBuffers, load_items : * const AssetLoader.LoadItems) AssetLoader.LoadError!bool {
       return self._asset_loader.load(load_buffers, load_items, &.{
          // Will pass required objects here in the future
       });
    }
 
-   pub fn unloadAssets(self : * @This(), handles : [] const AssetLoader.Handle) void {
+   pub fn unloadAssets(self : * @This(), handles : [] const AssetLoader.Handle) bool {
       return self._asset_loader.unload(handles, &.{
          // Will pass required objects here in the future
       });
@@ -441,11 +441,9 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ass
 
    self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer).transform_view_projection = transform_view_projection;
 
-   for (mesh_handles) |mesh_handle| {
-      self._asset_loader.poll(mesh_handle, &.{
+   while (self._asset_loader.poll(&.{
 
-      });
-   }
+   })) {}
 
    try _recordRenderPass(mesh_handles, &.{
       .vk_command_buffer            = vk_command_buffer,

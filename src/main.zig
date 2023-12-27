@@ -108,7 +108,7 @@ pub fn main() MainError!void {
       .textures   = 0,
    }) = undefined;
 
-   renderer.loadAssets(&asset_load_buffers_array.getBuffers(), &.{
+   _ = renderer.loadAssets(&asset_load_buffers_array.getBuffers(), &.{
       .meshes     = &.{
          .{
             .push_constants   = undefined,
@@ -125,7 +125,7 @@ pub fn main() MainError!void {
       },
       .textures   = &.{},
    }) catch return error.ResourceLoadError;
-   defer renderer.unloadAssets(&asset_load_buffers_array.handles);
+   defer _ = renderer.unloadAssets(&asset_load_buffers_array.handles);
 
    const mesh_handle_test_plane     = asset_load_buffers_array.handles[0];
    const mesh_handle_test_pyramid   = asset_load_buffers_array.handles[1];

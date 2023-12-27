@@ -194,14 +194,25 @@ fn _checkLoadItem(load_item : * const LoadItem) void {
    return;
 }
 
+pub fn isBusy(self : * const AssetLoader, vk_device : c.VkDevice) bool {
+   // TODO: Implement
+   _ = self;
+   _ = vk_device;
+   unreachable;
+}
+
+// All of the below functions return a boolean instead of null.  This signifies
+// if the asset loader is in the middle of loading the previous data or not.
+// 'true' means the function completed, while 'false' means the asset loader
+// was busy with the previous asset loading.
+
 pub const PollInfo = struct {
    // TODO: Implement
 };
 
-pub fn poll(self : * AssetLoader, handle : Handle, poll_info : * const PollInfo) void {
+pub fn poll(self : * AssetLoader, poll_info : * const PollInfo) bool {
    // TODO: Implement
    _ = self;
-   _ = handle;
    _ = poll_info;
    unreachable;
 }
@@ -269,7 +280,7 @@ pub const LoadError = error {
    // TODO: Implement
 };
 
-pub fn load(self : * AssetLoader, load_buffers : * const LoadBuffers, load_items : * const LoadItems, load_info : * const LoadInfo) LoadError!void {
+pub fn load(self : * AssetLoader, load_buffers : * const LoadBuffers, load_items : * const LoadItems, load_info : * const LoadInfo) LoadError!bool {
    // TODO: Implement
    _ = self;
    _ = load_buffers;
@@ -282,7 +293,8 @@ pub const UnloadInfo = struct {
    // TODO: Implement
 };
 
-pub fn unload(self : * AssetLoader, handles : [] const Handle, unload_info : * const UnloadInfo) void {
+pub fn unload(self : * AssetLoader, handles : [] const Handle, unload_info : * const UnloadInfo) bool {
+   // TODO: Implement
    _ = self;
    _ = handles;
    _ = unload_info;
