@@ -1,6 +1,7 @@
 const std      = @import("std");
 const math     = @import("math");
 const c        = @import("cimports");
+const root     = @import("index.zig");
 const vulkan   = @import("vulkan/index.zig");
 
 const AssetLoader = @This();
@@ -65,7 +66,7 @@ pub fn create(create_info : * const CreateInfo) CreateError!AssetLoader {
    const vk_info_create_fence_ready = c.VkFenceCreateInfo{
       .sType   = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
       .pNext   = null,
-      .flags   = 0x00000000,
+      .flags   = c.VK_FENCE_CREATE_SIGNALED_BIT,
    };
 
    var vk_fence_ready : c.VkFence = undefined;
@@ -219,7 +220,7 @@ pub const PollInfo = struct {
    memory_heap_transfer : * vulkan.MemoryHeapTransfer,
 };
 
-pub fn poll(self : * AssetLoader, poll_info : * const PollInfo) bool {
+pub fn poll(self : * AssetLoader, allocator : std.mem.Allocator, poll_info : * const PollInfo) bool {
    const vk_device            = poll_info.vk_device;
    const memory_heap_transfer = poll_info.memory_heap_transfer;
 
@@ -227,9 +228,19 @@ pub fn poll(self : * AssetLoader, poll_info : * const PollInfo) bool {
       return false;
    }
 
-   // TODO: Implement
-   _ = memory_heap_transfer;
-   unreachable;
+   if(self.allocation_transfer.offset != NULL_ALLOCATION_OFFSET) {
+      memory_heap_transfer.memory_heap.free(allocator, self.allocation_transfer);
+   }
+
+   for (self.load_items.items) |*load_item| {
+      if (load_item.status != .pending) {
+         continue;
+      }
+
+      load_item.status = .ready;
+   }
+
+   return true;
 }
 
 pub const LoadBuffers = blk: {
@@ -278,33 +289,77 @@ pub const LoadItems = struct {
    textures : [] const @This().Texture,
 
    pub const Mesh = struct {
-      push_constants : vulkan.types.PushConstants,
+      push_constants : ? vulkan.types.PushConstants,
       data           : * const vulkan.types.Mesh,
    };
 
    pub const Texture = struct {
-      // TODO: Implement
+      data  : root.ImageSource,
    };
 };
 
 pub const LoadInfo = struct {
-   vk_device   : c.VkDevice,
+   vk_device            : c.VkDevice,
+   vk_queue_transfer    : c.VkQueue,
+   memory_heap_transfer : * vulkan.MemoryHeapTransfer,
+   memory_heap_draw     : * vulkan.MemoryHeapDraw,
 };
 
 pub const LoadError = error {
-   // TODO: Implement
+   OutOfMemory,
 };
 
-pub fn load(self : * AssetLoader, load_buffers : * const LoadBuffers, load_items : * const LoadItems, load_info : * const LoadInfo) LoadError!bool {
-   const vk_device   = load_info.vk_device;
+pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : * const LoadBuffers, load_items : * const LoadItems, load_info : * const LoadInfo) LoadError!bool {
+   const vk_device            = load_info.vk_device;
+   const vk_queue_transfer    = load_info.vk_queue_transfer;
+   const memory_heap_transfer = load_info.memory_heap_transfer;
+   const memory_heap_draw     = load_info.memory_heap_draw;
+
+   const load_meshes_count    = load_items.meshes.len;
+   const load_textures_count  = load_items.textures.len;
+   const load_items_count     = load_meshes_count + load_textures_count;
+
+   // Runtime safety check - make sure we don't have a buffer overrun
+   if (std.debug.runtime_safety == true and @hasField(LoadBuffers, "counts")) {
+      const ERROR_MESHES   = "load buffers with size to store {} meshes is not large enough to load {} meshes";
+      const ERROR_TEXTURES = "load buffers with size to store {} textures is not large enough to load {} textures";
+
+      const BUFSIZE_ERROR_MESHES    = comptime std.fmt.count(ERROR_MESHES, .{std.math.maxInt(usize), std.math.maxInt(usize)});
+      const BUFSIZE_ERROR_TEXTURES  = comptime std.fmt.count(ERROR_TEXTURES, .{std.math.maxInt(usize), std.math.maxInt(usize)});
+
+      const BUFSIZE_ERROR_FORMAT = @max(BUFSIZE_ERROR_MESHES, BUFSIZE_ERROR_TEXTURES);
+
+      var error_format_buffer : [BUFSIZE_ERROR_FORMAT] u8 = undefined;
+
+      const counts = load_buffers.counts;
+
+      if (load_meshes_count > counts.meshes) {
+         @panic(std.fmt.bufPrint(&error_format_buffer, ERROR_MESHES, .{counts.meshes, load_meshes_count}) catch unreachable);
+      }
+      if (load_textures_count > counts.textures) {
+         @panic(std.fmt.bufPrint(&error_format_buffer, ERROR_TEXTURES, .{counts.textures, load_textures_count}) catch unreachable);
+      }
+   }
 
    if (self.isBusy(vk_device) == true) {
       return false;
    }
 
+   // Here is the general structure of this function:
+   // 1. Calculate the total required bytes for everything
+   // 2. Create a transfer allocation to store everything on
+   // 3. Assign unique handles to every item we want to create
+   // 4. Create all the mesh items and record the vkCmdCopy structs
+   // 5. Create all the texture items and record the command buffer thing
+   // 6. Issue the transfer command
+   // 7. Free and overwrite the stored transfer allocation and return
+
    // TODO: Implement
-   _ = load_buffers;
-   _ = load_items;
+   _ = allocator;
+   _ = load_items_count;
+   _ = vk_queue_transfer;
+   _ = memory_heap_transfer;
+   _ = memory_heap_draw;
    unreachable;
 }
 
@@ -312,7 +367,7 @@ pub const UnloadInfo = struct {
    vk_device   : c.VkDevice,
 };
 
-pub fn unload(self : * AssetLoader, handles : [] const Handle, unload_info : * const UnloadInfo) bool {
+pub fn unload(self : * AssetLoader, allocator : std.mem.Allocator, handles : [] const Handle, unload_info : * const UnloadInfo) bool {
    const vk_device = unload_info.vk_device;
 
    if (self.isBusy(vk_device) == true) {
@@ -320,6 +375,7 @@ pub fn unload(self : * AssetLoader, handles : [] const Handle, unload_info : * c
    }
 
    // TODO: Implement
+   _ = allocator;
    _ = handles;
    unreachable;
 }

@@ -111,15 +111,15 @@ pub fn main() MainError!void {
    _ = renderer.loadAssets(&asset_load_buffers_array.getBuffers(), &.{
       .meshes     = &.{
          .{
-            .push_constants   = undefined,
+            .push_constants   = null,
             .data             = &resources.meshes.MESH_TEST_PLANE,
          },
          .{
-            .push_constants   = undefined,
+            .push_constants   = null,
             .data             = &resources.meshes.MESH_TEST_PYRAMID,
          },
          .{
-            .push_constants   = undefined,
+            .push_constants   = null,
             .data             = &resources.meshes.MESH_TEST_CUBE,
          },
       },

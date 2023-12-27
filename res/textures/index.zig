@@ -5,21 +5,21 @@ const graphics = @import("graphics");
 
 pub const TILE = graphics.ImageSource{
    .data    = @embedFile("tile.raw"),
-   .format  = .rgb8888,
+   .format  = .rgba8888,
    .width   = 32,
    .height  = 32,
 };
 
 pub const GRASS = graphics.ImageSource{
    .data    = @embedFile("grass.raw"),
-   .format  = .rgb8888,
+   .format  = .rgba8888,
    .width   = 32,
    .height  = 32,
 };
 
 pub const ROCK = graphics.ImageSource{
    .data    = @embedFile("rock.raw"),
-   .format  = .rgb8888,
+   .format  = .rgba8888,
    .width   = 32,
    .height  = 32,
 };

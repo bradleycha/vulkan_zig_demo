@@ -310,13 +310,16 @@ pub const Renderer = struct {
    }
 
    pub fn loadAssets(self : * @This(), load_buffers : * const AssetLoader.LoadBuffers, load_items : * const AssetLoader.LoadItems) AssetLoader.LoadError!bool {
-      return self._asset_loader.load(load_buffers, load_items, &.{
-         .vk_device  = self._vulkan_device.vk_device,
+      return self._asset_loader.load(self._allocator, load_buffers, load_items, &.{
+         .vk_device              = self._vulkan_device.vk_device,
+         .vk_queue_transfer      = self._vulkan_device.queues.transfer,
+         .memory_heap_transfer   = &self._vulkan_memory_heap_transfer,
+         .memory_heap_draw       = &self._vulkan_memory_heap_draw,
       });
    }
 
    pub fn unloadAssets(self : * @This(), handles : [] const AssetLoader.Handle) bool {
-      return self._asset_loader.unload(handles, &.{
+      return self._asset_loader.unload(self._allocator, handles, &.{
          .vk_device  = self._vulkan_device.vk_device,
       });
    }
@@ -441,7 +444,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ass
 
    self._vulkan_uniform_allocations.getUniformBufferObjectMut(&self._vulkan_memory_heap_transfer).transform_view_projection = transform_view_projection;
 
-   while (self._asset_loader.poll(&.{
+   while (self._asset_loader.poll(self._allocator, &.{
       .vk_device              = vk_device,
       .memory_heap_transfer   = &self._vulkan_memory_heap_transfer,
    })) {}
