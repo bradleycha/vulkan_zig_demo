@@ -322,7 +322,8 @@ pub const Renderer = struct {
 
    pub fn unloadAssets(self : * @This(), handles : [] const AssetLoader.Handle) bool {
       return self._asset_loader.unload(self._allocator, handles, &.{
-         .vk_device  = self._vulkan_device.vk_device,
+         .vk_device        = self._vulkan_device.vk_device,
+         .memory_heap_draw = &self._vulkan_memory_heap_draw,
       });
    }
 
@@ -454,7 +455,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.
    while (self._asset_loader.poll(self._allocator, &.{
       .vk_device              = vk_device,
       .memory_heap_transfer   = &self._vulkan_memory_heap_transfer,
-   })) {}
+   }) == false) {}
 
    try _recordRenderPass(models, &.{
       .vk_command_buffer            = vk_command_buffer,

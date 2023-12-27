@@ -38,10 +38,20 @@ pub const Mesh = struct {
    push_constants : vulkan.types.PushConstants,
    allocation     : vulkan.MemoryHeap.Allocation,
    indices        : u32,
+
+   fn destroy(self : @This(), allocator : std.mem.Allocator, memory_heap_draw : * vulkan.MemoryHeapDraw) void {
+      memory_heap_draw.memory_heap.free(allocator, self.allocation);
+      return;
+   }
 };
 
 pub const Texture = struct {
    // TODO: Image, image view, sampler, descriptor set
+
+   fn destroy(self : @This()) void {
+      _ = self;
+      return;
+   }
 };
 
 pub const Handle = usize;
@@ -228,6 +238,7 @@ pub fn poll(self : * AssetLoader, allocator : std.mem.Allocator, poll_info : * c
 
    if(self.allocation_transfer.offset != NULL_ALLOCATION_OFFSET) {
       memory_heap_transfer.memory_heap.free(allocator, self.allocation_transfer);
+      self.allocation_transfer.offset = NULL_ALLOCATION_OFFSET;
    }
 
    for (self.load_items.items) |*load_item| {
@@ -310,12 +321,15 @@ pub const LoadInfo = struct {
 
 pub const LoadError = error {
    OutOfMemory,
+   DeviceLost,
 };
 
 // Upon success and returning true, all the load item handles will be stored
 // in the load buffers 'handles' field.  Meshes will be stored in the order
 // passed in, followed by textures in the order passed in.
 pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : * const LoadBuffers, load_items : * const LoadItems, load_info : * const LoadInfo) LoadError!bool {
+   var vk_result : c.VkResult = undefined;
+
    const vk_device            = load_info.vk_device;
    const vk_queue_transfer    = load_info.vk_queue_transfer;
    const memory_heap_transfer = load_info.memory_heap_transfer;
@@ -391,6 +405,23 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
    const handles_meshes    = load_buffers.handles[0..load_items.meshes.len];
    const handles_textures  = load_buffers.handles[load_items.meshes.len..load_items.meshes.len + load_items.textures.len];
 
+   // Start recording the command buffer, resetting in the case of an error
+   const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
+      .sType            = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .pNext            = null,
+      .flags            = 0x00000000,
+      .pInheritanceInfo = undefined,   // used as primary buffer, so this is ignored
+   };
+
+   vk_result = c.vkBeginCommandBuffer(self.vk_command_buffer_transfer, &vk_info_command_buffer_begin);
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+      else                             => unreachable,
+   }
+   errdefer _ = c.vkResetCommandBuffer(self.vk_command_buffer_transfer, 0x00000000);
+
    // Offset into the transfer allocation, used to accumulate all our data
    var transfer_allocation_offset : u32 = 0;
 
@@ -398,8 +429,7 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
    for (load_items.meshes, handles_meshes, load_buffers.mesh_buffer_copy_regions, 0..load_items.meshes.len) |*mesh, handle_mesh, *mesh_buffer_copy_region, i| {
       errdefer for (handles_meshes[0..i]) |mesh_handle_old| {
          const mesh_load_item = self.getMut(mesh_handle_old).variant.mesh;
-
-         memory_heap_draw.memory_heap.free(allocator, mesh_load_item.allocation);
+         mesh_load_item.destroy(allocator, memory_heap_draw);
       };
 
       const load_item = _getAllowDestroyedMut(self, handle_mesh);
@@ -440,17 +470,23 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
    }
    errdefer for (handles_meshes) |mesh_handle| {
       const mesh_load_item = &self.getMut(mesh_handle).variant.mesh;
-
-      memory_heap_draw.memory_heap.free(allocator, mesh_load_item.allocation);
+      mesh_load_item.destroy(allocator, memory_heap_draw);
    };
+
+   // Record our copy command for all the meshes
+   c.vkCmdCopyBuffer(
+      self.vk_command_buffer_transfer,
+      memory_heap_transfer.memory_heap.vk_buffer,
+      memory_heap_draw.memory_heap.vk_buffer,
+      @intCast(load_items.meshes.len),
+      load_buffers.mesh_buffer_copy_regions,
+   );
 
    // Initialize all the texture load items
    for (load_items.textures, handles_textures, 0..load_items.textures.len) |*texture, texture_handle, i| {
       errdefer for (handles_textures[0..i]) |texture_handle_old| {
          const texture_load_item = &self.getMut(texture_handle_old).variant.texture;
-
-         // TODO: Error cleanup
-         _ = texture_load_item;
+         texture_load_item.destroy();
       };
 
       const load_item = _getAllowDestroyedMut(self, texture_handle);
@@ -470,14 +506,50 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
    }
    errdefer for (handles_textures) |texture_handle| {
       const texture_load_item = &self.getMut(texture_handle).variant.texture;
-
-      // TODO: Error cleanup
-      _ = texture_load_item;
+      texture_load_item.destroy();
    };
 
-   // TODO: Implement 5-7
-   _ = vk_queue_transfer;
-   unreachable;
+   // End the command buffer
+   vk_result = c.vkEndCommandBuffer(self.vk_command_buffer_transfer);
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+      else                             => unreachable,
+   }
+
+   // Reset the fence and submit our command buffer
+   vk_result = c.vkResetFences(vk_device, 1, &self.vk_fence_ready);
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+      else                             => unreachable,
+   }
+
+   const vk_info_queue_submit = c.VkSubmitInfo{
+      .sType                  = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .pNext                  = null,
+      .waitSemaphoreCount     = 0,
+      .pWaitSemaphores        = undefined,
+      .pWaitDstStageMask      = undefined,
+      .commandBufferCount     = 1,
+      .pCommandBuffers        = &self.vk_command_buffer_transfer,
+      .signalSemaphoreCount   = 0,
+      .pSignalSemaphores      = undefined,
+   };
+
+   vk_result = c.vkQueueSubmit(vk_queue_transfer, 1, &vk_info_queue_submit, self.vk_fence_ready);
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+      c.VK_ERROR_DEVICE_LOST           => return error.DeviceLost,
+      else                             => unreachable,
+   }
+
+   // Store our new transfer allocation and return!
+   self.allocation_transfer = allocation_transfer;
+   return true;
 }
 
 const BytesAlignment = struct {
@@ -619,7 +691,7 @@ fn _assignUniqueHandles(self : * AssetLoader, allocator : std.mem.Allocator, han
 fn _freeTrailingDestroyedLoadItems(self : * AssetLoader, allocator : std.mem.Allocator) void {
    var trimmed_length = self.load_items.items.len;
 
-   while (trimmed_length != 0 and self.load_items.items[trimmed_length - 1].status != .destroyed) {
+   while (trimmed_length != 0 and self.load_items.items[trimmed_length - 1].status == .destroyed) {
       trimmed_length -= 1;
    }
 
@@ -629,19 +701,31 @@ fn _freeTrailingDestroyedLoadItems(self : * AssetLoader, allocator : std.mem.All
 }
 
 pub const UnloadInfo = struct {
-   vk_device   : c.VkDevice,
+   vk_device         : c.VkDevice,
+   memory_heap_draw  : * vulkan.MemoryHeapDraw,
 };
 
 pub fn unload(self : * AssetLoader, allocator : std.mem.Allocator, handles : [] const Handle, unload_info : * const UnloadInfo) bool {
-   const vk_device = unload_info.vk_device;
+   const vk_device         = unload_info.vk_device;
+   const memory_heap_draw  = unload_info.memory_heap_draw;
 
    if (self.isBusy(vk_device) == true) {
       return false;
    }
 
-   // TODO: Implement
-   _ = allocator;
-   _ = handles;
-   unreachable;
+   for (handles) |handle| {
+      const load_item = self.getMut(handle);
+
+      load_item.status = .destroyed;
+
+      switch (load_item.variant) {
+         .mesh    => |*mesh|     mesh.destroy(allocator, memory_heap_draw),
+         .texture => |*texture|  texture.destroy(),
+      }
+   }
+
+   _freeTrailingDestroyedLoadItems(self, allocator);
+
+   return true;
 }
 
