@@ -357,13 +357,173 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
    // 6. Issue the transfer command
    // 7. Free and overwrite the stored transfer allocation and return
 
-   // TODO: Implement
-   _ = allocator;
-   _ = load_items_count;
+   // Calculate the required bytes for all the meshes and textures
+   const bytes_transfer = _calculateTotalBytesAndAlignment(load_items.meshes, load_items.textures);
+
+   // If an existing transfer heap allocation exists, free it
+   if (self.allocation_transfer.offset != NULL_ALLOCATION_OFFSET) {
+      memory_heap_transfer.memory_heap.free(allocator, self.allocation_transfer);
+      self.allocation_transfer.offset = NULL_ALLOCATION_OFFSET;
+   }
+
+   // Create the new transfer allocation, but don't store it until the end
+   const allocation_transfer = try memory_heap_transfer.memory_heap.allocate(allocator, &.{
+      .alignment  = bytes_transfer.max_alignment,
+      .bytes      = bytes_transfer.total,
+   });
+   errdefer memory_heap_transfer.memory_heap.free(allocator, allocation_transfer);
+
+   // Assign new unique handle IDs for each mesh and texture
+   try _assignUniqueHandles(self, allocator, load_buffers.handles[0..load_items_count]);
+   errdefer {
+      for (load_buffers.handles[0..load_items_count]) |handle| {
+         const load_item = self.getMut(handle);
+
+         load_item.status = .destroyed;
+      }
+
+      _freeTrailingDestroyedLoadItems(self, allocator);
+   }
+
+   const handles_meshes    = load_buffers.handles[0..load_items.meshes.len];
+   const handles_textures  = load_buffers.handles[load_items.meshes.len..load_items.textures.len];
+
+   // TODO: Implement 4-7
+   _ = handles_meshes;
+   _ = handles_textures;
    _ = vk_queue_transfer;
-   _ = memory_heap_transfer;
    _ = memory_heap_draw;
    unreachable;
+}
+
+const BytesAlignment = struct {
+   total          : u32,
+   max_alignment  : u32,
+};
+
+const MESH_BYTE_ALIGNMENT = blk: {
+   var alignment : comptime_int = @alignOf(root.types.Mesh.IndexElement);
+
+   for (@typeInfo(root.types.Vertex).Struct.fields) |field| {
+      const field_alignment = @alignOf(field.type);
+
+      if (field_alignment > alignment) {
+         alignment = field_alignment;
+      }
+   }
+
+   break :blk alignment;
+};
+
+fn _calculateTotalBytesAndAlignment(meshes : [] const LoadItems.Mesh, textures : [] const LoadItems.Texture) BytesAlignment {
+   var total         : u32 = 0;
+   var max_alignment : u32 = MESH_BYTE_ALIGNMENT;
+
+   for (meshes) |*mesh| {
+      const bytes = _calculateMeshBytes(mesh);
+
+      total += bytes.total_aligned;
+   }
+
+   for (textures) |*texture| {
+      const bytes_alignment = _calculateTextureBytesAlignment(texture);
+
+      total += bytes_alignment.total_aligned;
+
+      if (bytes_alignment.alignment > max_alignment) {
+         max_alignment = bytes_alignment.alignment;
+      }
+   }
+
+   return .{.total = total, .max_alignment = max_alignment};
+}
+
+const MeshBytes = struct {
+   vertices       : u32,
+   indices        : u32,
+   total          : u32,
+   total_aligned  : u32,
+};
+
+fn _calculateMeshBytes(mesh : * const LoadItems.Mesh) MeshBytes {
+   const vertices_count = mesh.data.vertices.len;
+   const indices_count  = mesh.data.indices.len;
+
+   const vertices_bytes = vertices_count * @sizeOf(root.types.Vertex);
+   const indices_bytes  = indices_count * @sizeOf(root.types.Mesh.IndexElement);
+
+   const total = vertices_bytes + indices_bytes;
+   const total_aligned = math.alignForward(usize, total, MESH_BYTE_ALIGNMENT);
+
+   return .{
+      .vertices      = @intCast(vertices_bytes),
+      .indices       = @intCast(indices_bytes),
+      .total         = @intCast(total),
+      .total_aligned = @intCast(total_aligned),
+   };
+}
+
+const TextureBytesAlignment = struct {
+   alignment      : u32,
+   total          : u32,
+   total_aligned  : u32,
+};
+
+fn _calculateTextureBytesAlignment(texture : * const LoadItems.Texture) TextureBytesAlignment {
+   const width             = texture.data.width;
+   const height            = texture.data.height;
+   const bytes_per_pixel   = texture.data.format.bytesPerPixel();
+
+   const total          = width * height * bytes_per_pixel;
+   const total_aligned  = math.alignForward(usize, total, bytes_per_pixel);
+
+   return .{
+      .alignment     = @intCast(bytes_per_pixel),
+      .total         = @intCast(total),
+      .total_aligned = @intCast(total_aligned),
+   };
+}
+
+// This doesn't actually initialize any of the handles.  It only returns free
+// slots and their corresponding handles.
+fn _assignUniqueHandles(self : * AssetLoader, allocator : std.mem.Allocator, handles_dest : [] Handle) error{OutOfMemory}!void {
+   var open_slots_middle : usize = 0;
+   for (self.load_items.items, 0..self.load_items.items.len) |*load_item, i| {
+      if (open_slots_middle == handles_dest.len) {
+         break;
+      }
+
+      if (load_item.status != .destroyed) {
+         continue;
+      }
+
+      handles_dest[open_slots_middle] = i;
+
+      open_slots_middle += 1;
+   }
+
+   const extend_by = handles_dest.len - open_slots_middle;
+   const new_length = self.load_items.items.len + extend_by;
+
+   try self.load_items.resize(allocator, new_length);
+
+   for (handles_dest[open_slots_middle..], 0..extend_by) |*handle_dest, i| {
+      handle_dest.* = i;
+   }
+
+   return;
+}
+
+fn _freeTrailingDestroyedLoadItems(self : * AssetLoader, allocator : std.mem.Allocator) void {
+   var trimmed_length = self.load_items.items.len;
+
+   while (trimmed_length != 0 and self.load_items[trimmed_length - 1].status != .destroyed) {
+      trimmed_length -= 1;
+   }
+
+   self.load_items.shrinkAndFree(allocator, trimmed_length);
+
+   return;
 }
 
 pub const UnloadInfo = struct {
