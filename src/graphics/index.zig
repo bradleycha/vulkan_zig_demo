@@ -24,6 +24,8 @@ pub const ClearColor = vulkan.ClearColor;
 
 pub const ImageSource = vulkan.ImageSource;
 
+pub const ImageSampling = vulkan.ImageSampling;
+
 pub const AssetLoader = @import("asset_loader.zig");
 
 pub const Renderer = struct {

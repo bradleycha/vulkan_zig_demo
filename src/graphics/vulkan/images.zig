@@ -22,6 +22,33 @@ pub const ImageSource = struct {
    };
 };
 
+pub const ImageSampling = struct {
+   filter_minification  : Filter,
+   filter_magnification : Filter,
+   address_mode_u       : AddressMode,
+   address_mode_v       : AddressMode,
+   address_mode_w       : AddressMode,
+
+   pub const Filter = enum(c.VkFilter) {
+      nearest  = c.VK_FILTER_NEAREST,
+      linear   = c.VK_FILTER_LINEAR,
+   };
+
+   pub const AddressModeTag = enum(c.VkSamplerAddressMode) {
+      repeat            = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+      mirrored_repeat   = c.VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,
+      clamp_to_edge     = c.VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+      clamp_to_border   = c.VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+   };
+
+   pub const AddressMode = union(AddressModeTag) {
+      repeat            : void,
+      mirrored_repeat   : void,
+      clamp_to_edge     : void,
+      clamp_to_border   : root.types.Color.Rgba(f32),
+   };
+};
+
 const MEMORY_FLAGS = c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
 pub const MemorySourceImage = struct {

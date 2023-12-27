@@ -125,12 +125,33 @@ pub fn main() MainError!void {
       },
      .textures = &.{
          .{
+            .sampling = .{
+               .filter_minification    = .linear,
+               .filter_magnification   = .linear,
+               .address_mode_u         = .repeat,
+               .address_mode_v         = .repeat,
+               .address_mode_w         = .repeat,
+            },
             .data = &resources.textures.TILE,
          },
          .{
+            .sampling = .{
+               .filter_minification    = .linear,
+               .filter_magnification   = .linear,
+               .address_mode_u         = .repeat,
+               .address_mode_v         = .repeat,
+               .address_mode_w         = .repeat,
+            },
             .data = &resources.textures.GRASS,
          },
          .{
+            .sampling = .{
+               .filter_minification    = .linear,
+               .filter_magnification   = .linear,
+               .address_mode_u         = .repeat,
+               .address_mode_v         = .repeat,
+               .address_mode_w         = .repeat,
+            },
             .data = &resources.textures.ROCK,
          },
       },

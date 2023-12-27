@@ -45,7 +45,6 @@ pub const Texture = struct {
    image : vulkan.Image,
 };
 
-// Generic handle type associated with all load items.
 pub const Handle = usize;
 
 pub const CreateError = error {
@@ -294,8 +293,8 @@ pub const LoadItems = struct {
    };
 
    pub const Texture = struct {
-      // TODO: Include sampling info with the texture
-      data  : * const root.ImageSource,
+      sampling : root.ImageSampling,
+      data     : * const root.ImageSource,
    };
 };
 
