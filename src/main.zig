@@ -105,11 +105,11 @@ pub fn main() MainError!void {
 
    var asset_load_buffers_array : graphics.AssetLoader.LoadBuffersArrayStatic(&.{
       .meshes     = 3,
-      .textures   = 0,
+      .textures   = 3,
    }) = undefined;
 
    _ = renderer.loadAssets(&asset_load_buffers_array.getBuffers(), &.{
-      .meshes     = &.{
+      .meshes = &.{
          .{
             .push_constants   = null,
             .data             = &resources.meshes.MESH_TEST_PLANE,
@@ -123,13 +123,26 @@ pub fn main() MainError!void {
             .data             = &resources.meshes.MESH_TEST_CUBE,
          },
       },
-      .textures   = &.{},
+     .textures = &.{
+         .{
+            .data = &resources.textures.TILE,
+         },
+         .{
+            .data = &resources.textures.GRASS,
+         },
+         .{
+            .data = &resources.textures.ROCK,
+         },
+      },
    }) catch return error.ResourceLoadError;
    defer _ = renderer.unloadAssets(&asset_load_buffers_array.handles);
 
    const mesh_handle_test_plane     = asset_load_buffers_array.handles[0];
    const mesh_handle_test_pyramid   = asset_load_buffers_array.handles[1];
    const mesh_handle_test_cube      = asset_load_buffers_array.handles[2];
+   const texture_handle_tile        = asset_load_buffers_array.handles[3];
+   const texture_handle_grass       = asset_load_buffers_array.handles[4];
+   const texture_handle_rock        = asset_load_buffers_array.handles[5];
 
    const mesh_matrix_test_plane     = renderer.meshTransformMatrixMut(mesh_handle_test_plane);
    const mesh_matrix_test_pyramid   = renderer.meshTransformMatrixMut(mesh_handle_test_pyramid);
@@ -245,9 +258,18 @@ pub fn main() MainError!void {
       mesh_matrix_test_cube.*    = mesh_transform_test_cube.toMatrix();
 
       renderer.drawFrame(&.{
-         mesh_handle_test_plane,
-         mesh_handle_test_pyramid,
-         mesh_handle_test_cube,
+         .{
+            .mesh    = mesh_handle_test_plane,
+            .texture = texture_handle_grass,
+         },
+         .{
+            .mesh    = mesh_handle_test_pyramid,
+            .texture = texture_handle_rock,
+         },
+         .{
+            .mesh    = mesh_handle_test_cube,
+            .texture = texture_handle_tile,
+         },
       }) catch |err| {
          std.log.warn("failed to draw frame: {}", .{err});
       };

@@ -294,7 +294,8 @@ pub const LoadItems = struct {
    };
 
    pub const Texture = struct {
-      data  : root.ImageSource,
+      // TODO: Include sampling info with the texture
+      data  : * const root.ImageSource,
    };
 };
 
@@ -309,6 +310,9 @@ pub const LoadError = error {
    OutOfMemory,
 };
 
+// Upon success and returning true, all the load item handles will be stored
+// in the load buffers 'handles' field.  Meshes will be stored in the order
+// passed in, followed by textures in the order passed in.
 pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : * const LoadBuffers, load_items : * const LoadItems, load_info : * const LoadInfo) LoadError!bool {
    const vk_device            = load_info.vk_device;
    const vk_queue_transfer    = load_info.vk_queue_transfer;

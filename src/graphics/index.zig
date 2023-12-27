@@ -363,13 +363,18 @@ pub const Renderer = struct {
       VulkanUniformsTransferError,
    };
 
-   pub fn drawFrame(self : * @This(), mesh_handles : [] const AssetLoader.Handle) DrawError!void {
-      while (try _drawFrameWithSwapchainUpdates(self, mesh_handles) == false) {}
+   pub const Model = struct {
+      mesh     : AssetLoader.Handle,
+      texture  : AssetLoader.Handle,
+   };
+
+   pub fn drawFrame(self : * @This(), models : [] const Model) DrawError!void {
+      while (try _drawFrameWithSwapchainUpdates(self, models) == false) {}
       return;
    }
 };
 
-fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const AssetLoader.Handle) Renderer.DrawError!bool {
+fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.Model) Renderer.DrawError!bool {
    var vk_result : c.VkResult = undefined;
 
    const frame_index = self._frame_index;
@@ -449,7 +454,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, mesh_handles : [] const Ass
       .memory_heap_transfer   = &self._vulkan_memory_heap_transfer,
    })) {}
 
-   try _recordRenderPass(mesh_handles, &.{
+   try _recordRenderPass(models, &.{
       .vk_command_buffer            = vk_command_buffer,
       .vk_framebuffer               = vk_framebuffer,
       .vk_buffer_transfer           = self._vulkan_memory_heap_transfer.memory_heap.vk_buffer,
@@ -603,7 +608,7 @@ const RecordInfo = struct {
    asset_loader                  : * const AssetLoader,
 };
 
-fn _recordRenderPass(mesh_handles : [] const AssetLoader.Handle, record_info : * const RecordInfo) Renderer.DrawError!void {
+fn _recordRenderPass(models : [] const Renderer.Model, record_info : * const RecordInfo) Renderer.DrawError!void {
    var vk_result : c.VkResult = undefined;
 
    const vk_command_buffer             = record_info.vk_command_buffer;
@@ -693,18 +698,22 @@ fn _recordRenderPass(mesh_handles : [] const AssetLoader.Handle, record_info : *
 
    c.vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
 
-   for (mesh_handles) |mesh_handle| {
-      const load_item = asset_loader.get(mesh_handle);
-      const mesh = &load_item.variant.mesh;
+   for (models) |model| {
+      const load_item_mesh    = asset_loader.get(model.mesh);
+      const load_item_texture = asset_loader.get(model.texture);
+      const mesh              = &load_item_mesh.variant.mesh;
+      const texture           = &load_item_texture.variant.texture;
 
-      // If the mesh is in the middle of loading, don't draw it but also don't
-      // block the thread.  Simply skip over it in the draw command.
-      if (load_item.status == .pending) {
+      // If the mesh or texture are in the middle of loading, skip drawing it.
+      if (load_item_mesh.status == .pending or load_item_texture.status == .pending) {
          continue;
       }
 
       const vk_buffer_draw_offset_vertex  = @as(u64, mesh.allocation.offset);
       const vk_buffer_draw_offset_index   = @as(u64, mesh.allocation.offset + mesh.allocation.bytes - mesh.indices * @sizeOf(types.Mesh.IndexElement));
+
+      // TODO: Bind sampler/image view descriptor set for the texture
+      _ = texture;
 
       c.vkCmdPushConstants(vk_command_buffer, vk_pipeline_layout, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(types.PushConstants), &mesh.push_constants);
 
