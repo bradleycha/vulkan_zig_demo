@@ -195,10 +195,18 @@ fn _checkLoadItem(load_item : * const LoadItem) void {
 }
 
 pub fn isBusy(self : * const AssetLoader, vk_device : c.VkDevice) bool {
-   // TODO: Implement
-   _ = self;
-   _ = vk_device;
-   unreachable;
+   var vk_result : c.VkResult = undefined;
+
+   var busy : bool = undefined;
+   vk_result = c.vkGetFenceStatus(vk_device, self.vk_fence_ready);
+   switch (vk_result) {
+      c.VK_SUCCESS            => busy = false,
+      c.VK_NOT_READY          => busy = true,
+      c.VK_ERROR_DEVICE_LOST  => if (std.debug.runtime_safety == true) @panic("error when polling vulkan fence: device lost") else unreachable,
+      else                    => unreachable,
+   }
+
+   return busy;
 }
 
 // All of the below functions return a boolean instead of null.  This signifies
@@ -207,13 +215,20 @@ pub fn isBusy(self : * const AssetLoader, vk_device : c.VkDevice) bool {
 // was busy with the previous asset loading.
 
 pub const PollInfo = struct {
-   // TODO: Implement
+   vk_device            : c.VkDevice,
+   memory_heap_transfer : * vulkan.MemoryHeapTransfer,
 };
 
 pub fn poll(self : * AssetLoader, poll_info : * const PollInfo) bool {
+   const vk_device            = poll_info.vk_device;
+   const memory_heap_transfer = poll_info.memory_heap_transfer;
+
+   if (self.isBusy(vk_device) == true) {
+      return false;
+   }
+
    // TODO: Implement
-   _ = self;
-   _ = poll_info;
+   _ = memory_heap_transfer;
    unreachable;
 }
 
@@ -273,7 +288,7 @@ pub const LoadItems = struct {
 };
 
 pub const LoadInfo = struct {
-   // TODO: Implement
+   vk_device   : c.VkDevice,
 };
 
 pub const LoadError = error {
@@ -281,23 +296,31 @@ pub const LoadError = error {
 };
 
 pub fn load(self : * AssetLoader, load_buffers : * const LoadBuffers, load_items : * const LoadItems, load_info : * const LoadInfo) LoadError!bool {
+   const vk_device   = load_info.vk_device;
+
+   if (self.isBusy(vk_device) == true) {
+      return false;
+   }
+
    // TODO: Implement
-   _ = self;
    _ = load_buffers;
    _ = load_items;
-   _ = load_info;
    unreachable;
 }
 
 pub const UnloadInfo = struct {
-   // TODO: Implement
+   vk_device   : c.VkDevice,
 };
 
 pub fn unload(self : * AssetLoader, handles : [] const Handle, unload_info : * const UnloadInfo) bool {
+   const vk_device = unload_info.vk_device;
+
+   if (self.isBusy(vk_device) == true) {
+      return false;
+   }
+
    // TODO: Implement
-   _ = self;
    _ = handles;
-   _ = unload_info;
    unreachable;
 }
 
