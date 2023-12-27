@@ -41,8 +41,7 @@ pub const Mesh = struct {
 };
 
 pub const Texture = struct {
-   // TODO: Will need image view, sampler, and descriptor set in the future
-   image : vulkan.Image,
+   // TODO: Image, image view, sampler, descriptor set
 };
 
 pub const Handle = usize;
@@ -390,7 +389,7 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
    }
 
    const handles_meshes    = load_buffers.handles[0..load_items.meshes.len];
-   const handles_textures  = load_buffers.handles[load_items.meshes.len..load_items.textures.len];
+   const handles_textures  = load_buffers.handles[load_items.meshes.len..load_items.meshes.len + load_items.textures.len];
 
    // Offset into the transfer allocation, used to accumulate all our data
    var transfer_allocation_offset : u32 = 0;
@@ -445,10 +444,38 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       memory_heap_draw.memory_heap.free(allocator, mesh_load_item.allocation);
    };
 
-   // TODO: Deal with texture loading
+   // Initialize all the texture load items
+   for (load_items.textures, handles_textures, 0..load_items.textures.len) |*texture, texture_handle, i| {
+      errdefer for (handles_textures[0..i]) |texture_handle_old| {
+         const texture_load_item = &self.getMut(texture_handle_old).variant.texture;
+
+         // TODO: Error cleanup
+         _ = texture_load_item;
+      };
+
+      const load_item = _getAllowDestroyedMut(self, texture_handle);
+
+      // TODO: Create the image, image view, sampler, descriptor set, and
+      // deal with layout transitioning and copying.
+      _ = texture;
+
+      load_item.* = .{
+         .status  = .pending,
+         .variant = .{.texture = .{
+
+         }},
+      };
+
+      // TODO: Advance the offset in the transfer allocation
+   }
+   errdefer for (handles_textures) |texture_handle| {
+      const texture_load_item = &self.getMut(texture_handle).variant.texture;
+
+      // TODO: Error cleanup
+      _ = texture_load_item;
+   };
 
    // TODO: Implement 5-7
-   _ = handles_textures;
    _ = vk_queue_transfer;
    unreachable;
 }
