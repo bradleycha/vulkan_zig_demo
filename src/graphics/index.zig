@@ -313,11 +313,13 @@ pub const Renderer = struct {
 
    pub fn loadAssets(self : * @This(), load_buffers : * const AssetLoader.LoadBuffers, load_items : * const AssetLoader.LoadItems) AssetLoader.LoadError!bool {
       return self._asset_loader.load(self._allocator, load_buffers, load_items, &.{
-         .vk_device              = self._vulkan_device.vk_device,
-         .vk_queue_transfer      = self._vulkan_device.queues.transfer,
-         .memory_heap_transfer   = &self._vulkan_memory_heap_transfer,
-         .memory_heap_draw       = &self._vulkan_memory_heap_draw,
-         .memory_source_image    = &self._vulkan_memory_source_image,
+         .vk_device                    = self._vulkan_device.vk_device,
+         .vk_queue_transfer            = self._vulkan_device.queues.transfer,
+         .memory_heap_transfer         = &self._vulkan_memory_heap_transfer,
+         .memory_heap_draw             = &self._vulkan_memory_heap_draw,
+         .memory_source_image          = &self._vulkan_memory_source_image,
+         .queue_family_index_transfer  = self._vulkan_physical_device.queue_family_indices.transfer,
+         .queue_family_index_graphics  = self._vulkan_physical_device.queue_family_indices.graphics,
       });
    }
 
@@ -459,7 +461,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.
       .memory_heap_transfer   = &self._vulkan_memory_heap_transfer,
    }) == false) {}
 
-   try _recordRenderPass(models, &.{
+   try _recordRenderPass(self._allocator, models, &.{
       .vk_command_buffer            = vk_command_buffer,
       .vk_framebuffer               = vk_framebuffer,
       .vk_buffer_transfer           = self._vulkan_memory_heap_transfer.memory_heap.vk_buffer,
@@ -610,10 +612,10 @@ const RecordInfo = struct {
    allocation_uniform_transfer   : vulkan.MemoryHeap.Allocation,
    allocation_uniform_draw       : vulkan.MemoryHeap.Allocation,
    clear_color                   : * const ClearColor,
-   asset_loader                  : * const AssetLoader,
+   asset_loader                  : * AssetLoader,
 };
 
-fn _recordRenderPass(models : [] const Renderer.Model, record_info : * const RecordInfo) Renderer.DrawError!void {
+fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.Model, record_info : * const RecordInfo) Renderer.DrawError!void {
    var vk_result : c.VkResult = undefined;
 
    const vk_command_buffer             = record_info.vk_command_buffer;
@@ -652,6 +654,60 @@ fn _recordRenderPass(models : [] const Renderer.Model, record_info : * const Rec
    };
 
    c.vkCmdCopyBuffer(vk_command_buffer, vk_buffer_transfer, vk_buffer_draw, 1, &vk_buffer_copy_uniform);
+
+   // Transition any required textures to shader ready only, must be done
+   // before we start the render pass.  Unfortunately, we have to create a
+   // temporary buffer to store all our layout transitions.  Issuing many different
+   // pipeline barriers is far worse can a few memory allocations on the CPU.
+   var vk_image_memory_barriers = std.ArrayListUnmanaged(c.VkImageMemoryBarrier){};
+   defer vk_image_memory_barriers.deinit(allocator);
+   for (models) |model| {
+      const texture_load_item = asset_loader.getMut(model.texture);
+      const texture           = &texture_load_item.variant.texture;
+
+      if (texture_load_item.status == .pending) {
+         continue;
+      }
+
+      if (texture.transitioned != false) {
+         continue;
+      }
+
+      texture.transitioned = true;
+
+      const vk_image_memory_barrier_dst = try vk_image_memory_barriers.addOne(allocator);
+      vk_image_memory_barrier_dst.* = c.VkImageMemoryBarrier{
+         .sType               = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+         .pNext               = null,
+         .srcAccessMask       = 0x00000000,
+         .dstAccessMask       = c.VK_ACCESS_SHADER_READ_BIT,
+         .oldLayout           = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+         .newLayout           = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+         .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+         .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+         .image               = texture.image.vk_image,
+         .subresourceRange    = c.VkImageSubresourceRange{
+            .aspectMask       = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel     = 0,
+            .levelCount       = 1,
+            .baseArrayLayer   = 0,
+            .layerCount       = 1,
+         },
+      };
+   }
+
+   c.vkCmdPipelineBarrier(
+      vk_command_buffer,
+      c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+      c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+      0x00000000,
+      0,
+      undefined,
+      0,
+      undefined,
+      @intCast(vk_image_memory_barriers.items.len),
+      vk_image_memory_barriers.items.ptr,
+   );
 
    var clear_color_count : u32 = undefined;
    var clear_color_data  : extern union {
@@ -705,7 +761,7 @@ fn _recordRenderPass(models : [] const Renderer.Model, record_info : * const Rec
 
    for (models) |model| {
       const load_item_mesh    = asset_loader.get(model.mesh);
-      const load_item_texture = asset_loader.get(model.texture);
+      const load_item_texture = asset_loader.getMut(model.texture);
       const load_item_sampler = asset_loader.get(model.sampler);
       const mesh              = &load_item_mesh.variant.mesh;
       const texture           = &load_item_texture.variant.texture;

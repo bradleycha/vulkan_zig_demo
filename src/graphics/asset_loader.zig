@@ -48,8 +48,9 @@ pub const Mesh = struct {
 };
 
 pub const Texture = struct {
-   image       : vulkan.Image,
-   image_view  : vulkan.ImageView,
+   image          : vulkan.Image,
+   image_view     : vulkan.ImageView,
+   transitioned   : bool,
 
    fn destroy(self : @This(), vk_device : c.VkDevice) void {
       self.image_view.destroy(vk_device);
@@ -334,11 +335,13 @@ pub const LoadItems = struct {
 };
 
 pub const LoadInfo = struct {
-   vk_device            : c.VkDevice,
-   vk_queue_transfer    : c.VkQueue,
-   memory_heap_transfer : * vulkan.MemoryHeapTransfer,
-   memory_heap_draw     : * vulkan.MemoryHeapDraw,
-   memory_source_image  : * const vulkan.MemorySourceImage,
+   vk_device                     : c.VkDevice,
+   vk_queue_transfer             : c.VkQueue,
+   memory_heap_transfer          : * vulkan.MemoryHeapTransfer,
+   memory_heap_draw              : * vulkan.MemoryHeapDraw,
+   memory_source_image           : * const vulkan.MemorySourceImage,
+   queue_family_index_transfer   : u32,
+   queue_family_index_graphics   : u32,
 };
 
 pub const LoadError = error {
@@ -353,11 +356,13 @@ pub const LoadError = error {
 pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : * const LoadBuffers, load_items : * const LoadItems, load_info : * const LoadInfo) LoadError!bool {
    var vk_result : c.VkResult = undefined;
 
-   const vk_device            = load_info.vk_device;
-   const vk_queue_transfer    = load_info.vk_queue_transfer;
-   const memory_heap_transfer = load_info.memory_heap_transfer;
-   const memory_heap_draw     = load_info.memory_heap_draw;
-   const memory_source_image  = load_info.memory_source_image;
+   const vk_device                     = load_info.vk_device;
+   const vk_queue_transfer             = load_info.vk_queue_transfer;
+   const memory_heap_transfer          = load_info.memory_heap_transfer;
+   const memory_heap_draw              = load_info.memory_heap_draw;
+   const memory_source_image           = load_info.memory_source_image;
+   const queue_family_index_transfer   = load_info.queue_family_index_transfer;
+   const queue_family_index_graphics   = load_info.queue_family_index_graphics;
 
    const load_meshes_count    = load_items.meshes.len;
    const load_textures_count  = load_items.textures.len;
@@ -576,8 +581,9 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       load_item.* = .{
          .status  = .pending,
          .variant = .{.texture = .{
-            .image      = vulkan_image,
-            .image_view = vulkan_image_view,
+            .image         = vulkan_image,
+            .image_view    = vulkan_image_view,
+            .transitioned  = false,
          }},
       };
 
@@ -643,19 +649,44 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
          &vk_buffer_image_copy,
       );
 
-      // TODO: Image memory barrier to transfer ownership to graphics queue
-      _ = texture_memory_barrier;
+      // Transfers ownership of the image to the graphics queue where it can
+      // then have its layout transitioned to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL.
+      texture_memory_barrier.* = .{
+         .sType               = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+         .pNext               = null,
+         .srcAccessMask       = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+         .dstAccessMask       = 0x00000000,
+         .oldLayout           = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+         .newLayout           = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+         .srcQueueFamilyIndex = queue_family_index_transfer,
+         .dstQueueFamilyIndex = queue_family_index_graphics,
+         .image               = load_item_texture.image.vk_image,
+         .subresourceRange    = c.VkImageSubresourceRange{
+            .aspectMask       = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel     = 0,
+            .levelCount       = 1,
+            .baseArrayLayer   = 0,
+            .layerCount       = 1,
+         },
+      };
       
       // Advance the original transfer offset
       transfer_allocation_offset += texture_bytes.total_aligned;
    }
 
-   // TODO: Transfer ownership of the images to the graphics queue.  This needs
-   // to be done so the image layout can be transitioned to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL.
-   // This can only be done from the graphics queue.  The above code should have
-   // already populated the vkImageMemoryBarrier array, so here we just need to
-   // call vkCmdPipelineBarrier.
-
+   // Pipeline barrier to transfer ownership of our images to the graphics queue.
+   c.vkCmdPipelineBarrier(
+      self.vk_command_buffer_transfer,
+      c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+      c.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+      0x00000000,
+      0,
+      undefined,
+      0,
+      undefined,
+      @intCast(load_textures_count),
+      load_buffers.texture_memory_barriers,
+   );
 
    // Create all our samplers now...
    for (load_items.samplers, handles_samplers, 0..load_samplers_count) |*sampler, sampler_handle, i| {
