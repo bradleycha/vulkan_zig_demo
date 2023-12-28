@@ -335,7 +335,8 @@ pub const LoadItems = struct {
 };
 
 pub const LoadInfo = struct {
-   vk_device                     : c.VkDevice,
+   vulkan_physical_device        : * const vulkan.PhysicalDevice,
+   vulkan_device                 : * const vulkan.Device,
    vk_queue_transfer             : c.VkQueue,
    memory_heap_transfer          : * vulkan.MemoryHeapTransfer,
    memory_heap_draw              : * vulkan.MemoryHeapDraw,
@@ -356,7 +357,9 @@ pub const LoadError = error {
 pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : * const LoadBuffers, load_items : * const LoadItems, load_info : * const LoadInfo) LoadError!bool {
    var vk_result : c.VkResult = undefined;
 
-   const vk_device                     = load_info.vk_device;
+   const vulkan_physical_device        = load_info.vulkan_physical_device;
+   const vulkan_device                 = load_info.vulkan_device;
+   const vk_device                     = vulkan_device.vk_device;
    const vk_queue_transfer             = load_info.vk_queue_transfer;
    const memory_heap_transfer          = load_info.memory_heap_transfer;
    const memory_heap_draw              = load_info.memory_heap_draw;
@@ -688,6 +691,16 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       load_buffers.texture_memory_barriers,
    );
 
+   // Choose the level of anisotropic filtering to use with our samplers, if available
+   const anisotropic_filtering_enabled = vulkan_device.features.anisotropy;
+   const anisotropic_filtering_level : f32 = blk: {
+      if (anisotropic_filtering_enabled == c.VK_TRUE) {
+         break :blk vulkan_physical_device.vk_physical_device_properties.limits.maxSamplerAnisotropy;
+      } else {
+         break :blk undefined;
+      }
+   };
+
    // Create all our samplers now...
    for (load_items.samplers, handles_samplers, 0..load_samplers_count) |*sampler, sampler_handle, i| {
       errdefer for (0..handles_samplers[0..i]) |sampler_handle_old| {
@@ -699,6 +712,7 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
 
       // TODO: Actually create the vulkan sampler
       _ = sampler;
+      _ = anisotropic_filtering_level;
 
       // Initialize the load item
       load_item.* = .{

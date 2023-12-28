@@ -282,9 +282,10 @@ fn _assignUniqueQueueFamilyIndices(vk_physical_device_queue_family_index : u32, 
 fn _assignPhysicalDeviceScore(physical_device : * const PhysicalDevice) u32 {
    var score : u32 = 0;
 
-   // In the future we will use a more complex scoring method.
-   // For now, just simply prefer a discrete GPU.
    if (physical_device.vk_physical_device_properties.deviceType == c.VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+      score += 1;
+   }
+   if (physical_device.vk_physical_device_features.samplerAnisotropy == c.VK_TRUE) {
       score += 1;
    }
 

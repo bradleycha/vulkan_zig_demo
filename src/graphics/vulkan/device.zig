@@ -8,9 +8,14 @@ pub const Queues = struct {
    present  : c.VkQueue,
 };
 
+pub const AvailableFeatures = struct {
+   anisotropy  : c.VkBool32,
+};
+
 pub const Device = struct {
    vk_device   : c.VkDevice,
    queues      : Queues,
+   features    : AvailableFeatures,
 
    pub const CreateInfo = struct {
       physical_device      : * const root.PhysicalDevice,
@@ -32,6 +37,10 @@ pub const Device = struct {
       const physical_device      = create_info.physical_device;
       const queue_family_indices = &physical_device.queue_family_indices;
 
+      const features = AvailableFeatures{
+         .anisotropy = physical_device.vk_physical_device_features.samplerAnisotropy,
+      };
+
       const vk_physical_device_features = c.VkPhysicalDeviceFeatures{
          .robustBufferAccess                       = c.VK_FALSE,
          .fullDrawIndexUint32                      = c.VK_FALSE,
@@ -52,7 +61,7 @@ pub const Device = struct {
          .largePoints                              = c.VK_FALSE,
          .alphaToOne                               = c.VK_FALSE,
          .multiViewport                            = c.VK_FALSE,
-         .samplerAnisotropy                        = c.VK_FALSE,
+         .samplerAnisotropy                        = features.anisotropy,
          .textureCompressionETC2                   = c.VK_FALSE,
          .textureCompressionASTC_LDR               = c.VK_FALSE,
          .textureCompressionBC                     = c.VK_FALSE,
@@ -139,6 +148,7 @@ pub const Device = struct {
       return @This(){
          .vk_device  = vk_device,
          .queues     = queues,
+         .features   = features,
       };
    }
 

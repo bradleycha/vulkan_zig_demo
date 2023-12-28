@@ -247,7 +247,7 @@ pub const Renderer = struct {
          .vk_device                 = vk_device,
          .vk_command_pool_transfer  = vulkan_command_pools.transfer,
       });
-
+      
       return @This(){
          ._allocator                         = allocator,
          ._vulkan_instance                   = vulkan_instance,
@@ -313,7 +313,8 @@ pub const Renderer = struct {
 
    pub fn loadAssets(self : * @This(), load_buffers : * const AssetLoader.LoadBuffers, load_items : * const AssetLoader.LoadItems) AssetLoader.LoadError!bool {
       return self._asset_loader.load(self._allocator, load_buffers, load_items, &.{
-         .vk_device                    = self._vulkan_device.vk_device,
+         .vulkan_physical_device       = &self._vulkan_physical_device,
+         .vulkan_device                = &self._vulkan_device,
          .vk_queue_transfer            = self._vulkan_device.queues.transfer,
          .memory_heap_transfer         = &self._vulkan_memory_heap_transfer,
          .memory_heap_draw             = &self._vulkan_memory_heap_draw,
