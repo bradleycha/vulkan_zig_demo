@@ -370,6 +370,7 @@ pub const Renderer = struct {
    pub const Model = struct {
       mesh     : AssetLoader.Handle,
       texture  : AssetLoader.Handle,
+      sampler  : AssetLoader.Handle,
    };
 
    pub fn drawFrame(self : * @This(), models : [] const Model) DrawError!void {
@@ -705,8 +706,10 @@ fn _recordRenderPass(models : [] const Renderer.Model, record_info : * const Rec
    for (models) |model| {
       const load_item_mesh    = asset_loader.get(model.mesh);
       const load_item_texture = asset_loader.get(model.texture);
+      const load_item_sampler = asset_loader.get(model.sampler);
       const mesh              = &load_item_mesh.variant.mesh;
       const texture           = &load_item_texture.variant.texture;
+      const sampler           = &load_item_sampler.variant.sampler;
 
       // If the mesh or texture are in the middle of loading, skip drawing it.
       if (load_item_mesh.status == .pending or load_item_texture.status == .pending) {
@@ -718,6 +721,7 @@ fn _recordRenderPass(models : [] const Renderer.Model, record_info : * const Rec
 
       // TODO: Bind sampler/image view descriptor set for the texture
       _ = texture;
+      _ = sampler;
 
       c.vkCmdPushConstants(vk_command_buffer, vk_pipeline_layout, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(types.PushConstants), &mesh.push_constants);
 

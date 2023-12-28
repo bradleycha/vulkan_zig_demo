@@ -106,6 +106,7 @@ pub fn main() MainError!void {
    var asset_load_buffers_array : graphics.AssetLoader.LoadBuffersArrayStatic(&.{
       .meshes     = 3,
       .textures   = 3,
+      .samplers   = 1,
    }) = undefined;
 
    while (renderer.loadAssets(&asset_load_buffers_array.getBuffers(), &.{
@@ -125,36 +126,26 @@ pub fn main() MainError!void {
       },
      .textures = &.{
          .{
-            .sampling = .{
-               .filter_minification    = .linear,
-               .filter_magnification   = .linear,
-               .address_mode_u         = .repeat,
-               .address_mode_v         = .repeat,
-               .address_mode_w         = .repeat,
-            },
             .data = &resources.textures.TILE,
          },
          .{
-            .sampling = .{
-               .filter_minification    = .linear,
-               .filter_magnification   = .linear,
-               .address_mode_u         = .repeat,
-               .address_mode_v         = .repeat,
-               .address_mode_w         = .repeat,
-            },
             .data = &resources.textures.GRASS,
          },
          .{
+            .data = &resources.textures.ROCK,
+         },
+      },
+     .samplers = &.{
+         .{
             .sampling = .{
-               .filter_minification    = .linear,
                .filter_magnification   = .linear,
+               .filter_minification    = .linear,
                .address_mode_u         = .repeat,
                .address_mode_v         = .repeat,
                .address_mode_w         = .repeat,
             },
-            .data = &resources.textures.ROCK,
          },
-      },
+     },
    }) catch (return error.ResourceLoadError) == false) {}
    defer while(renderer.unloadAssets(&asset_load_buffers_array.handles) == false) {};
 
@@ -164,6 +155,7 @@ pub fn main() MainError!void {
    const texture_handle_tile        = asset_load_buffers_array.handles[3];
    const texture_handle_grass       = asset_load_buffers_array.handles[4];
    const texture_handle_rock        = asset_load_buffers_array.handles[5];
+   const sampler_handle_default     = asset_load_buffers_array.handles[6];
 
    const mesh_matrix_test_plane     = renderer.meshTransformMatrixMut(mesh_handle_test_plane);
    const mesh_matrix_test_pyramid   = renderer.meshTransformMatrixMut(mesh_handle_test_pyramid);
@@ -282,14 +274,17 @@ pub fn main() MainError!void {
          .{
             .mesh    = mesh_handle_test_plane,
             .texture = texture_handle_grass,
+            .sampler = sampler_handle_default,
          },
          .{
             .mesh    = mesh_handle_test_pyramid,
             .texture = texture_handle_rock,
+            .sampler = sampler_handle_default,
          },
          .{
             .mesh    = mesh_handle_test_cube,
             .texture = texture_handle_tile,
+            .sampler = sampler_handle_default,
          },
       }) catch |err| {
          std.log.warn("failed to draw frame: {}", .{err});

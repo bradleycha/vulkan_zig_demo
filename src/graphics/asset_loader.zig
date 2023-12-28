@@ -26,11 +26,13 @@ pub const LoadItem = struct {
    pub const VariantTag = enum {
       mesh,
       texture,
+      sampler,
    };
 
    pub const Variant = union(VariantTag) {
       mesh     : Mesh,
       texture  : Texture,
+      sampler  : Sampler,
    };
 };
 
@@ -50,6 +52,14 @@ pub const Texture = struct {
 
    fn destroy(self : @This(), vk_device : c.VkDevice) void {
       self.image.destroy(vk_device);
+      return;
+   }
+};
+
+pub const Sampler = struct {
+   fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      _ = self;
+      _ = vk_device;
       return;
    }
 };
@@ -275,11 +285,12 @@ const _LoadBuffersUnchecked = struct {
 pub const LoadBuffersArraySize = struct {
    meshes   : usize,
    textures : usize,
+   samplers : usize,
 };
 
 pub fn LoadBuffersArrayStatic(comptime COUNTS : * const LoadBuffersArraySize) type {
    return struct {
-      handles                    : [COUNTS.meshes + COUNTS.textures] Handle,
+      handles                    : [COUNTS.meshes + COUNTS.textures + COUNTS.samplers] Handle,
       mesh_buffer_copy_regions   : [COUNTS.meshes]                   c.VkBufferCopy,
 
       pub fn getBuffers(self : * @This()) LoadBuffers {
@@ -300,6 +311,7 @@ pub fn LoadBuffersArrayStatic(comptime COUNTS : * const LoadBuffersArraySize) ty
 pub const LoadItems = struct {
    meshes   : [] const @This().Mesh,
    textures : [] const @This().Texture,
+   samplers : [] const @This().Sampler,
 
    pub const Mesh = struct {
       push_constants : ? vulkan.types.PushConstants,
@@ -307,8 +319,11 @@ pub const LoadItems = struct {
    };
 
    pub const Texture = struct {
+      data  : * const root.ImageSource,
+   };
+
+   pub const Sampler = struct {
       sampling : root.ImageSampling,
-      data     : * const root.ImageSource,
    };
 };
 
@@ -340,17 +355,20 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
 
    const load_meshes_count    = load_items.meshes.len;
    const load_textures_count  = load_items.textures.len;
-   const load_items_count     = load_meshes_count + load_textures_count;
+   const load_samplers_count  = load_items.samplers.len;
+   const load_items_count     = load_meshes_count + load_textures_count + load_samplers_count;
 
    // Runtime safety check - make sure we don't have a buffer overrun
    if (std.debug.runtime_safety == true and @hasField(LoadBuffers, "counts")) {
       const ERROR_MESHES   = "load buffers with size to store {} meshes is not large enough to load {} meshes";
       const ERROR_TEXTURES = "load buffers with size to store {} textures is not large enough to load {} textures";
+      const ERROR_SAMPLERS = "load buffers with size to store {} samplers is not large enough to load {} samplers";
 
       const BUFSIZE_ERROR_MESHES    = comptime std.fmt.count(ERROR_MESHES, .{std.math.maxInt(usize), std.math.maxInt(usize)});
       const BUFSIZE_ERROR_TEXTURES  = comptime std.fmt.count(ERROR_TEXTURES, .{std.math.maxInt(usize), std.math.maxInt(usize)});
+      const BUFSIZE_ERROR_SAMPLERS  = comptime std.fmt.count(ERROR_SAMPLERS, .{std.math.maxInt(usize), std.math.maxInt(usize)});
 
-      const BUFSIZE_ERROR_FORMAT = @max(BUFSIZE_ERROR_MESHES, BUFSIZE_ERROR_TEXTURES);
+      const BUFSIZE_ERROR_FORMAT = @max(@max(BUFSIZE_ERROR_MESHES, BUFSIZE_ERROR_TEXTURES), BUFSIZE_ERROR_SAMPLERS);
 
       var error_format_buffer : [BUFSIZE_ERROR_FORMAT] u8 = undefined;
 
@@ -361,6 +379,9 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       }
       if (load_textures_count > counts.textures) {
          @panic(std.fmt.bufPrint(&error_format_buffer, ERROR_TEXTURES, .{counts.textures, load_textures_count}) catch unreachable);
+      }
+      if (load_samplers_count > counts.samplers) {
+         @panic(std.fmt.bufPrint(&error_format_buffer, ERROR_SAMPLERS, .{counts.samplers, load_samplers_count}) catch unreachable);
       }
    }
 
@@ -405,8 +426,9 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       _freeTrailingDestroyedLoadItems(self, allocator);
    }
 
-   const handles_meshes    = load_buffers.handles[0..load_items.meshes.len];
-   const handles_textures  = load_buffers.handles[load_items.meshes.len..load_items.meshes.len + load_items.textures.len];
+   const handles_meshes    = load_buffers.handles  [0..load_meshes_count];
+   const handles_textures  = handles_meshes.ptr    [load_meshes_count..load_meshes_count + load_textures_count];
+   const handles_samplers  = handles_textures.ptr  [load_textures_count..load_textures_count + load_samplers_count];
 
    // Start recording the command buffer, resetting in the case of an error
    const vk_info_command_buffer_begin = c.VkCommandBufferBeginInfo{
@@ -429,7 +451,7 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
    var transfer_allocation_offset : u32 = 0;
 
    // Initialize all the mesh load items
-   for (load_items.meshes, handles_meshes, load_buffers.mesh_buffer_copy_regions, 0..load_items.meshes.len) |*mesh, handle_mesh, *mesh_buffer_copy_region, i| {
+   for (load_items.meshes, handles_meshes, load_buffers.mesh_buffer_copy_regions, 0..load_meshes_count) |*mesh, handle_mesh, *mesh_buffer_copy_region, i| {
       errdefer for (handles_meshes[0..i]) |mesh_handle_old| {
          const mesh_load_item = self.getMut(mesh_handle_old).variant.mesh;
          mesh_load_item.destroy(allocator, memory_heap_draw);
@@ -482,12 +504,12 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       self.vk_command_buffer_transfer,
       memory_heap_transfer.memory_heap.vk_buffer,
       memory_heap_draw.memory_heap.vk_buffer,
-      @intCast(load_items.meshes.len),
+      @intCast(load_meshes_count),
       load_buffers.mesh_buffer_copy_regions,
    );
 
    // Initialize all the texture load items
-   for (load_items.textures, handles_textures, 0..load_items.textures.len) |*texture, texture_handle, i| {
+   for (load_items.textures, handles_textures, 0..load_textures_count) |*texture, texture_handle, i| {
       errdefer for (handles_textures[0..i]) |texture_handle_old| {
          const texture_load_item = &self.getMut(texture_handle_old).variant.texture;
          texture_load_item.destroy(vk_device);
@@ -508,7 +530,7 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       }, memory_source_image);
       errdefer vulkan_image.destroy(vk_device);
 
-      // TODO: Image views, sampler
+      // TODO: Image view
 
       // Copy the image data into the transfer allocation
       const transfer_allocation_image_data_int_ptr = @intFromPtr(memory_heap_transfer.mapping) + allocation_transfer.offset + transfer_allocation_offset;
@@ -532,7 +554,7 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
             .levelCount       = 1,
             .baseArrayLayer   = 0,
             .layerCount       = 1,
-      },
+         },
       };
 
       c.vkCmdPipelineBarrier(
@@ -599,6 +621,31 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
    errdefer for (handles_textures) |texture_handle| {
       const texture_load_item = &self.getMut(texture_handle).variant.texture;
       texture_load_item.destroy(vk_device);
+   };
+
+   // Create all our samplers now...
+   for (load_items.samplers, handles_samplers, 0..load_samplers_count) |*sampler, sampler_handle, i| {
+      errdefer for (0..handles_samplers[0..i]) |sampler_handle_old| {
+         const sampler_load_item = &self.getMut(sampler_handle_old).variant.sampler;
+         sampler_load_item.destroy(vk_device);  
+      };
+
+      const load_item = _getAllowDestroyedMut(self, sampler_handle);
+
+      // TODO: Actually create the vulkan sampler
+      _ = sampler;
+
+      // Initialize the load item
+      load_item.* = .{
+         .status  = .pending,
+         .variant = .{.sampler = .{
+
+         }},
+      };
+   }
+   errdefer for (handles_samplers) |sampler_handle| {
+      const sampler_load_item = &self.getMut(sampler_handle).variant.sampler;
+      sampler_load_item.destroy(vk_device);
    };
 
    // End the command buffer
@@ -812,6 +859,7 @@ pub fn unload(self : * AssetLoader, allocator : std.mem.Allocator, handles : [] 
       switch (load_item.variant) {
          .mesh    => |*mesh|     mesh.destroy(allocator, memory_heap_draw),
          .texture => |*texture|  texture.destroy(vk_device),
+         .sampler => |*sampler|  sampler.destroy(vk_device),
       }
    }
 
