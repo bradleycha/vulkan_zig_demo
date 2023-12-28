@@ -46,10 +46,10 @@ pub const Mesh = struct {
 };
 
 pub const Texture = struct {
-   // TODO: Image, image view, sampler, descriptor set
+   image : vulkan.Image,
 
-   fn destroy(self : @This()) void {
-      _ = self;
+   fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      self.image.destroy(vk_device);
       return;
    }
 };
@@ -317,11 +317,13 @@ pub const LoadInfo = struct {
    vk_queue_transfer    : c.VkQueue,
    memory_heap_transfer : * vulkan.MemoryHeapTransfer,
    memory_heap_draw     : * vulkan.MemoryHeapDraw,
+   memory_source_image  : * const vulkan.MemorySourceImage,
 };
 
 pub const LoadError = error {
    OutOfMemory,
    DeviceLost,
+   Unknown,
 };
 
 // Upon success and returning true, all the load item handles will be stored
@@ -334,6 +336,7 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
    const vk_queue_transfer    = load_info.vk_queue_transfer;
    const memory_heap_transfer = load_info.memory_heap_transfer;
    const memory_heap_draw     = load_info.memory_heap_draw;
+   const memory_source_image  = load_info.memory_source_image;
 
    const load_meshes_count    = load_items.meshes.len;
    const load_textures_count  = load_items.textures.len;
@@ -487,27 +490,47 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
    for (load_items.textures, handles_textures, 0..load_items.textures.len) |*texture, texture_handle, i| {
       errdefer for (handles_textures[0..i]) |texture_handle_old| {
          const texture_load_item = &self.getMut(texture_handle_old).variant.texture;
-         texture_load_item.destroy();
+         texture_load_item.destroy(vk_device);
       };
 
       const load_item = _getAllowDestroyedMut(self, texture_handle);
 
-      // TODO: Create the image, image view, sampler, descriptor set, and
-      // deal with layout transitioning and copying.
-      _ = texture;
+      const texture_bytes = _calculateTextureBytesAlignment(texture);
 
+      // Create the image object to contain our data
+      const vulkan_image = try vulkan.Image.create(&.{
+         .vk_device     = vk_device,
+         .format        = texture.data.format,
+         .tiling        = c.VK_IMAGE_TILING_OPTIMAL,
+         .width         = texture.data.width,
+         .height        = texture.data.height,
+         .usage_flags   = c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | c.VK_IMAGE_USAGE_SAMPLED_BIT,
+      }, memory_source_image);
+      errdefer vulkan_image.destroy(vk_device);
+
+      // TODO: Image views, sampler
+
+      // Copy the image data into the transfer allocation
+      const transfer_allocation_image_data_int_ptr = @intFromPtr(memory_heap_transfer.mapping) + allocation_transfer.offset + transfer_allocation_offset;
+      const transfer_allocation_image_data = @as([*] u8, @ptrFromInt(transfer_allocation_image_data_int_ptr));
+      @memcpy(transfer_allocation_image_data, texture.data.data);
+
+      // TODO: Layout transition, buffer to image copy, etc.
+
+      // Initialize the load item
       load_item.* = .{
          .status  = .pending,
          .variant = .{.texture = .{
-
+            .image   = vulkan_image,
          }},
       };
 
-      // TODO: Advance the offset in the transfer allocation
+      // Advance within the transfer allocation
+      transfer_allocation_offset += texture_bytes.total_aligned;
    }
    errdefer for (handles_textures) |texture_handle| {
       const texture_load_item = &self.getMut(texture_handle).variant.texture;
-      texture_load_item.destroy();
+      texture_load_item.destroy(vk_device);
    };
 
    // End the command buffer
@@ -516,7 +539,7 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       c.VK_SUCCESS                     => {},
       c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
       c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
-      else                             => unreachable,
+      else                             => return error.Unknown,
    }
 
    // Reset the fence and submit our command buffer
@@ -720,7 +743,7 @@ pub fn unload(self : * AssetLoader, allocator : std.mem.Allocator, handles : [] 
 
       switch (load_item.variant) {
          .mesh    => |*mesh|     mesh.destroy(allocator, memory_heap_draw),
-         .texture => |*texture|  texture.destroy(),
+         .texture => |*texture|  texture.destroy(vk_device),
       }
    }
 

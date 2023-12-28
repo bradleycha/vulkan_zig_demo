@@ -317,6 +317,7 @@ pub const Renderer = struct {
          .vk_queue_transfer      = self._vulkan_device.queues.transfer,
          .memory_heap_transfer   = &self._vulkan_memory_heap_transfer,
          .memory_heap_draw       = &self._vulkan_memory_heap_draw,
+         .memory_source_image    = &self._vulkan_memory_source_image,
       });
    }
 
