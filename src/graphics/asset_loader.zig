@@ -60,9 +60,10 @@ pub const Texture = struct {
 };
 
 pub const Sampler = struct {
+   sampler  : vulkan.Sampler,
+
    fn destroy(self : @This(), vk_device : c.VkDevice) void {
-      _ = self;
-      _ = vk_device;
+      self.sampler.destroy(vk_device);
       return;
    }
 };
@@ -693,32 +694,30 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
 
    // Choose the level of anisotropic filtering to use with our samplers, if available
    const anisotropic_filtering_enabled = vulkan_device.features.anisotropy;
-   const anisotropic_filtering_level : f32 = blk: {
-      if (anisotropic_filtering_enabled == c.VK_TRUE) {
-         break :blk vulkan_physical_device.vk_physical_device_properties.limits.maxSamplerAnisotropy;
-      } else {
-         break :blk undefined;
-      }
-   };
+   const anisotropic_filtering_level = vulkan_physical_device.vk_physical_device_properties.limits.maxSamplerAnisotropy;
 
    // Create all our samplers now...
    for (load_items.samplers, handles_samplers, 0..load_samplers_count) |*sampler, sampler_handle, i| {
-      errdefer for (0..handles_samplers[0..i]) |sampler_handle_old| {
+      errdefer for (handles_samplers[0..i]) |sampler_handle_old| {
          const sampler_load_item = &self.getMut(sampler_handle_old).variant.sampler;
          sampler_load_item.destroy(vk_device);  
       };
 
       const load_item = _getAllowDestroyedMut(self, sampler_handle);
 
-      // TODO: Actually create the vulkan sampler
-      _ = sampler;
-      _ = anisotropic_filtering_level;
+      const vulkan_sampler = try vulkan.Sampler.create(&.{
+         .vk_device                       = vk_device,
+         .sampling                        = sampler.sampling,
+         .anisotropic_filtering_enabled   = anisotropic_filtering_enabled,
+         .anisotropic_filtering_level     = anisotropic_filtering_level,
+      });
+      errdefer vulkan_sampler.destroy(vk_device);
 
       // Initialize the load item
       load_item.* = .{
          .status  = .pending,
          .variant = .{.sampler = .{
-
+            .sampler = vulkan_sampler,
          }},
       };
    }

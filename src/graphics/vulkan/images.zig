@@ -28,7 +28,6 @@ pub const ImageSampling = struct {
    address_mode_u       : AddressMode,
    address_mode_v       : AddressMode,
    address_mode_w       : AddressMode,
-   border_color         : root.types.Color.Rgba(f32) = undefined,
 
    pub const Filter = enum(c.VkFilter) {
       nearest  = c.VK_FILTER_NEAREST,
@@ -222,6 +221,72 @@ pub const ImageView = struct {
 
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
       c.vkDestroyImageView(vk_device, self.vk_image_view, null);
+      return;
+   }
+};
+
+pub const Sampler = struct {
+   vk_sampler  : c.VkSampler,
+
+   pub const CreateError = error {
+      OutOfMemory,
+      Unknown,
+   };
+
+   pub const CreateInfo = struct {
+      vk_device                     : c.VkDevice,
+      sampling                      : ImageSampling,
+      anisotropic_filtering_enabled : c.VkBool32,
+      anisotropic_filtering_level   : f32,
+   };
+
+   pub fn create(create_info : * const CreateInfo) CreateError!@This() {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_device                     = create_info.vk_device;
+      const sampling                      = create_info.sampling;
+      const anisotropic_filtering_enabled = create_info.anisotropic_filtering_enabled;
+      const anisotropic_filtering_level   = create_info.anisotropic_filtering_level;
+
+      const vk_info_create_sampler = c.VkSamplerCreateInfo{
+         .sType                     = c.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+         .pNext                     = null,
+         .flags                     = 0x00000000,
+         .magFilter                 = @intFromEnum(sampling.filter_magnification),
+         .minFilter                 = @intFromEnum(sampling.filter_minification),
+         .mipmapMode                = c.VK_SAMPLER_MIPMAP_MODE_LINEAR,
+         .addressModeU              = @intFromEnum(sampling.address_mode_u),
+         .addressModeV              = @intFromEnum(sampling.address_mode_v),
+         .addressModeW              = @intFromEnum(sampling.address_mode_w),
+         .mipLodBias                = 0.0,
+         .anisotropyEnable          = anisotropic_filtering_enabled,
+         .maxAnisotropy             = anisotropic_filtering_level,
+         .compareEnable             = c.VK_FALSE,
+         .compareOp                 = c.VK_COMPARE_OP_ALWAYS,
+         .minLod                    = 0.0,
+         .maxLod                    = 0.0,
+         .borderColor               = c.VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+         .unnormalizedCoordinates   = c.VK_FALSE,
+      };
+
+      var vk_sampler : c.VkSampler = undefined;
+      vk_result = c.vkCreateSampler(vk_device, &vk_info_create_sampler, null, &vk_sampler);
+      switch (vk_result) {
+         c.VK_SUCCESS                                    => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY                   => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY                 => return error.OutOfMemory,
+         c.VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR   => return error.Unknown,
+         else                                            => unreachable,
+      }
+      errdefer c.vkDestroySampler(vk_device, vk_sampler, null);
+
+      return @This(){
+         .vk_sampler = vk_sampler,
+      };
+   }
+
+   pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      c.vkDestroySampler(vk_device, self.vk_sampler, null);
       return;
    }
 };
