@@ -277,11 +277,13 @@ const _LoadBuffersChecked = struct {
    counts                     : LoadBuffersArraySize,
    handles                    : [*] Handle,
    mesh_buffer_copy_regions   : [*] c.VkBufferCopy,
+   texture_memory_barriers    : [*] c.VkImageMemoryBarrier,
 };
 
 const _LoadBuffersUnchecked = struct {
    handles                    : [*] Handle,
    mesh_buffer_copy_regions   : [*] c.VkBufferCopy,
+   texture_memory_barriers    : [*] c.VkImageMemoryBarrier,
 };
 
 pub const LoadBuffersArraySize = struct {
@@ -293,13 +295,15 @@ pub const LoadBuffersArraySize = struct {
 pub fn LoadBuffersArrayStatic(comptime COUNTS : * const LoadBuffersArraySize) type {
    return struct {
       handles                    : [COUNTS.meshes + COUNTS.textures + COUNTS.samplers] Handle,
-      mesh_buffer_copy_regions   : [COUNTS.meshes]                   c.VkBufferCopy,
+      mesh_buffer_copy_regions   : [COUNTS.meshes] c.VkBufferCopy,
+      texture_memory_barriers    : [COUNTS.textures] c.VkImageMemoryBarrier,
 
       pub fn getBuffers(self : * @This()) LoadBuffers {
          var load_buffers : LoadBuffers = undefined;
 
          load_buffers.handles                   = &self.handles;
          load_buffers.mesh_buffer_copy_regions  = &self.mesh_buffer_copy_regions;
+         load_buffers.texture_memory_barriers   = &self.texture_memory_barriers;
 
          if (@hasField(LoadBuffers, "counts") == true) {
             load_buffers.counts = COUNTS.*;
@@ -510,8 +514,11 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       load_buffers.mesh_buffer_copy_regions,
    );
 
-   // Initialize all the texture load items
-   for (load_items.textures, handles_textures, 0..load_textures_count) |*texture, texture_handle, i| {
+   // Initialize all the texture load items and start recording the first layout transitions
+   // Unfortunately we have to iterate this twice since vkCmdCopyBufferToImage
+   // operates on a single image at a time.
+   var transfer_allocation_offset_texture = transfer_allocation_offset;
+   for (load_items.textures, handles_textures, load_buffers.texture_memory_barriers, 0..load_textures_count) |*texture, texture_handle, *texture_memory_barrier, i| {
       errdefer for (handles_textures[0..i]) |texture_handle_old| {
          const texture_load_item = &self.getMut(texture_handle_old).variant.texture;
          texture_load_item.destroy(vk_device);
@@ -541,12 +548,12 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       errdefer vulkan_image_view.destroy(vk_device);
 
       // Copy the image data into the transfer allocation
-      const transfer_allocation_image_data_int_ptr = @intFromPtr(memory_heap_transfer.mapping) + allocation_transfer.offset + transfer_allocation_offset;
+      const transfer_allocation_image_data_int_ptr = @intFromPtr(memory_heap_transfer.mapping) + allocation_transfer.offset + transfer_allocation_offset_texture;
       const transfer_allocation_image_data = @as([*] u8, @ptrFromInt(transfer_allocation_image_data_int_ptr));
       @memcpy(transfer_allocation_image_data, texture.data.data);
 
-      // Transition the image layout into one optimal for transfer operations
-      const vk_image_memory_barrier_transition_to_transfer_optimal = c.VkImageMemoryBarrier{
+      // Store the image transition to transfer dst optimal
+      texture_memory_barrier.* = c.VkImageMemoryBarrier{
          .sType               = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
          .pNext               = null,
          .srcAccessMask       = 0x00000000,
@@ -565,20 +572,46 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
          },
       };
 
-      c.vkCmdPipelineBarrier(
-         self.vk_command_buffer_transfer,
-         c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-         c.VK_PIPELINE_STAGE_TRANSFER_BIT,
-         0x00000000,
-         0,
-         undefined,
-         0,
-         undefined,
-         1,
-         &vk_image_memory_barrier_transition_to_transfer_optimal,
-      );
+      // Initialize the load item
+      load_item.* = .{
+         .status  = .pending,
+         .variant = .{.texture = .{
+            .image      = vulkan_image,
+            .image_view = vulkan_image_view,
+         }},
+      };
 
-      // Copy from the transfer buffer into the image memory
+      // Advance within the transfer allocation
+      transfer_allocation_offset_texture += texture_bytes.total_aligned;
+   }
+   errdefer for (handles_textures) |texture_handle| {
+      const texture_load_item = &self.getMut(texture_handle).variant.texture;
+      texture_load_item.destroy(vk_device);
+   };
+
+   // Transition all the created images to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+   c.vkCmdPipelineBarrier(
+      self.vk_command_buffer_transfer,
+      c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+      c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+      0x00000000,
+      0,
+      undefined,
+      0,
+      undefined,
+      @intCast(load_textures_count),
+      load_buffers.texture_memory_barriers,
+   );
+
+   // Iterate through the images again, this time recording the copy commands
+   // and recording the ownership transfer to the graphics queue
+   // Note how this time we are advancing the original transfer offset
+   for (load_items.textures, handles_textures, load_buffers.texture_memory_barriers) |*texture, texture_handle, *texture_memory_barrier| {
+      const load_item_texture = &self.get(texture_handle).variant.texture;
+
+      const texture_bytes = _calculateTextureBytesAlignment(texture);
+
+      // Record the copy command
       const vk_buffer_image_copy = c.VkBufferImageCopy{
          .bufferOffset        = allocation_transfer.offset + transfer_allocation_offset,
          .bufferRowLength     = 0,
@@ -604,33 +637,25 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       c.vkCmdCopyBufferToImage(
          self.vk_command_buffer_transfer,
          memory_heap_transfer.memory_heap.vk_buffer,
-         vulkan_image.vk_image,
+         load_item_texture.image.vk_image,
          c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
          1,
          &vk_buffer_image_copy,
       );
 
-      // TODO: Transfer to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, made more
-      // complex as this can only be done from the graphics queue.  Maybe transfer
-      // ownership to the graphics queue and perform the layout transition during
-      // the draw call buffer?
-
-      // Initialize the load item
-      load_item.* = .{
-         .status  = .pending,
-         .variant = .{.texture = .{
-            .image      = vulkan_image,
-            .image_view = vulkan_image_view,
-         }},
-      };
-
-      // Advance within the transfer allocation
+      // TODO: Image memory barrier to transfer ownership to graphics queue
+      _ = texture_memory_barrier;
+      
+      // Advance the original transfer offset
       transfer_allocation_offset += texture_bytes.total_aligned;
    }
-   errdefer for (handles_textures) |texture_handle| {
-      const texture_load_item = &self.getMut(texture_handle).variant.texture;
-      texture_load_item.destroy(vk_device);
-   };
+
+   // TODO: Transfer ownership of the images to the graphics queue.  This needs
+   // to be done so the image layout can be transitioned to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL.
+   // This can only be done from the graphics queue.  The above code should have
+   // already populated the vkImageMemoryBarrier array, so here we just need to
+   // call vkCmdPipelineBarrier.
+
 
    // Create all our samplers now...
    for (load_items.samplers, handles_samplers, 0..load_samplers_count) |*sampler, sampler_handle, i| {

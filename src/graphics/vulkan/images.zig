@@ -195,7 +195,7 @@ pub const ImageView = struct {
             .b = c.VK_COMPONENT_SWIZZLE_IDENTITY,
             .a = c.VK_COMPONENT_SWIZZLE_IDENTITY,
          },
-        .subresourceRange = c.VkImageSubresourceRange{
+         .subresourceRange = c.VkImageSubresourceRange{
             .aspectMask       = c.VK_IMAGE_ASPECT_COLOR_BIT,
             .baseMipLevel     = 0,
             .levelCount       = 1,
