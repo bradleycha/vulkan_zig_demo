@@ -326,8 +326,9 @@ pub const Renderer = struct {
 
    pub fn unloadAssets(self : * @This(), handles : [] const AssetLoader.Handle) bool {
       return self._asset_loader.unload(self._allocator, handles, &.{
-         .vk_device        = self._vulkan_device.vk_device,
-         .memory_heap_draw = &self._vulkan_memory_heap_draw,
+         .vk_device           = self._vulkan_device.vk_device,
+         .vk_queue_graphics   = self._vulkan_device.queues.graphics,
+         .memory_heap_draw    = &self._vulkan_memory_heap_draw,
       });
    }
 

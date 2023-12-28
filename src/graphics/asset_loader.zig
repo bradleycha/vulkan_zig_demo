@@ -918,16 +918,22 @@ fn _freeTrailingDestroyedLoadItems(self : * AssetLoader, allocator : std.mem.All
 
 pub const UnloadInfo = struct {
    vk_device         : c.VkDevice,
+   vk_queue_graphics : c.VkQueue,
    memory_heap_draw  : * vulkan.MemoryHeapDraw,
 };
 
 pub fn unload(self : * AssetLoader, allocator : std.mem.Allocator, handles : [] const Handle, unload_info : * const UnloadInfo) bool {
    const vk_device         = unload_info.vk_device;
+   const vk_queue_graphics = unload_info.vk_queue_graphics;
    const memory_heap_draw  = unload_info.memory_heap_draw;
 
    if (self.isBusy(vk_device) == true) {
       return false;
    }
+
+   // Unfortunately we have to wait for the graphics queue to be idle so we can
+   // safely destroy resources which may currently be in use by it.
+   _ = c.vkQueueWaitIdle(vk_queue_graphics);
 
    for (handles) |handle| {
       const load_item = self.getMut(handle);
