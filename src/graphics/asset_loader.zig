@@ -48,9 +48,11 @@ pub const Mesh = struct {
 };
 
 pub const Texture = struct {
-   image : vulkan.Image,
+   image       : vulkan.Image,
+   image_view  : vulkan.ImageView,
 
    fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      self.image_view.destroy(vk_device);
       self.image.destroy(vk_device);
       return;
    }
@@ -530,7 +532,13 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       }, memory_source_image);
       errdefer vulkan_image.destroy(vk_device);
 
-      // TODO: Image view
+      // Create the image view into our created image
+      const vulkan_image_view = try vulkan.ImageView.create(&.{
+         .vk_device  = vk_device,
+         .vk_image   = vulkan_image.vk_image,
+         .format     = texture.data.format,
+      });
+      errdefer vulkan_image_view.destroy(vk_device);
 
       // Copy the image data into the transfer allocation
       const transfer_allocation_image_data_int_ptr = @intFromPtr(memory_heap_transfer.mapping) + allocation_transfer.offset + transfer_allocation_offset;
@@ -611,7 +619,8 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       load_item.* = .{
          .status  = .pending,
          .variant = .{.texture = .{
-            .image   = vulkan_image,
+            .image      = vulkan_image,
+            .image_view = vulkan_image_view,
          }},
       };
 

@@ -161,3 +161,68 @@ pub const Image = struct {
    }
 };
 
+pub const ImageView = struct {
+   vk_image_view  : c.VkImageView,
+
+   pub const CreateError = error {
+      OutOfMemory,
+      Unknown,
+   };
+
+   pub const CreateInfo = struct {
+      vk_device   : c.VkDevice,
+      vk_image    : c.VkImage,
+      format      : ImageSource.PixelFormat,
+   };
+
+   pub fn create(create_info : * const CreateInfo) CreateError!@This() {
+      var vk_result : c.VkResult = undefined;
+
+      const vk_device   = create_info.vk_device;
+      const vk_image    = create_info.vk_image;
+      const format      = create_info.format;
+
+      const vk_info_create_image_view = c.VkImageViewCreateInfo{
+         .sType            = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+         .pNext            = null,
+         .flags            = 0x00000000,
+         .image            = vk_image,
+         .viewType         = c.VK_IMAGE_VIEW_TYPE_2D,
+         .format           = @intFromEnum(format),
+         .components       = c.VkComponentMapping{
+            .r = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+            .g = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+            .b = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+            .a = c.VK_COMPONENT_SWIZZLE_IDENTITY,
+         },
+        .subresourceRange = c.VkImageSubresourceRange{
+            .aspectMask       = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel     = 0,
+            .levelCount       = 1,
+            .baseArrayLayer   = 0,
+            .layerCount       = 1,
+         },
+      };
+
+      var vk_image_view : c.VkImageView = undefined;
+      vk_result = c.vkCreateImageView(vk_device, &vk_info_create_image_view, null, &vk_image_view);
+      switch (vk_result) {
+         c.VK_SUCCESS                                    => {},
+         c.VK_ERROR_OUT_OF_HOST_MEMORY                   => return error.OutOfMemory,
+         c.VK_ERROR_OUT_OF_DEVICE_MEMORY                 => return error.OutOfMemory,
+         c.VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR   => return error.Unknown,
+         else                                            => unreachable,
+      }
+      errdefer c.vkDestroyImageView(vk_device, vk_image_view, null);
+      
+      return @This(){
+         .vk_image_view = vk_image_view,
+      };
+   }
+
+   pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
+      c.vkDestroyImageView(vk_device, self.vk_image_view, null);
+      return;
+   }
+};
+
