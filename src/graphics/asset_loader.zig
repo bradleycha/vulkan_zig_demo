@@ -515,7 +515,75 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       const transfer_allocation_image_data = @as([*] u8, @ptrFromInt(transfer_allocation_image_data_int_ptr));
       @memcpy(transfer_allocation_image_data, texture.data.data);
 
-      // TODO: Layout transition, buffer to image copy, etc.
+      // Transition the image layout into one optimal for transfer operations
+      const vk_image_memory_barrier_transition_to_transfer_optimal = c.VkImageMemoryBarrier{
+         .sType               = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+         .pNext               = null,
+         .srcAccessMask       = 0x00000000,
+         .dstAccessMask       = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+         .oldLayout           = c.VK_IMAGE_LAYOUT_UNDEFINED,
+         .newLayout           = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+         .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+         .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+         .image               = vulkan_image.vk_image,
+         .subresourceRange    = c.VkImageSubresourceRange{
+            .aspectMask       = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel     = 0,
+            .levelCount       = 1,
+            .baseArrayLayer   = 0,
+            .layerCount       = 1,
+      },
+      };
+
+      c.vkCmdPipelineBarrier(
+         self.vk_command_buffer_transfer,
+         c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+         c.VK_PIPELINE_STAGE_TRANSFER_BIT,
+         0x00000000,
+         0,
+         undefined,
+         0,
+         undefined,
+         1,
+         &vk_image_memory_barrier_transition_to_transfer_optimal,
+      );
+
+      // Copy from the transfer buffer into the image memory
+      const vk_buffer_image_copy = c.VkBufferImageCopy{
+         .bufferOffset        = allocation_transfer.offset + transfer_allocation_offset,
+         .bufferRowLength     = 0,
+         .bufferImageHeight   = 0,
+         .imageSubresource    = c.VkImageSubresourceLayers{
+            .aspectMask       = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel         = 0,
+            .baseArrayLayer   = 0,
+            .layerCount       = 1,
+         },
+         .imageOffset         = c.VkOffset3D{
+            .x = 0,
+            .y = 0,
+            .z = 0,
+         },
+         .imageExtent         = c.VkExtent3D{
+            .width   = texture.data.width,
+            .height  = texture.data.height,
+            .depth   = 1,
+         },
+      };
+
+      c.vkCmdCopyBufferToImage(
+         self.vk_command_buffer_transfer,
+         memory_heap_transfer.memory_heap.vk_buffer,
+         vulkan_image.vk_image,
+         c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+         1,
+         &vk_buffer_image_copy,
+      );
+
+      // TODO: Transfer to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, made more
+      // complex as this can only be done from the graphics queue.  Maybe transfer
+      // ownership to the graphics queue and perform the layout transition during
+      // the draw call buffer?
 
       // Initialize the load item
       load_item.* = .{
