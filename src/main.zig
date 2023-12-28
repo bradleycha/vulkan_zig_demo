@@ -108,7 +108,7 @@ pub fn main() MainError!void {
       .textures   = 3,
    }) = undefined;
 
-   _ = renderer.loadAssets(&asset_load_buffers_array.getBuffers(), &.{
+   while (renderer.loadAssets(&asset_load_buffers_array.getBuffers(), &.{
       .meshes = &.{
          .{
             .push_constants   = null,
@@ -155,8 +155,8 @@ pub fn main() MainError!void {
             .data = &resources.textures.ROCK,
          },
       },
-   }) catch return error.ResourceLoadError;
-   defer _ = renderer.unloadAssets(&asset_load_buffers_array.handles);
+   }) catch (return error.ResourceLoadError) == false) {}
+   defer while(renderer.unloadAssets(&asset_load_buffers_array.handles) == false) {};
 
    const mesh_handle_test_plane     = asset_load_buffers_array.handles[0];
    const mesh_handle_test_pyramid   = asset_load_buffers_array.handles[1];

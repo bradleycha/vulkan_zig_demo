@@ -434,8 +434,7 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
 
       const load_item = _getAllowDestroyedMut(self, handle_mesh);
 
-      const mesh_bytes     = _calculateMeshBytes(mesh);
-      const mesh_pointers  = _calculateMeshPointers(&mesh_bytes, transfer_allocation_offset, memory_heap_transfer.mapping);
+      const mesh_bytes = _calculateMeshBytes(mesh);
 
       // Attempt to create the draw heap allocation
       const allocation_draw = try memory_heap_draw.memory_heap.allocate(allocator, &.{
@@ -443,6 +442,8 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
          .bytes      = mesh_bytes.total,
       });
       errdefer memory_heap_draw.memory_heap.free(allocator, allocation_draw);
+
+      const mesh_pointers = _calculateMeshPointers(&mesh_bytes, allocation_transfer.offset + transfer_allocation_offset, memory_heap_transfer.mapping);
 
       // Copy from user buffer into transfer allocation
       @memcpy(mesh_pointers.vertices, mesh.data.vertices);
@@ -625,16 +626,15 @@ const MeshPointers = struct {
 };
 
 fn _calculateMeshPointers(mesh_bytes : * const MeshBytes, offset : u32, mapping : * anyopaque) MeshPointers {
-   const mapping_int          = @intFromPtr(mapping);
-   const mapping_int_offset   = mapping_int + offset;
+   const base_int_ptr = @intFromPtr(mapping) + offset;
 
-   const vertices_int   = mapping_int_offset + mesh_bytes.vertices;
-   const indices_int    = vertices_int + mesh_bytes.indices;
+   const vertices_int_ptr  = base_int_ptr;
+   const indices_int_ptr   = vertices_int_ptr + mesh_bytes.vertices;
 
-   const vertices = @as([*] root.types.Vertex, @ptrFromInt(vertices_int));
-   const indices  = @as([*] root.types.Mesh.IndexElement, @ptrFromInt(indices_int));
+   const vertices_ptr   = @as([*] root.types.Vertex, @ptrFromInt(vertices_int_ptr));
+   const indices_ptr    = @as([*] root.types.Mesh.IndexElement, @ptrFromInt(indices_int_ptr));
 
-   return .{.vertices = vertices, .indices = indices};
+   return .{.vertices = vertices_ptr, .indices = indices_ptr};
 }
 
 const TextureBytesAlignment = struct {
