@@ -2,7 +2,7 @@ const std   = @import("std");
 const math  = @import("math");
 const input = @import("input");
 
-const MOUSE_SENSITIVITY          = 8.0;
+const MOUSE_SENSITIVITY          = 0.0007;
 const MOVE_SPEED_BASE            = 2.0;
 const MOVE_SPEED_FAST_MULTIPLIER = 5.0;
 const MOVE_SPEED_SLOW_MULTIPLIER = 0.2;
@@ -41,8 +41,8 @@ pub const FreeflyCamera = struct {
 
       const inputs = _calculateInput(controller);
 
-      const angles_delta = _calculateAnglesDelta(&inputs);
-      self.angles.vector += angles_delta.vector * time_delta_vector;
+      const angles_delta = _calculateAnglesDelta(&inputs, time_delta);
+      self.angles.vector += angles_delta.vector;
 
       self.angles.angles.pitch = std.math.clamp(self.angles.angles.pitch, CAMERA_PITCH_RANGE * -0.5, CAMERA_PITCH_RANGE * 0.5);
 
@@ -124,14 +124,16 @@ pub const FreeflyCamera = struct {
 };
 
 const _FreeflyCameraInput = struct {
-   move : math.Vector3(f32),
-   look : math.Vector2(f32),
+   move  : math.Vector3(f32),
+   look  : math.Vector2(f32),
+   mouse : math.Vector2(f32),
 };
 
 fn _calculateInput(controller : * const input.Controller) _FreeflyCameraInput {
    var inputs = _FreeflyCameraInput{
-      .move = math.Vector3(f32).ZERO,
-      .look = math.Vector2(f32).ZERO,
+      .move    = math.Vector3(f32).ZERO,
+      .look    = math.Vector2(f32).ZERO,
+      .mouse   = math.Vector2(f32).ZERO,
    };
 
    if (controller.buttons.state(.jump).isDown() == true) {
@@ -165,12 +167,15 @@ fn _calculateInput(controller : * const input.Controller) _FreeflyCameraInput {
       inputs.look.xy.x -= 1.0;
    }
 
+   inputs.mouse = controller.mouse.move_delta;
+
    // Don't want base movement speeds to be > 1
    inputs.move = inputs.move.normalizeZero();
    inputs.look = inputs.look.normalizeZero();
 
-   inputs.move.vector *= @splat(MOVE_SPEED_BASE);
-   inputs.look.vector *= @splat(LOOK_SPEED_BASE);
+   inputs.move.vector   *= @splat(MOVE_SPEED_BASE);
+   inputs.look.vector   *= @splat(LOOK_SPEED_BASE);
+   inputs.mouse.vector  *= @splat(MOUSE_SENSITIVITY * -1.0);
 
    if (controller.buttons.state(.accelerate).isDown() == true) {
       inputs.move.vector *= @splat(MOVE_SPEED_FAST_MULTIPLIER);
@@ -182,20 +187,19 @@ fn _calculateInput(controller : * const input.Controller) _FreeflyCameraInput {
       inputs.look.vector *= @splat(LOOK_SPEED_SLOW_MULTIPLIER);
    }
 
-   // Add at the end to skip acceleration/deceleration and normalization
-   inputs.look.vector += controller.mouse.move_delta.vector * @as(@Vector(2, f32), @splat(MOUSE_SENSITIVITY * -1.0));
-
    return inputs;
 }
 
-fn _calculateAnglesDelta(inputs : * const _FreeflyCameraInput) math.Vector3(f32) {
-   const delta_angles = math.Vector3(f32){.angles = .{
-      .pitch   = inputs.look.xy.y,
-      .yaw     = inputs.look.xy.x,
+fn _calculateAnglesDelta(inputs : * const _FreeflyCameraInput, time_delta : f32) math.Vector3(f32) {
+   const delta_angles = (inputs.look.vector * @as(@Vector(2, f32), @splat(time_delta))) + inputs.mouse.vector;
+
+   const delta_angles_shuffled = math.Vector3(f32){.angles = .{
+      .pitch   = delta_angles[1],
+      .yaw     = delta_angles[0],
       .roll    = 0.0,
    }};
 
-   return delta_angles;
+   return delta_angles_shuffled;
 }
 
 fn _calculateTargetVelocity(inputs : * const _FreeflyCameraInput, current_angles : * const math.Vector3(f32)) math.Vector3(f32) {
