@@ -20,6 +20,7 @@ pub const ClearColor = union(ClearColorTag) {
 pub const GraphicsPipeline = struct {
    vk_render_pass                            : c.VkRenderPass,
    vk_descriptor_set_layout_uniform_buffers  : c.VkDescriptorSetLayout,
+   vk_descriptor_set_layout_texture_samplers : c.VkDescriptorSetLayout,
    vk_pipeline_layout                        : c.VkPipelineLayout,
    vk_pipeline                               : c.VkPipeline,
 
@@ -56,6 +57,9 @@ pub const GraphicsPipeline = struct {
 
       const vk_descriptor_set_layout_uniform_buffers = try _createDescriptorSetLayoutUniformBuffers(vk_device);
       errdefer c.vkDestroyDescriptorSetLayout(vk_device, vk_descriptor_set_layout_uniform_buffers, null);
+
+      const vk_descriptor_set_layout_texture_samplers = try _createDescriptorSetLayoutTextureSamplers(vk_device);
+      errdefer c.vkDestroyDescriptorSetLayout(vk_device, vk_descriptor_set_layout_texture_samplers, null);
 
       const vk_pipeline_layout = try _createPipelineLayout(vk_device, vk_descriptor_set_layout_uniform_buffers);
       errdefer c.vkDestroyPipelineLayout(vk_device, vk_pipeline_layout, null);
@@ -238,16 +242,18 @@ pub const GraphicsPipeline = struct {
       errdefer c.vkDestroyPipeline(vk_device, vk_pipeline, null);
 
       return @This(){
-         .vk_render_pass                           = vk_render_pass,
-         .vk_descriptor_set_layout_uniform_buffers = vk_descriptor_set_layout_uniform_buffers,
-         .vk_pipeline_layout                       = vk_pipeline_layout,
-         .vk_pipeline                              = vk_pipeline,
+         .vk_render_pass                              = vk_render_pass,
+         .vk_descriptor_set_layout_uniform_buffers    = vk_descriptor_set_layout_uniform_buffers,
+         .vk_descriptor_set_layout_texture_samplers   = vk_descriptor_set_layout_texture_samplers,
+         .vk_pipeline_layout                          = vk_pipeline_layout,
+         .vk_pipeline                                 = vk_pipeline,
       };
    }
 
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
       c.vkDestroyPipeline(vk_device, self.vk_pipeline, null);
       c.vkDestroyPipelineLayout(vk_device, self.vk_pipeline_layout, null);
+      c.vkDestroyDescriptorSetLayout(vk_device, self.vk_descriptor_set_layout_texture_samplers, null);
       c.vkDestroyDescriptorSetLayout(vk_device, self.vk_descriptor_set_layout_uniform_buffers, null);
       c.vkDestroyRenderPass(vk_device, self.vk_render_pass, null);
       return;
@@ -399,6 +405,42 @@ fn _createDescriptorSetLayoutUniformBuffers(vk_device : c.VkDevice) GraphicsPipe
 
    const vk_infos_descriptor_set_layout_bindings = [_] c.VkDescriptorSetLayoutBinding{
       vk_info_descriptor_set_layout_binding_uniforms,
+   };
+
+   const vk_info_create_descriptor_set_layout = c.VkDescriptorSetLayoutCreateInfo{
+      .sType         = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+      .pNext         = null,
+      .flags         = 0x00000000,
+      .bindingCount  = @intCast(vk_infos_descriptor_set_layout_bindings.len),
+      .pBindings     = &vk_infos_descriptor_set_layout_bindings,
+   };
+
+   var vk_descriptor_set_layout : c.VkDescriptorSetLayout = undefined;
+   vk_result = c.vkCreateDescriptorSetLayout(vk_device, &vk_info_create_descriptor_set_layout, null, &vk_descriptor_set_layout);
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+      else                             => unreachable,
+   }
+   errdefer c.vkDestroyDescriptorSetLayout(vk_device, vk_descriptor_set_layout, null);
+
+   return vk_descriptor_set_layout;
+}
+
+fn _createDescriptorSetLayoutTextureSamplers(vk_device : c.VkDevice) GraphicsPipeline.CreateError!c.VkDescriptorSetLayout {
+   var vk_result : c.VkResult = undefined;
+
+   const vk_info_descriptor_set_layout_binding_texture_sampler = c.VkDescriptorSetLayoutBinding{
+      .binding             = 0,
+      .descriptorType      = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+      .descriptorCount     = 1,
+      .stageFlags          = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+      .pImmutableSamplers  = null,
+   };
+
+   const vk_infos_descriptor_set_layout_bindings = [_] c.VkDescriptorSetLayoutBinding{
+      vk_info_descriptor_set_layout_binding_texture_sampler,
    };
 
    const vk_info_create_descriptor_set_layout = c.VkDescriptorSetLayoutCreateInfo{
