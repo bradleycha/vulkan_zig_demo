@@ -157,6 +157,24 @@ pub fn main() MainError!void {
    const texture_handle_rock        = asset_load_buffers_array.handles[5];
    const sampler_handle_default     = asset_load_buffers_array.handles[6];
 
+   const texture_sampler_tile = try renderer.createTextureSampler(&.{
+      .texture = texture_handle_tile,
+      .sampler = sampler_handle_default,
+   });
+   defer renderer.destroyTextureSampler(texture_sampler_tile);
+
+   const texture_sampler_grass = try renderer.createTextureSampler(&.{
+      .texture = texture_handle_grass,
+      .sampler = sampler_handle_default,
+   });
+   defer renderer.destroyTextureSampler(texture_sampler_grass);
+
+   const texture_sampler_rock = try renderer.createTextureSampler(&.{
+      .texture = texture_handle_rock,
+      .sampler = sampler_handle_default,
+   });
+   defer renderer.destroyTextureSampler(texture_sampler_rock);
+
    const mesh_matrix_test_plane     = renderer.meshTransformMatrixMut(mesh_handle_test_plane);
    const mesh_matrix_test_pyramid   = renderer.meshTransformMatrixMut(mesh_handle_test_pyramid);
    const mesh_matrix_test_cube      = renderer.meshTransformMatrixMut(mesh_handle_test_cube);
@@ -272,19 +290,16 @@ pub fn main() MainError!void {
 
       renderer.drawFrame(&.{
          .{
-            .mesh    = mesh_handle_test_plane,
-            .texture = texture_handle_grass,
-            .sampler = sampler_handle_default,
+            .mesh             = mesh_handle_test_plane,
+            .texture_sampler  = &texture_sampler_grass,
          },
          .{
-            .mesh    = mesh_handle_test_pyramid,
-            .texture = texture_handle_rock,
-            .sampler = sampler_handle_default,
+            .mesh             = mesh_handle_test_pyramid,
+            .texture_sampler  = &texture_sampler_rock,
          },
          .{
-            .mesh    = mesh_handle_test_cube,
-            .texture = texture_handle_tile,
-            .sampler = sampler_handle_default,
+            .mesh             = mesh_handle_test_cube,
+            .texture_sampler  = &texture_sampler_tile,
          },
       }) catch |err| {
          std.log.warn("failed to draw frame: {}", .{err});

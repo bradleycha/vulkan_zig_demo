@@ -52,6 +52,7 @@ pub const Renderer = struct {
    _vulkan_uniform_allocation_transfer : vulkan.MemoryHeap.Allocation,
    _vulkan_descriptor_sets             : vulkan.DescriptorSets(.{.uniform_buffers = FRAMES_IN_FLIGHT, .texture_samplers = MAX_TEXTURE_SAMPLERS}),
    _asset_loader                       : AssetLoader,
+   _active_texture_samplers            : [MAX_TEXTURE_SAMPLERS] bool,
    _window                             : * const present.Window,
    _refresh_mode                       : RefreshMode,
    _clear_color                        : ClearColor,
@@ -279,6 +280,7 @@ pub const Renderer = struct {
          ._vulkan_uniform_allocation_transfer   = vulkan_uniform_allocation_transfer,
          ._vulkan_descriptor_sets               = vulkan_descriptor_sets,
          ._asset_loader                         = asset_loader,
+         ._active_texture_samplers              = ([1] bool {false}) ** MAX_TEXTURE_SAMPLERS,
          ._window                               = window,
          ._transform_view                       = transform_view,
          ._transform_projection                 = transform_projection,
@@ -343,6 +345,74 @@ pub const Renderer = struct {
       });
    }
 
+   pub const TextureSampler = struct {
+      _index   : usize,
+      _texture : AssetLoader.Handle,
+      _sampler : AssetLoader.Handle,
+
+      pub const CreateError = error {
+         OutOfMemory,
+      };
+
+      pub const CreateInfo = struct {
+         texture  : AssetLoader.Handle,
+         sampler  : AssetLoader.Handle,
+      };
+   };
+
+   pub fn createTextureSampler(self : * @This(), create_info : * const TextureSampler.CreateInfo) TextureSampler.CreateError!TextureSampler {
+      const texture  = create_info.texture;
+      const sampler  = create_info.sampler;
+
+      // Find the next available texture sampler
+      var next_available_found : ? usize = null;
+      for (self._active_texture_samplers, 0..MAX_TEXTURE_SAMPLERS) |is_active, i| {
+         if (is_active == false) {
+            next_available_found = i;
+            break;
+         }
+      }
+
+      const index = next_available_found orelse return error.OutOfMemory;
+
+      const load_item_texture = &self._asset_loader.get(texture).variant.texture;
+      const load_item_sampler = &self._asset_loader.get(sampler).variant.sampler;
+
+      const vk_descriptor_image_info = c.VkDescriptorImageInfo{
+         .sampler       = load_item_sampler.sampler.vk_sampler,
+         .imageView     = load_item_texture.image_view.vk_image_view,
+         .imageLayout   = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      };
+
+      const vk_write_descriptor_set = c.VkWriteDescriptorSet{
+         .sType            = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+         .pNext            = null,
+         .dstSet           = self._vulkan_descriptor_sets.vk_descriptor_sets_texture_samplers[index],
+         .dstBinding       = 0,
+         .dstArrayElement  = 0,
+         .descriptorCount  = 1,
+         .descriptorType   = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+         .pImageInfo       = &vk_descriptor_image_info,
+         .pBufferInfo      = undefined,
+         .pTexelBufferView = undefined,
+      };
+
+      c.vkUpdateDescriptorSets(self._vulkan_device.vk_device, 1, &vk_write_descriptor_set, 0, undefined);
+
+      self._active_texture_samplers[index] = true;
+
+      return .{
+         ._index     = index,
+         ._texture   = texture,
+         ._sampler   = sampler,
+      };
+   }
+
+   pub fn destroyTextureSampler(self : * @This(), texture_sampler : TextureSampler) void {
+      self._active_texture_samplers[texture_sampler._index] = false;
+      return;
+   }
+
    pub fn getAsset(self : * const @This(), handle : AssetLoader.Handle) * const AssetLoader.LoadItem {
       return self._asset_loader.get(handle);
    }
@@ -383,9 +453,8 @@ pub const Renderer = struct {
    };
 
    pub const Model = struct {
-      mesh     : AssetLoader.Handle,
-      texture  : AssetLoader.Handle,
-      sampler  : AssetLoader.Handle,
+      mesh              : AssetLoader.Handle,
+      texture_sampler   : * const TextureSampler,
    };
 
    pub fn drawFrame(self : * @This(), models : [] const Model) DrawError!void {
@@ -705,7 +774,8 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
    var vk_image_memory_barriers = std.ArrayListUnmanaged(c.VkImageMemoryBarrier){};
    defer vk_image_memory_barriers.deinit(allocator);
    for (models) |model| {
-      const texture_load_item = asset_loader.getMut(model.texture);
+      const texture_sampler   = model.texture_sampler;
+      const texture_load_item = asset_loader.getMut(texture_sampler._texture);
       const texture           = &texture_load_item.variant.texture;
 
       if (texture_load_item.status == .pending) {
@@ -804,14 +874,12 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
 
    for (models) |model| {
       const load_item_mesh    = asset_loader.get(model.mesh);
-      const load_item_texture = asset_loader.getMut(model.texture);
-      const load_item_sampler = asset_loader.get(model.sampler);
+      const load_item_texture = asset_loader.getMut(model.texture_sampler._texture);
+      const load_item_sampler = asset_loader.get(model.texture_sampler._sampler);
       const mesh              = &load_item_mesh.variant.mesh;
-      const texture           = &load_item_texture.variant.texture;
-      const sampler           = &load_item_sampler.variant.sampler;
 
       // If the mesh or texture are in the middle of loading, skip drawing it.
-      if (load_item_mesh.status == .pending or load_item_texture.status == .pending) {
+      if (load_item_mesh.status == .pending or load_item_texture.status == .pending or load_item_sampler.status == .pending) {
          continue;
       }
 
@@ -819,8 +887,7 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
       const vk_buffer_draw_offset_index   = @as(u64, mesh.allocation.offset + mesh.allocation.bytes - mesh.indices * @sizeOf(types.Mesh.IndexElement));
 
       // TODO: Bind sampler/image view descriptor set for the texture
-      _ = texture;
-      _ = sampler;
+
 
       c.vkCmdPushConstants(vk_command_buffer, vk_pipeline_layout, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(types.PushConstants), &mesh.push_constants);
 
