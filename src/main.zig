@@ -288,7 +288,7 @@ pub fn main() MainError!void {
       mesh_matrix_test_pyramid.* = mesh_transform_test_pyramid.toMatrix();
       mesh_matrix_test_cube.*    = mesh_transform_test_cube.toMatrix();
 
-      renderer.drawFrame(&.{
+      _ = renderer.drawFrame(&.{
          .{
             .mesh             = mesh_handle_test_plane,
             .texture_sampler  = &texture_sampler_grass,

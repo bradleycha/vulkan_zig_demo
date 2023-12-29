@@ -457,13 +457,26 @@ pub const Renderer = struct {
       texture_sampler   : * const TextureSampler,
    };
 
-   pub fn drawFrame(self : * @This(), models : [] const Model) DrawError!void {
-      while (try _drawFrameWithSwapchainUpdates(self, models) == false) {}
-      return;
+   pub fn drawFrame(self : * @This(), models : [] const Model) DrawError!bool {
+      while (true) {
+         switch (try _drawFrameWithSwapchainUpdates(self, models)) {
+            .busy                => return false,
+            .complete            => return true,
+            .recreate_swapchain  => continue,
+         }
+      }
+
+      unreachable;
    }
 };
 
-fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.Model) Renderer.DrawError!bool {
+const _DrawState = enum {
+   busy,
+   complete,
+   recreate_swapchain,
+};
+
+fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.Model) Renderer.DrawError!_DrawState {
    var vk_result : c.VkResult = undefined;
 
    const frame_index = self._frame_index;
@@ -488,21 +501,19 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.
       .bytes   = @intCast(@sizeOf(types.UniformBufferObject)),
    };
 
-   vk_result = c.vkWaitForFences(vk_device, 1, &vk_fence_in_flight, c.VK_TRUE, std.math.maxInt(u64));
+   vk_result = c.vkGetFenceStatus(vk_device, vk_fence_in_flight);
    switch (vk_result) {
-      c.VK_SUCCESS                     => {},
-      c.VK_TIMEOUT                     => {},
-      c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
-      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
-      c.VK_ERROR_DEVICE_LOST           => return error.DeviceLost,
-      else                             => unreachable,
+      c.VK_SUCCESS            => {},
+      c.VK_NOT_READY          => return .busy,
+      c.VK_ERROR_DEVICE_LOST  => return error.DeviceLost,
+      else                    => unreachable,
    }
 
    const old_framebuffer_size       = &self._framebuffer_size;
    const current_framebuffer_size   = self._window.getResolution();
    if (old_framebuffer_size.width != current_framebuffer_size.width or old_framebuffer_size.height != current_framebuffer_size.height) {
       _recreateSwapchain(self) catch return error.VulkanSwapchainRecreateError;
-      return false;
+      return .recreate_swapchain;
    }
 
    var recreate_swapchain = false;
@@ -519,7 +530,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.
       c.VK_ERROR_DEVICE_LOST                          => return error.DeviceLost,
       c.VK_ERROR_OUT_OF_DATE_KHR                      => {
          _recreateSwapchain(self) catch return error.VulkanSwapchainRecreateError;
-         return false;
+         return .recreate_swapchain;
       },
       c.VK_ERROR_SURFACE_LOST_KHR                     => return error.SurfaceLost,
       c.VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT  => return error.Unknown,
@@ -636,12 +647,12 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.
 
    if (recreate_swapchain == true) {
       _recreateSwapchain(self) catch return error.VulkanSwapchainRecreateError;
-      return false;
+      return .recreate_swapchain;
    }
 
    self._frame_index = (frame_index + 1) % FRAMES_IN_FLIGHT;
 
-   return true;
+   return .complete;
 }
 
 const SwapchainRecreateError = error {
