@@ -29,34 +29,34 @@ pub const ImageSampling = vulkan.ImageSampling;
 pub const AssetLoader = @import("asset_loader.zig");
 
 pub const Renderer = struct {
-   _allocator                                : std.mem.Allocator,
-   _vulkan_instance                          : vulkan.Instance,
-   _vulkan_surface                           : vulkan.Surface,
-   _vulkan_physical_device                   : vulkan.PhysicalDevice,
-   _vulkan_swapchain_configuration           : vulkan.SwapchainConfiguration,
-   _vulkan_device                            : vulkan.Device,
-   _vulkan_swapchain                         : vulkan.Swapchain,
-   _vulkan_graphics_pipeline                 : vulkan.GraphicsPipeline,
-   _vulkan_framebuffers                      : vulkan.Framebuffers,
-   _vulkan_command_pools                     : vulkan.CommandPools,
-   _vulkan_command_buffers_draw              : vulkan.CommandBuffersDraw(FRAMES_IN_FLIGHT),
-   _vulkan_semaphores_image_available        : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
-   _vulkan_semaphores_render_finished        : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
-   _vulkan_fences_in_flight                  : vulkan.FenceList(FRAMES_IN_FLIGHT),
-   _vulkan_memory_source_image               : vulkan.MemorySourceImage,
-   _vulkan_memory_heap_draw                  : vulkan.MemoryHeapDraw,
-   _vulkan_memory_heap_transfer              : vulkan.MemoryHeapTransfer,
-   _vulkan_uniform_allocation_draw           : vulkan.MemoryHeap.Allocation,
-   _vulkan_uniform_allocation_transfer       : vulkan.MemoryHeap.Allocation,
-   _vulkan_descriptor_sets_uniform_buffers   : vulkan.DescriptorSetsUniformBuffers(FRAMES_IN_FLIGHT),
-   _asset_loader                             : AssetLoader,
-   _window                                   : * const present.Window,
-   _refresh_mode                             : RefreshMode,
-   _clear_color                              : ClearColor,
-   _transform_view                           : math.Matrix4(f32),
-   _transform_projection                     : math.Matrix4(f32),
-   _frame_index                              : u32,
-   _framebuffer_size                         : present.Window.Resolution,
+   _allocator                          : std.mem.Allocator,
+   _vulkan_instance                    : vulkan.Instance,
+   _vulkan_surface                     : vulkan.Surface,
+   _vulkan_physical_device             : vulkan.PhysicalDevice,
+   _vulkan_swapchain_configuration     : vulkan.SwapchainConfiguration,
+   _vulkan_device                      : vulkan.Device,
+   _vulkan_swapchain                   : vulkan.Swapchain,
+   _vulkan_graphics_pipeline           : vulkan.GraphicsPipeline,
+   _vulkan_framebuffers                : vulkan.Framebuffers,
+   _vulkan_command_pools               : vulkan.CommandPools,
+   _vulkan_command_buffers_draw        : vulkan.CommandBuffersDraw(FRAMES_IN_FLIGHT),
+   _vulkan_semaphores_image_available  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
+   _vulkan_semaphores_render_finished  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
+   _vulkan_fences_in_flight            : vulkan.FenceList(FRAMES_IN_FLIGHT),
+   _vulkan_memory_source_image         : vulkan.MemorySourceImage,
+   _vulkan_memory_heap_draw            : vulkan.MemoryHeapDraw,
+   _vulkan_memory_heap_transfer        : vulkan.MemoryHeapTransfer,
+   _vulkan_uniform_allocation_draw     : vulkan.MemoryHeap.Allocation,
+   _vulkan_uniform_allocation_transfer : vulkan.MemoryHeap.Allocation,
+   _vulkan_descriptor_sets             : vulkan.DescriptorSets(FRAMES_IN_FLIGHT),
+   _asset_loader                       : AssetLoader,
+   _window                             : * const present.Window,
+   _refresh_mode                       : RefreshMode,
+   _clear_color                        : ClearColor,
+   _transform_view                     : math.Matrix4(f32),
+   _transform_projection               : math.Matrix4(f32),
+   _frame_index                        : u32,
+   _framebuffer_size                   : present.Window.Resolution,
 
    pub const CreateInfo = struct {
       program_name      : ? [*:0] const u8,
@@ -237,13 +237,13 @@ pub const Renderer = struct {
          FIELD_OF_VIEW,
       );
 
-      const vulkan_descriptor_sets_uniform_buffers = vulkan.DescriptorSetsUniformBuffers(FRAMES_IN_FLIGHT).create(&.{
-         .vk_device                 = vk_device,
-         .vk_descriptor_set_layout  = vulkan_graphics_pipeline.vk_descriptor_set_layout,
-         .vk_buffer                 = vulkan_memory_heap_draw.memory_heap.vk_buffer,
-         .allocation_uniforms       = vulkan_uniform_allocation_draw,
+      const vulkan_descriptor_sets = vulkan.DescriptorSets(FRAMES_IN_FLIGHT).create(&.{
+         .vk_device                                = vk_device,
+         .vk_descriptor_set_layout_uniform_buffers = vulkan_graphics_pipeline.vk_descriptor_set_layout_uniform_buffers,
+         .vk_buffer                                = vulkan_memory_heap_draw.memory_heap.vk_buffer,
+         .allocation_uniforms                      = vulkan_uniform_allocation_draw,
       }) catch return error.VulkanDescriptorSetsCreateError;
-      errdefer vulkan_descriptor_sets_uniform_buffers.destroy(vk_device);
+      errdefer vulkan_descriptor_sets.destroy(vk_device);
 
       var asset_loader = AssetLoader.create(&.{
          .vk_device                 = vk_device,
@@ -255,34 +255,34 @@ pub const Renderer = struct {
       });
       
       return @This(){
-         ._allocator                               = allocator,
-         ._vulkan_instance                         = vulkan_instance,
-         ._vulkan_surface                          = vulkan_surface,
-         ._vulkan_physical_device                  = vulkan_physical_device,
-         ._vulkan_swapchain_configuration          = vulkan_swapchain_configuration,
-         ._vulkan_device                           = vulkan_device,
-         ._vulkan_swapchain                        = vulkan_swapchain,
-         ._vulkan_graphics_pipeline                = vulkan_graphics_pipeline,
-         ._vulkan_framebuffers                     = vulkan_framebuffers,
-         ._vulkan_command_pools                    = vulkan_command_pools,
-         ._vulkan_command_buffers_draw             = vulkan_command_buffers_draw,
-         ._vulkan_semaphores_image_available       = vulkan_semaphores_image_available,
-         ._vulkan_semaphores_render_finished       = vulkan_semaphores_render_finished,
-         ._vulkan_fences_in_flight                 = vulkan_fences_in_flight,
-         ._vulkan_memory_source_image              = vulkan_memory_source_image,
-         ._vulkan_memory_heap_draw                 = vulkan_memory_heap_draw,
-         ._vulkan_memory_heap_transfer             = vulkan_memory_heap_transfer,
-         ._vulkan_uniform_allocation_draw          = vulkan_uniform_allocation_draw,
-         ._vulkan_uniform_allocation_transfer      = vulkan_uniform_allocation_transfer,
-         ._vulkan_descriptor_sets_uniform_buffers  = vulkan_descriptor_sets_uniform_buffers,
-         ._asset_loader                            = asset_loader,
-         ._window                                  = window,
-         ._transform_view                          = transform_view,
-         ._transform_projection                    = transform_projection,
-         ._refresh_mode                            = create_info.refresh_mode,
-         ._clear_color                             = create_info.clear_color,
-         ._frame_index                             = 0,
-         ._framebuffer_size                        = window_framebuffer_size,
+         ._allocator                            = allocator,
+         ._vulkan_instance                      = vulkan_instance,
+         ._vulkan_surface                       = vulkan_surface,
+         ._vulkan_physical_device               = vulkan_physical_device,
+         ._vulkan_swapchain_configuration       = vulkan_swapchain_configuration,
+         ._vulkan_device                        = vulkan_device,
+         ._vulkan_swapchain                     = vulkan_swapchain,
+         ._vulkan_graphics_pipeline             = vulkan_graphics_pipeline,
+         ._vulkan_framebuffers                  = vulkan_framebuffers,
+         ._vulkan_command_pools                 = vulkan_command_pools,
+         ._vulkan_command_buffers_draw          = vulkan_command_buffers_draw,
+         ._vulkan_semaphores_image_available    = vulkan_semaphores_image_available,
+         ._vulkan_semaphores_render_finished    = vulkan_semaphores_render_finished,
+         ._vulkan_fences_in_flight              = vulkan_fences_in_flight,
+         ._vulkan_memory_source_image           = vulkan_memory_source_image,
+         ._vulkan_memory_heap_draw              = vulkan_memory_heap_draw,
+         ._vulkan_memory_heap_transfer          = vulkan_memory_heap_transfer,
+         ._vulkan_uniform_allocation_draw       = vulkan_uniform_allocation_draw,
+         ._vulkan_uniform_allocation_transfer   = vulkan_uniform_allocation_transfer,
+         ._vulkan_descriptor_sets               = vulkan_descriptor_sets,
+         ._asset_loader                         = asset_loader,
+         ._window                               = window,
+         ._transform_view                       = transform_view,
+         ._transform_projection                 = transform_projection,
+         ._refresh_mode                         = create_info.refresh_mode,
+         ._clear_color                          = create_info.clear_color,
+         ._frame_index                          = 0,
+         ._framebuffer_size                     = window_framebuffer_size,
       };
    }
 
@@ -300,7 +300,7 @@ pub const Renderer = struct {
          .vk_command_pool_transfer  = self._vulkan_command_pools.transfer,
       });
 
-      self._vulkan_descriptor_sets_uniform_buffers.destroy(vk_device);
+      self._vulkan_descriptor_sets.destroy(vk_device);
       self_mut._vulkan_memory_heap_transfer.memory_heap.free(allocator, self._vulkan_uniform_allocation_transfer);
       self_mut._vulkan_memory_heap_draw.memory_heap.free(allocator, self._vulkan_uniform_allocation_draw);
       self_mut._vulkan_memory_heap_transfer.destroy(allocator, vk_device);
@@ -404,7 +404,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.
    const vk_fence_in_flight                  = self._vulkan_fences_in_flight.vk_fences[frame_index];
    const allocation_uniforms_transfer        = self._vulkan_uniform_allocation_transfer;
    const allocation_uniforms_draw            = self._vulkan_uniform_allocation_draw;
-   const vk_descriptor_set_uniform_buffers   = self._vulkan_descriptor_sets_uniform_buffers.vk_descriptor_sets[frame_index];
+   const vk_descriptor_set_uniform_buffers   = self._vulkan_descriptor_sets.vk_descriptor_sets_uniform_buffers[frame_index];
 
    const allocation_uniform_transfer   = vulkan.MemoryHeap.Allocation{
       .offset  = allocation_uniforms_transfer.offset + @as(u32, @intCast(frame_index * @sizeOf(types.UniformBufferObject))),

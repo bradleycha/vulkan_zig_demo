@@ -2,20 +2,16 @@ const root  = @import("index.zig");
 const std   = @import("std");
 const c     = @import("cimports");
 
-pub const DescriptorSets = struct {
-
-};
-
-pub fn DescriptorSetsUniformBuffers(comptime descriptor_count : comptime_int) type {
+pub fn DescriptorSets(comptime descriptor_count : comptime_int) type {
    return struct {
-      vk_descriptor_pool   : c.VkDescriptorPool,
-      vk_descriptor_sets   : [descriptor_count] c.VkDescriptorSet,
+      vk_descriptor_pool                  : c.VkDescriptorPool,
+      vk_descriptor_sets_uniform_buffers  : [descriptor_count] c.VkDescriptorSet,
 
       pub const CreateInfo = struct {
-         vk_device                  : c.VkDevice,
-         vk_descriptor_set_layout   : c.VkDescriptorSetLayout,
-         vk_buffer                  : c.VkBuffer,
-         allocation_uniforms        : root.MemoryHeap.Allocation,
+         vk_device                                 : c.VkDevice,
+         vk_descriptor_set_layout_uniform_buffers  : c.VkDescriptorSetLayout,
+         vk_buffer                                 : c.VkBuffer,
+         allocation_uniforms                       : root.MemoryHeap.Allocation,
       };
 
       pub const CreateError = error {
@@ -24,23 +20,23 @@ pub fn DescriptorSetsUniformBuffers(comptime descriptor_count : comptime_int) ty
       };
 
       pub fn create(create_info : * const CreateInfo) CreateError!@This() {
-         const vk_device                  = create_info.vk_device;
-         const vk_descriptor_set_layout   = create_info.vk_descriptor_set_layout;
-         const vk_buffer                  = create_info.vk_buffer;
-         const allocation_uniforms        = create_info.allocation_uniforms;
+         const vk_device                                 = create_info.vk_device;
+         const vk_descriptor_set_layout_uniform_buffers  = create_info.vk_descriptor_set_layout_uniform_buffers;
+         const vk_buffer                                 = create_info.vk_buffer;
+         const allocation_uniforms                       = create_info.allocation_uniforms;
 
          const vk_descriptor_pool = try _createDescriptorPool(vk_device, descriptor_count);
          errdefer c.vkDestroyDescriptorPool(vk_device, vk_descriptor_pool, null);
 
-         const vk_descriptor_sets = try _createDescriptorSets(vk_device, vk_descriptor_set_layout, vk_descriptor_pool);
+         const vk_descriptor_sets_uniform_buffers = try _createDescriptorSets(vk_device, vk_descriptor_set_layout_uniform_buffers, vk_descriptor_pool);
 
-         for (&vk_descriptor_sets, 0..descriptor_count) |vk_descriptor_set, i| {
+         for (&vk_descriptor_sets_uniform_buffers, 0..descriptor_count) |vk_descriptor_set, i| {
             _writeDescriptorSet(vk_device, vk_descriptor_set, vk_buffer, allocation_uniforms, @intCast(i));
          }
 
          return @This(){
-            .vk_descriptor_pool  = vk_descriptor_pool,
-            .vk_descriptor_sets  = vk_descriptor_sets,
+            .vk_descriptor_pool                 = vk_descriptor_pool,
+            .vk_descriptor_sets_uniform_buffers = vk_descriptor_sets_uniform_buffers,
          };
       }
 

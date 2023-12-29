@@ -18,10 +18,10 @@ pub const ClearColor = union(ClearColorTag) {
 };
 
 pub const GraphicsPipeline = struct {
-   vk_render_pass             : c.VkRenderPass,
-   vk_descriptor_set_layout   : c.VkDescriptorSetLayout,
-   vk_pipeline_layout         : c.VkPipelineLayout,
-   vk_pipeline                : c.VkPipeline,
+   vk_render_pass                            : c.VkRenderPass,
+   vk_descriptor_set_layout_uniform_buffers  : c.VkDescriptorSetLayout,
+   vk_pipeline_layout                        : c.VkPipelineLayout,
+   vk_pipeline                               : c.VkPipeline,
 
    pub const CreateInfo = struct {
       vk_device               : c.VkDevice,
@@ -54,10 +54,10 @@ pub const GraphicsPipeline = struct {
       const vk_render_pass = try _createRenderPass(vk_device, swapchain_configuration, clear_mode);
       errdefer c.vkDestroyRenderPass(vk_device, vk_render_pass, null);
 
-      const vk_descriptor_set_layout = try _createDescriptorSetLayout(vk_device);
-      errdefer c.vkDestroyDescriptorSetLayout(vk_device, vk_descriptor_set_layout, null);
+      const vk_descriptor_set_layout_uniform_buffers = try _createDescriptorSetLayoutUniformBuffers(vk_device);
+      errdefer c.vkDestroyDescriptorSetLayout(vk_device, vk_descriptor_set_layout_uniform_buffers, null);
 
-      const vk_pipeline_layout = try _createPipelineLayout(vk_device, vk_descriptor_set_layout);
+      const vk_pipeline_layout = try _createPipelineLayout(vk_device, vk_descriptor_set_layout_uniform_buffers);
       errdefer c.vkDestroyPipelineLayout(vk_device, vk_pipeline_layout, null);
 
       const vk_info_create_shader_stage_vertex = c.VkPipelineShaderStageCreateInfo{
@@ -238,17 +238,17 @@ pub const GraphicsPipeline = struct {
       errdefer c.vkDestroyPipeline(vk_device, vk_pipeline, null);
 
       return @This(){
-         .vk_render_pass            = vk_render_pass,
-         .vk_descriptor_set_layout  = vk_descriptor_set_layout,
-         .vk_pipeline_layout        = vk_pipeline_layout,
-         .vk_pipeline               = vk_pipeline,
+         .vk_render_pass                           = vk_render_pass,
+         .vk_descriptor_set_layout_uniform_buffers = vk_descriptor_set_layout_uniform_buffers,
+         .vk_pipeline_layout                       = vk_pipeline_layout,
+         .vk_pipeline                              = vk_pipeline,
       };
    }
 
    pub fn destroy(self : @This(), vk_device : c.VkDevice) void {
       c.vkDestroyPipeline(vk_device, self.vk_pipeline, null);
       c.vkDestroyPipelineLayout(vk_device, self.vk_pipeline_layout, null);
-      c.vkDestroyDescriptorSetLayout(vk_device, self.vk_descriptor_set_layout, null);
+      c.vkDestroyDescriptorSetLayout(vk_device, self.vk_descriptor_set_layout_uniform_buffers, null);
       c.vkDestroyRenderPass(vk_device, self.vk_render_pass, null);
       return;
    }
@@ -386,7 +386,7 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
    return vk_render_pass;
 }
 
-fn _createDescriptorSetLayout(vk_device : c.VkDevice) GraphicsPipeline.CreateError!c.VkDescriptorSetLayout {
+fn _createDescriptorSetLayoutUniformBuffers(vk_device : c.VkDevice) GraphicsPipeline.CreateError!c.VkDescriptorSetLayout {
    var vk_result : c.VkResult = undefined;
 
    const vk_info_descriptor_set_layout_binding_uniforms = c.VkDescriptorSetLayoutBinding{
