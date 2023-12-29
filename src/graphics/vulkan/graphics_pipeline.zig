@@ -61,7 +61,7 @@ pub const GraphicsPipeline = struct {
       const vk_descriptor_set_layout_texture_samplers = try _createDescriptorSetLayoutTextureSamplers(vk_device);
       errdefer c.vkDestroyDescriptorSetLayout(vk_device, vk_descriptor_set_layout_texture_samplers, null);
 
-      const vk_pipeline_layout = try _createPipelineLayout(vk_device, vk_descriptor_set_layout_uniform_buffers);
+      const vk_pipeline_layout = try _createPipelineLayout(vk_device, vk_descriptor_set_layout_uniform_buffers, vk_descriptor_set_layout_texture_samplers);
       errdefer c.vkDestroyPipelineLayout(vk_device, vk_pipeline_layout, null);
 
       const vk_info_create_shader_stage_vertex = c.VkPipelineShaderStageCreateInfo{
@@ -285,7 +285,7 @@ fn _createShaderModule(vk_device : c.VkDevice, bytecode : [] align(@sizeOf(u32))
    return vk_shader_module;
 }
 
-fn _createPipelineLayout(vk_device : c.VkDevice, vk_descriptor_set_layout : c.VkDescriptorSetLayout) GraphicsPipeline.CreateError!c.VkPipelineLayout {
+fn _createPipelineLayout(vk_device : c.VkDevice, vk_descriptor_set_layout_uniform_buffers : c.VkDescriptorSetLayout, vk_descriptor_set_layout_texture_samplers : c.VkDescriptorSetLayout) GraphicsPipeline.CreateError!c.VkPipelineLayout {
    var vk_result : c.VkResult = undefined;
 
    const vk_push_constants_range = c.VkPushConstantRange{
@@ -294,12 +294,17 @@ fn _createPipelineLayout(vk_device : c.VkDevice, vk_descriptor_set_layout : c.Vk
       .size       = @sizeOf(root.types.PushConstants),
    };
 
+   const vk_descriptor_set_layouts = [_] c.VkDescriptorSetLayout {
+      vk_descriptor_set_layout_uniform_buffers,
+      vk_descriptor_set_layout_texture_samplers,
+   };
+
    const vk_info_create_pipeline_layout = c.VkPipelineLayoutCreateInfo{
       .sType                  = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .pNext                  = null,
       .flags                  = 0x00000000,
-      .setLayoutCount         = 1,
-      .pSetLayouts            = &vk_descriptor_set_layout,
+      .setLayoutCount         = @intCast(vk_descriptor_set_layouts.len),
+      .pSetLayouts            = &vk_descriptor_set_layouts,
       .pushConstantRangeCount = 1,
       .pPushConstantRanges    = &vk_push_constants_range,
    };

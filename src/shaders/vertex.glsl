@@ -11,7 +11,7 @@ layout (push_constant) uniform PushConstants {
    mat4  transform_mesh;
 } push_constants;
 
-layout (binding = 0) uniform UniformBufferObject {
+layout (set = 0, binding = 0) uniform UniformBufferObject {
    mat4  transform_view_projection;
 } uniforms;
 

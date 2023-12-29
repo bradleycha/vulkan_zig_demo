@@ -477,6 +477,7 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.
    const allocation_uniforms_transfer        = self._vulkan_uniform_allocation_transfer;
    const allocation_uniforms_draw            = self._vulkan_uniform_allocation_draw;
    const vk_descriptor_set_uniform_buffers   = self._vulkan_descriptor_sets.vk_descriptor_sets_uniform_buffers[frame_index];
+   const vk_descriptor_sets_texture_samplers = &self._vulkan_descriptor_sets.vk_descriptor_sets_texture_samplers;
 
    const allocation_uniform_transfer   = vulkan.MemoryHeap.Allocation{
       .offset  = allocation_uniforms_transfer.offset + @as(u32, @intCast(frame_index * @sizeOf(types.UniformBufferObject))),
@@ -560,17 +561,18 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.
    });
 
    try _recordRenderPass(self._allocator, models, &.{
-      .vk_command_buffer                  = vk_command_buffer,
-      .vk_framebuffer                     = vk_framebuffer,
-      .vk_buffer_transfer                 = self._vulkan_memory_heap_transfer.memory_heap.vk_buffer,
-      .vk_buffer_draw                     = self._vulkan_memory_heap_draw.memory_heap.vk_buffer,
-      .vk_descriptor_set_uniform_buffers  = vk_descriptor_set_uniform_buffers,
-      .swapchain_configuration            = &self._vulkan_swapchain_configuration,
-      .graphics_pipeline                  = &self._vulkan_graphics_pipeline,
-      .allocation_uniform_transfer        = allocation_uniform_transfer,
-      .allocation_uniform_draw            = allocation_uniform_draw,
-      .clear_color                        = &self._clear_color,
-      .asset_loader                       = &self._asset_loader,
+      .vk_command_buffer                     = vk_command_buffer,
+      .vk_framebuffer                        = vk_framebuffer,
+      .vk_buffer_transfer                    = self._vulkan_memory_heap_transfer.memory_heap.vk_buffer,
+      .vk_buffer_draw                        = self._vulkan_memory_heap_draw.memory_heap.vk_buffer,
+      .vk_descriptor_set_uniform_buffers     = vk_descriptor_set_uniform_buffers,
+      .vk_descriptor_sets_texture_samplers   = vk_descriptor_sets_texture_samplers,
+      .swapchain_configuration               = &self._vulkan_swapchain_configuration,
+      .graphics_pipeline                     = &self._vulkan_graphics_pipeline,
+      .allocation_uniform_transfer           = allocation_uniform_transfer,
+      .allocation_uniform_draw               = allocation_uniform_draw,
+      .clear_color                           = &self._clear_color,
+      .asset_loader                          = &self._asset_loader,
    });
 
    // We need this special check in the event the graphics and transfer queue
@@ -719,6 +721,7 @@ const RecordInfo = struct {
    vk_buffer_transfer                  : c.VkBuffer,
    vk_buffer_draw                      : c.VkBuffer,
    vk_descriptor_set_uniform_buffers   : c.VkDescriptorSet,
+   vk_descriptor_sets_texture_samplers : * const [MAX_TEXTURE_SAMPLERS] c.VkDescriptorSet,
    swapchain_configuration             : * const vulkan.SwapchainConfiguration,
    graphics_pipeline                   : * const vulkan.GraphicsPipeline,
    allocation_uniform_transfer         : vulkan.MemoryHeap.Allocation,
@@ -736,6 +739,7 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
    const vk_pipeline_layout                  = record_info.graphics_pipeline.vk_pipeline_layout;
    const vk_graphics_pipeline                = record_info.graphics_pipeline.vk_pipeline;
    const vk_descriptor_set_uniform_buffers   = record_info.vk_descriptor_set_uniform_buffers;
+   const vk_descriptor_sets_texture_samplers = record_info.vk_descriptor_sets_texture_samplers;
    const vk_buffer_transfer                  = record_info.vk_buffer_transfer;
    const vk_buffer_draw                      = record_info.vk_buffer_draw;
    const swapchain_configuration             = record_info.swapchain_configuration;
@@ -852,8 +856,6 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
 
    c.vkCmdBindPipeline(vk_command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, vk_graphics_pipeline);
 
-   c.vkCmdBindDescriptorSets(vk_command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, vk_pipeline_layout, 0, 1, &vk_descriptor_set_uniform_buffers, 0, undefined);
-
    const vk_viewport = c.VkViewport{
       .x          = 0,
       .y          = 0,
@@ -886,8 +888,14 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
       const vk_buffer_draw_offset_vertex  = @as(u64, mesh.allocation.offset);
       const vk_buffer_draw_offset_index   = @as(u64, mesh.allocation.offset + mesh.allocation.bytes - mesh.indices * @sizeOf(types.Mesh.IndexElement));
 
-      // TODO: Bind sampler/image view descriptor set for the texture
+      const vk_descriptor_set_texture_sampler = vk_descriptor_sets_texture_samplers[model.texture_sampler._index];
 
+      const vk_descriptor_sets = [_] c.VkDescriptorSet {
+         vk_descriptor_set_uniform_buffers,
+         vk_descriptor_set_texture_sampler,
+      };
+
+      c.vkCmdBindDescriptorSets(vk_command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, vk_pipeline_layout, 0, @intCast(vk_descriptor_sets.len), &vk_descriptor_sets, 0, undefined);
 
       c.vkCmdPushConstants(vk_command_buffer, vk_pipeline_layout, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(types.PushConstants), &mesh.push_constants);
 
