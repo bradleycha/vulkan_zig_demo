@@ -7,6 +7,8 @@ const c        = @import("cimports");
 
 const FRAMES_IN_FLIGHT = 2;
 
+const MAX_TEXTURE_SAMPLERS = 16;
+
 const MEMORY_HEAP_SIZE_DRAW      = 8 * 1024 * 1024;
 const MEMORY_HEAP_SIZE_TRANSFER  = 8 * 1024 * 1024;
 
@@ -48,7 +50,7 @@ pub const Renderer = struct {
    _vulkan_memory_heap_transfer        : vulkan.MemoryHeapTransfer,
    _vulkan_uniform_allocation_draw     : vulkan.MemoryHeap.Allocation,
    _vulkan_uniform_allocation_transfer : vulkan.MemoryHeap.Allocation,
-   _vulkan_descriptor_sets             : vulkan.DescriptorSets(FRAMES_IN_FLIGHT),
+   _vulkan_descriptor_sets             : vulkan.DescriptorSets(.{.uniform_buffers = FRAMES_IN_FLIGHT, .texture_samplers = MAX_TEXTURE_SAMPLERS}),
    _asset_loader                       : AssetLoader,
    _window                             : * const present.Window,
    _refresh_mode                       : RefreshMode,
@@ -237,7 +239,7 @@ pub const Renderer = struct {
          FIELD_OF_VIEW,
       );
 
-      const vulkan_descriptor_sets = vulkan.DescriptorSets(FRAMES_IN_FLIGHT).create(&.{
+      const vulkan_descriptor_sets = vulkan.DescriptorSets(.{.uniform_buffers = FRAMES_IN_FLIGHT, .texture_samplers = MAX_TEXTURE_SAMPLERS}).create(&.{
          .vk_device                                = vk_device,
          .vk_descriptor_set_layout_uniform_buffers = vulkan_graphics_pipeline.vk_descriptor_set_layout_uniform_buffers,
          .vk_buffer                                = vulkan_memory_heap_draw.memory_heap.vk_buffer,

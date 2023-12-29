@@ -2,10 +2,15 @@ const root  = @import("index.zig");
 const std   = @import("std");
 const c     = @import("cimports");
 
-pub fn DescriptorSets(comptime descriptor_count : comptime_int) type {
+pub const DescriptorSetCounts = struct {
+   uniform_buffers   : u32,
+   texture_samplers  : u32,
+};
+
+pub fn DescriptorSets(comptime counts : DescriptorSetCounts) type {
    return struct {
       vk_descriptor_pool                  : c.VkDescriptorPool,
-      vk_descriptor_sets_uniform_buffers  : [descriptor_count] c.VkDescriptorSet,
+      vk_descriptor_sets_uniform_buffers  : [counts.uniform_buffers]    c.VkDescriptorSet,
 
       pub const CreateInfo = struct {
          vk_device                                 : c.VkDevice,
@@ -25,12 +30,12 @@ pub fn DescriptorSets(comptime descriptor_count : comptime_int) type {
          const vk_buffer                                 = create_info.vk_buffer;
          const allocation_uniforms                       = create_info.allocation_uniforms;
 
-         const vk_descriptor_pool = try _createDescriptorPool(vk_device, descriptor_count);
+         const vk_descriptor_pool = try _createDescriptorPool(vk_device, counts.uniform_buffers);
          errdefer c.vkDestroyDescriptorPool(vk_device, vk_descriptor_pool, null);
 
          const vk_descriptor_sets_uniform_buffers = try _createDescriptorSets(vk_device, vk_descriptor_set_layout_uniform_buffers, vk_descriptor_pool);
 
-         for (&vk_descriptor_sets_uniform_buffers, 0..descriptor_count) |vk_descriptor_set, i| {
+         for (&vk_descriptor_sets_uniform_buffers, 0..counts.uniform_buffers) |vk_descriptor_set, i| {
             _writeDescriptorSet(vk_device, vk_descriptor_set, vk_buffer, allocation_uniforms, @intCast(i));
          }
 
@@ -80,21 +85,21 @@ pub fn DescriptorSets(comptime descriptor_count : comptime_int) type {
          return vk_descriptor_pool;
       }
 
-      fn _createDescriptorSets(vk_device : c.VkDevice, vk_descriptor_set_layout : c.VkDescriptorSetLayout, vk_descriptor_pool : c.VkDescriptorPool) CreateError![descriptor_count] c.VkDescriptorSet {
+      fn _createDescriptorSets(vk_device : c.VkDevice, vk_descriptor_set_layout : c.VkDescriptorSetLayout, vk_descriptor_pool : c.VkDescriptorPool) CreateError![counts.uniform_buffers] c.VkDescriptorSet {
          var vk_result : c.VkResult = undefined;
 
-         var vk_descriptor_set_layouts : [descriptor_count] c.VkDescriptorSetLayout = undefined;
+         var vk_descriptor_set_layouts : [counts.uniform_buffers] c.VkDescriptorSetLayout = undefined;
          @memset(&vk_descriptor_set_layouts, vk_descriptor_set_layout);
 
          const vk_info_allocate_descriptor_sets = c.VkDescriptorSetAllocateInfo{
             .sType               = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
             .pNext               = null,
             .descriptorPool      = vk_descriptor_pool,
-            .descriptorSetCount  = descriptor_count,
+            .descriptorSetCount  = counts.uniform_buffers,
             .pSetLayouts         = &vk_descriptor_set_layouts,
          };
 
-         var vk_descriptor_sets : [descriptor_count] c.VkDescriptorSet = undefined;
+         var vk_descriptor_sets : [counts.uniform_buffers] c.VkDescriptorSet = undefined;
          vk_result = c.vkAllocateDescriptorSets(vk_device, &vk_info_allocate_descriptor_sets, &vk_descriptor_sets);
          switch (vk_result) {
             c.VK_SUCCESS                     => {},
@@ -104,7 +109,7 @@ pub fn DescriptorSets(comptime descriptor_count : comptime_int) type {
             c.VK_ERROR_OUT_OF_POOL_MEMORY    => return error.OutOfMemory,
             else                             => unreachable,
          }
-         errdefer c.vkFreeDescriptorSets(vk_device, vk_descriptor_pool, descriptor_count, &vk_descriptor_sets);
+         errdefer c.vkFreeDescriptorSets(vk_device, vk_descriptor_pool, counts.uniform_buffers, &vk_descriptor_sets);
 
          return vk_descriptor_sets;
       }
