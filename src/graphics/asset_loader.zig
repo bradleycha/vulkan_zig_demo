@@ -9,6 +9,7 @@ const AssetLoader = @This();
 load_items                 : std.ArrayListUnmanaged(LoadItem),
 vk_command_buffer_transfer : c.VkCommandBuffer,
 vk_fence_ready             : c.VkFence,
+vk_semaphore_ready         : c.VkSemaphore,
 allocation_transfer        : vulkan.MemoryHeap.Allocation,
 
 const NULL_ALLOCATION_OFFSET = std.math.maxInt(u32);
@@ -101,6 +102,22 @@ pub fn create(create_info : * const CreateInfo) CreateError!AssetLoader {
    }
    errdefer c.vkDestroyFence(vk_device, vk_fence_ready, null);
 
+   const vk_info_create_semaphore_ready = c.VkSemaphoreCreateInfo{
+      .sType   = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+      .pNext   = null,
+      .flags   = 0x00000000,
+   };
+
+   var vk_semaphore_ready : c.VkSemaphore = undefined;
+   vk_result = c.vkCreateSemaphore(vk_device, &vk_info_create_semaphore_ready, null, &vk_semaphore_ready);
+   switch (vk_result) {
+      c.VK_SUCCESS                     => {},
+      c.VK_ERROR_OUT_OF_HOST_MEMORY    => return error.OutOfMemory,
+      c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
+      else                             => unreachable,
+   }
+   errdefer c.vkDestroySemaphore(vk_device, vk_semaphore_ready, null);
+
    const vk_info_allocate_command_buffer_transfer = c.VkCommandBufferAllocateInfo{
       .sType               = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
       .pNext               = null,
@@ -121,8 +138,9 @@ pub fn create(create_info : * const CreateInfo) CreateError!AssetLoader {
 
    return AssetLoader{
       .load_items                   = .{},
-      .vk_fence_ready               = vk_fence_ready,
       .vk_command_buffer_transfer   = vk_command_buffer_transfer,
+      .vk_fence_ready               = vk_fence_ready,
+      .vk_semaphore_ready           = vk_semaphore_ready,
       .allocation_transfer          = .{.offset = NULL_ALLOCATION_OFFSET, .bytes = undefined},
    };
 }
@@ -138,6 +156,7 @@ pub fn destroy(self : * AssetLoader, allocator : std.mem.Allocator, destroy_info
 
    _checkLeakedAssets(self);
 
+   c.vkDestroySemaphore(vk_device, self.vk_semaphore_ready, null);
    c.vkDestroyFence(vk_device, self.vk_fence_ready, null);
    c.vkFreeCommandBuffers(vk_device, vk_command_pool_transfer, 1, &self.vk_command_buffer_transfer);
    self.load_items.deinit(allocator);
@@ -751,8 +770,8 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       .pWaitDstStageMask      = undefined,
       .commandBufferCount     = 1,
       .pCommandBuffers        = &self.vk_command_buffer_transfer,
-      .signalSemaphoreCount   = 0,
-      .pSignalSemaphores      = undefined,
+      .signalSemaphoreCount   = 1,
+      .pSignalSemaphores      = &self.vk_semaphore_ready,
    };
 
    vk_result = c.vkQueueSubmit(vk_queue_transfer, 1, &vk_info_queue_submit, self.vk_fence_ready);

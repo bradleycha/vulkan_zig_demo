@@ -480,10 +480,12 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.
       .transform_view_projection = transform_view_projection,
    };
 
-   while (self._asset_loader.poll(self._allocator, &.{
+   // Only poll once.  If we are still in the middle of loading, extra
+   // synchronization is done below.
+   _ = self._asset_loader.poll(self._allocator, &.{
       .vk_device              = vk_device,
       .memory_heap_transfer   = &self._vulkan_memory_heap_transfer,
-   }) == false) {}
+   });
 
    try _recordRenderPass(self._allocator, models, &.{
       .vk_command_buffer                  = vk_command_buffer,
@@ -499,11 +501,25 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.
       .asset_loader                       = &self._asset_loader,
    });
 
+   // We need this special check in the event the graphics and transfer queue
+   // are both on the same queue.  If this is the case, we need to make sure we
+   // don't submit our draw call before the graphics queue completes the transfer
+   // operations.
+   var render_pass_wait_semaphores_count : u32 = 1;
+   const render_pass_wait_semaphores_buffer = [_] c.VkSemaphore {
+      vk_semaphore_image_available,
+      self._asset_loader.vk_semaphore_ready,
+   };
+
+   if (self._vulkan_device.queues.transfer == self._vulkan_device.queues.graphics and self._asset_loader.isBusy(vk_device) == true) {
+      render_pass_wait_semaphores_count += 1;
+   }
+
    const vk_info_submit_render_pass = c.VkSubmitInfo{
       .sType                  = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
       .pNext                  = null,
-      .waitSemaphoreCount     = 1,
-      .pWaitSemaphores        = &vk_semaphore_image_available,
+      .waitSemaphoreCount     = render_pass_wait_semaphores_count,
+      .pWaitSemaphores        = &render_pass_wait_semaphores_buffer,
       .pWaitDstStageMask      = &([1] c.VkPipelineStageFlags {c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT}),
       .commandBufferCount     = 1,
       .pCommandBuffers        = &vk_command_buffer,
