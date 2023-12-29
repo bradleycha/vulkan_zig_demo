@@ -240,10 +240,11 @@ pub const Renderer = struct {
       );
 
       const vulkan_descriptor_sets = vulkan.DescriptorSets(.{.uniform_buffers = FRAMES_IN_FLIGHT, .texture_samplers = MAX_TEXTURE_SAMPLERS}).create(&.{
-         .vk_device                                = vk_device,
-         .vk_descriptor_set_layout_uniform_buffers = vulkan_graphics_pipeline.vk_descriptor_set_layout_uniform_buffers,
-         .vk_buffer                                = vulkan_memory_heap_draw.memory_heap.vk_buffer,
-         .allocation_uniforms                      = vulkan_uniform_allocation_draw,
+         .vk_device                                   = vk_device,
+         .vk_descriptor_set_layout_uniform_buffers    = vulkan_graphics_pipeline.vk_descriptor_set_layout_uniform_buffers,
+         .vk_descriptor_set_layout_texture_samplers   = vulkan_graphics_pipeline.vk_descriptor_set_layout_texture_samplers,
+         .vk_buffer                                   = vulkan_memory_heap_draw.memory_heap.vk_buffer,
+         .allocation_uniforms                         = vulkan_uniform_allocation_draw,
       }) catch return error.VulkanDescriptorSetsCreateError;
       errdefer vulkan_descriptor_sets.destroy(vk_device);
 
