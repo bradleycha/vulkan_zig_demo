@@ -37,6 +37,9 @@ pub const Renderer = struct {
    _vulkan_physical_device             : vulkan.PhysicalDevice,
    _vulkan_swapchain_configuration     : vulkan.SwapchainConfiguration,
    _vulkan_device                      : vulkan.Device,
+   _vulkan_memory_source_image         : vulkan.MemorySourceImage,
+   _vulkan_memory_heap_draw            : vulkan.MemoryHeapDraw,
+   _vulkan_memory_heap_transfer        : vulkan.MemoryHeapTransfer,
    _vulkan_swapchain                   : vulkan.Swapchain,
    _vulkan_graphics_pipeline           : vulkan.GraphicsPipeline,
    _vulkan_framebuffers                : vulkan.Framebuffers,
@@ -45,9 +48,6 @@ pub const Renderer = struct {
    _vulkan_semaphores_image_available  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
    _vulkan_semaphores_render_finished  : vulkan.SemaphoreList(FRAMES_IN_FLIGHT),
    _vulkan_fences_in_flight            : vulkan.FenceList(FRAMES_IN_FLIGHT),
-   _vulkan_memory_source_image         : vulkan.MemorySourceImage,
-   _vulkan_memory_heap_draw            : vulkan.MemoryHeapDraw,
-   _vulkan_memory_heap_transfer        : vulkan.MemoryHeapTransfer,
    _vulkan_uniform_allocation_draw     : vulkan.MemoryHeap.Allocation,
    _vulkan_uniform_allocation_transfer : vulkan.MemoryHeap.Allocation,
    _vulkan_descriptor_sets             : vulkan.DescriptorSets(.{.uniform_buffers = FRAMES_IN_FLIGHT, .texture_samplers = MAX_TEXTURE_SAMPLERS}),
@@ -75,6 +75,11 @@ pub const Renderer = struct {
       VulkanSurfaceCreateError,
       VulkanPhysicalDeviceSelectError,
       VulkanDeviceCreateError,
+      VulkanMemorySourceDrawFindError,
+      VulkanMemorySourceTransferFindError,
+      VulkanMemorySourceImageFindError,
+      VulkanMemoryHeapDrawCreateError,
+      VulkanMemoryHeapTransferCreateError,
       VulkanSwapchainCreateError,
       VulkanGraphicsPipelineCreateError,
       VulkanFramebuffersCreateError,
@@ -83,11 +88,6 @@ pub const Renderer = struct {
       VulkanSemaphoresImageAvailableCreateError,
       VulkanSemaphoresRenderFinishedCreateError,
       VulkanFencesInFlightCreateError,
-      VulkanMemorySourceDrawFindError,
-      VulkanMemorySourceTransferFindError,
-      VulkanMemorySourceImageFindError,
-      VulkanMemoryHeapDrawCreateError,
-      VulkanMemoryHeapTransferCreateError,
       VulkanUniformAllocationCreateError,
       VulkanDescriptorSetsCreateError,
       AssetLoaderCreateError,
@@ -141,6 +141,32 @@ pub const Renderer = struct {
 
       const vk_device = vulkan_device.vk_device;
 
+      const vulkan_memory_source_draw = vulkan.MemorySourceDraw.findSuitable(
+         vulkan_physical_device.vk_physical_device_memory_properties,
+      ) orelse return error.VulkanMemorySourceDrawFindError;
+
+      const vulkan_memory_source_transfer = vulkan.MemorySourceTransfer.findSuitable(
+         vulkan_physical_device.vk_physical_device_memory_properties,
+      ) orelse return error.VulkanMemorySourceTransferFindError;
+
+      const vulkan_memory_source_image = vulkan.MemorySourceImage.findSuitable(
+         vulkan_physical_device.vk_physical_device_memory_properties,
+      ) orelse return error.VulkanMemorySourceImageFindError;
+
+      var vulkan_memory_heap_draw = vulkan.MemoryHeapDraw.create(allocator, &.{
+         .physical_device  = &vulkan_physical_device,
+         .vk_device        = vk_device,
+         .heap_size        = MEMORY_HEAP_SIZE_DRAW,
+      }, &vulkan_memory_source_draw) catch return error.VulkanMemoryHeapDrawCreateError;
+      errdefer vulkan_memory_heap_draw.destroy(allocator, vk_device);
+
+      var vulkan_memory_heap_transfer = vulkan.MemoryHeapTransfer.create(allocator, vk_device, &.{
+         .physical_device  = &vulkan_physical_device,
+         .vk_device        = vk_device,
+         .heap_size        = MEMORY_HEAP_SIZE_TRANSFER,
+      }, &vulkan_memory_source_transfer) catch return error.VulkanMemoryHeapTransferCreateError;
+      errdefer vulkan_memory_heap_transfer.destroy(allocator, vk_device);
+
       const vulkan_swapchain = vulkan.Swapchain.create(allocator, &.{
          .vk_device                 = vk_device,
          .vk_surface                = vk_surface,
@@ -193,32 +219,6 @@ pub const Renderer = struct {
       ) catch return error.VulkanFencesInFlightCreateError;
       errdefer vulkan_fences_in_flight.destroy(vk_device);
 
-      const vulkan_memory_source_draw = vulkan.MemorySourceDraw.findSuitable(
-         vulkan_physical_device.vk_physical_device_memory_properties,
-      ) orelse return error.VulkanMemorySourceDrawFindError;
-
-      const vulkan_memory_source_transfer = vulkan.MemorySourceTransfer.findSuitable(
-         vulkan_physical_device.vk_physical_device_memory_properties,
-      ) orelse return error.VulkanMemorySourceTransferFindError;
-
-      const vulkan_memory_source_image = vulkan.MemorySourceImage.findSuitable(
-         vulkan_physical_device.vk_physical_device_memory_properties,
-      ) orelse return error.VulkanMemorySourceImageFindError;
-
-      var vulkan_memory_heap_draw = vulkan.MemoryHeapDraw.create(allocator, &.{
-         .physical_device  = &vulkan_physical_device,
-         .vk_device        = vk_device,
-         .heap_size        = MEMORY_HEAP_SIZE_DRAW,
-      }, &vulkan_memory_source_draw) catch return error.VulkanMemoryHeapDrawCreateError;
-      errdefer vulkan_memory_heap_draw.destroy(allocator, vk_device);
-
-      var vulkan_memory_heap_transfer = vulkan.MemoryHeapTransfer.create(allocator, vk_device, &.{
-         .physical_device  = &vulkan_physical_device,
-         .vk_device        = vk_device,
-         .heap_size        = MEMORY_HEAP_SIZE_TRANSFER,
-      }, &vulkan_memory_source_transfer) catch return error.VulkanMemoryHeapTransferCreateError;
-      errdefer vulkan_memory_heap_transfer.destroy(allocator, vk_device);
-
       const vulkan_uniform_allocation_info = vulkan.MemoryHeap.AllocateInfo{
          .alignment  = @alignOf(types.UniformBufferObject),
          .bytes      = @sizeOf(types.UniformBufferObject) * FRAMES_IN_FLIGHT,
@@ -265,6 +265,9 @@ pub const Renderer = struct {
          ._vulkan_physical_device               = vulkan_physical_device,
          ._vulkan_swapchain_configuration       = vulkan_swapchain_configuration,
          ._vulkan_device                        = vulkan_device,
+         ._vulkan_memory_source_image           = vulkan_memory_source_image,
+         ._vulkan_memory_heap_draw              = vulkan_memory_heap_draw,
+         ._vulkan_memory_heap_transfer          = vulkan_memory_heap_transfer,
          ._vulkan_swapchain                     = vulkan_swapchain,
          ._vulkan_graphics_pipeline             = vulkan_graphics_pipeline,
          ._vulkan_framebuffers                  = vulkan_framebuffers,
@@ -273,9 +276,6 @@ pub const Renderer = struct {
          ._vulkan_semaphores_image_available    = vulkan_semaphores_image_available,
          ._vulkan_semaphores_render_finished    = vulkan_semaphores_render_finished,
          ._vulkan_fences_in_flight              = vulkan_fences_in_flight,
-         ._vulkan_memory_source_image           = vulkan_memory_source_image,
-         ._vulkan_memory_heap_draw              = vulkan_memory_heap_draw,
-         ._vulkan_memory_heap_transfer          = vulkan_memory_heap_transfer,
          ._vulkan_uniform_allocation_draw       = vulkan_uniform_allocation_draw,
          ._vulkan_uniform_allocation_transfer   = vulkan_uniform_allocation_transfer,
          ._vulkan_descriptor_sets               = vulkan_descriptor_sets,
@@ -308,8 +308,6 @@ pub const Renderer = struct {
       self._vulkan_descriptor_sets.destroy(vk_device);
       self_mut._vulkan_memory_heap_transfer.memory_heap.free(allocator, self._vulkan_uniform_allocation_transfer);
       self_mut._vulkan_memory_heap_draw.memory_heap.free(allocator, self._vulkan_uniform_allocation_draw);
-      self_mut._vulkan_memory_heap_transfer.destroy(allocator, vk_device);
-      self_mut._vulkan_memory_heap_draw.destroy(allocator, vk_device);
       self._vulkan_fences_in_flight.destroy(vk_device);
       self._vulkan_semaphores_render_finished.destroy(vk_device);
       self._vulkan_semaphores_image_available.destroy(vk_device);
@@ -318,6 +316,8 @@ pub const Renderer = struct {
       self._vulkan_framebuffers.destroy(allocator, vk_device, &self._vulkan_swapchain);
       self._vulkan_graphics_pipeline.destroy(vk_device);
       self._vulkan_swapchain.destroy(allocator, vk_device);
+      self_mut._vulkan_memory_heap_transfer.destroy(allocator, vk_device);
+      self_mut._vulkan_memory_heap_draw.destroy(allocator, vk_device);
       self._vulkan_device.destroy();
       self._vulkan_surface.destroy(vk_instance);
       self._vulkan_instance.destroy();

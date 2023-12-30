@@ -172,6 +172,7 @@ pub const ImageView = struct {
       vk_device   : c.VkDevice,
       vk_image    : c.VkImage,
       format      : ImageSource.PixelFormat,
+      aspect_mask : c.VkImageAspectFlags,
    };
 
    pub fn create(create_info : * const CreateInfo) CreateError!@This() {
@@ -180,6 +181,7 @@ pub const ImageView = struct {
       const vk_device   = create_info.vk_device;
       const vk_image    = create_info.vk_image;
       const format      = create_info.format;
+      const aspect_mask = create_info.aspect_mask;
 
       const vk_info_create_image_view = c.VkImageViewCreateInfo{
          .sType            = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -195,7 +197,7 @@ pub const ImageView = struct {
             .a = c.VK_COMPONENT_SWIZZLE_IDENTITY,
          },
          .subresourceRange = c.VkImageSubresourceRange{
-            .aspectMask       = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .aspectMask       = aspect_mask,
             .baseMipLevel     = 0,
             .levelCount       = 1,
             .baseArrayLayer   = 0,
