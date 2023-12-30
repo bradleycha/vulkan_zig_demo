@@ -12,7 +12,7 @@ const MAX_TEXTURE_SAMPLERS = 16;
 const MEMORY_HEAP_SIZE_DRAW      = 8 * 1024 * 1024;
 const MEMORY_HEAP_SIZE_TRANSFER  = 8 * 1024 * 1024;
 
-const NEAR_PLANE     = 0.0;
+const NEAR_PLANE     = 0.01;
 const FAR_PLANE      = 10000.0;
 const FIELD_OF_VIEW  = 70.0;
 
@@ -858,7 +858,7 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
       },
    }
 
-   clear_color_buffer[1].vk_clear_value = c.VkClearValue{.depthStencil = c.VkClearDepthStencilValue{
+   clear_color_buffer[clear_color_count - 1].vk_clear_value = c.VkClearValue{.depthStencil = c.VkClearDepthStencilValue{
       .depth   = 1.0,
       .stencil = 0,
    }};
@@ -870,7 +870,7 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
       .framebuffer      = vk_framebuffer,
       .renderArea       = .{.offset = .{.x = 0, .y = 0}, .extent = swapchain_configuration.extent},
       .clearValueCount  = clear_color_count,
-      .pClearValues     = &clear_color_buffer[0].vk_clear_value,
+      .pClearValues     = @ptrCast(@alignCast(&clear_color_buffer)),
    };
 
    c.vkCmdBeginRenderPass(vk_command_buffer, &vk_info_render_pass_begin, c.VK_SUBPASS_CONTENTS_INLINE);
