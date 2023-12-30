@@ -24,6 +24,7 @@ pub const PhysicalDevice = struct {
    vk_physical_device_features            : c.VkPhysicalDeviceFeatures,
    vk_physical_device_memory_properties   : c.VkPhysicalDeviceMemoryProperties,
    queue_family_indices                   : QueueFamilyIndices,
+   depth_buffer_format                    : c.VkFormat,
 };
 
 pub const PhysicalDeviceSelection = struct {
@@ -96,12 +97,18 @@ pub const PhysicalDeviceSelection = struct {
          return null;
       };
 
+      const depth_buffer_format = _selectDepthBufferFormat(vk_physical_device) orelse {
+         std.log.info("vulkan physical device \"{s}\" does not support a valid depth buffer format, choosing new device", .{vk_physical_device_name});
+         return null;
+      };
+
       const physical_device = PhysicalDevice{
          .vk_physical_device                    = vk_physical_device,
          .vk_physical_device_properties         = vk_physical_device_properties,
          .vk_physical_device_features           = vk_physical_device_features,
          .vk_physical_device_memory_properties  = vk_physical_device_memory_properties,
          .queue_family_indices                  = queue_family_indices,
+         .depth_buffer_format                   = depth_buffer_format,
       };
 
       const swapchain_configuration = try root.SwapchainConfiguration.selectMostSuitable(allocator, &.{
@@ -277,6 +284,47 @@ fn _assignUniqueQueueFamilyIndices(vk_physical_device_queue_family_index : u32, 
    }
 
    return;
+}
+
+fn _selectDepthBufferFormat(vk_physical_device : c.VkPhysicalDevice) ? c.VkFormat {
+   // Desired formats, in order from most to least desireable
+   const depth_buffer_formats = [_] c.VkFormat {
+      c.VK_FORMAT_D32_SFLOAT,
+      c.VK_FORMAT_D32_SFLOAT_S8_UINT,
+      c.VK_FORMAT_D24_UNORM_S8_UINT,
+   };
+
+   for (&depth_buffer_formats) |depth_buffer_format| {
+      if (_imageFormatSupported(
+         vk_physical_device,
+         depth_buffer_format,
+         c.VK_IMAGE_TILING_OPTIMAL,
+         c.VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT,
+      ) == true) {
+         return depth_buffer_format;
+      }
+   }
+
+   return null;
+}
+
+fn _imageFormatSupported(vk_physical_device : c.VkPhysicalDevice, vk_format : c.VkFormat, vk_image_tiling : c.VkImageTiling, vk_format_feature_flags : c.VkFormatFeatureFlags) bool {
+   var vk_format_properties : c.VkFormatProperties = undefined;
+   c.vkGetPhysicalDeviceFormatProperties(vk_physical_device, vk_format, &vk_format_properties);
+
+   switch (vk_image_tiling) {
+      c.VK_IMAGE_TILING_LINEAR => {
+         return vk_format_properties.linearTilingFeatures & vk_format_feature_flags == vk_format_feature_flags;
+      },
+      c.VK_IMAGE_TILING_OPTIMAL => {
+         return vk_format_properties.optimalTilingFeatures & vk_format_feature_flags == vk_format_feature_flags;
+      },
+      else => {
+         return false;
+      },
+   }
+
+   unreachable;
 }
 
 fn _assignPhysicalDeviceScore(physical_device : * const PhysicalDevice) u32 {
