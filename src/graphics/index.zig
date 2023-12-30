@@ -182,6 +182,7 @@ pub const Renderer = struct {
          .swapchain_configuration   = &vulkan_swapchain_configuration,
          .shader_vertex             = create_info.shader_vertex,
          .shader_fragment           = create_info.shader_fragment,
+         .depth_buffer_format       = vulkan_physical_device.depth_buffer_format,
          .clear_mode                = create_info.clear_color,
       }) catch return error.VulkanGraphicsPipelineCreateError;
       errdefer vulkan_graphics_pipeline.destroy(vk_device);
@@ -841,21 +842,26 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
       vk_image_memory_barriers.items.ptr,
    );
 
-   var clear_color_count : u32 = undefined;
-   var clear_color_data  : extern union {
+   var clear_color_count : u32 = 1;
+   var clear_color_buffer : [2] extern union {
       vk_clear_value : c.VkClearValue,
-      vector         : @Vector(4, f32),
+      color          : types.Color.Rgba(f32),
    } = undefined;
 
    switch (clear_color.*) {
       .none => {
-         clear_color_count = 0;
+
       },
       .color => |color| {
-         clear_color_count = 1;
-         clear_color_data.vector = color.vector;
+         clear_color_count += 1;
+         clear_color_buffer[0].color = color;
       },
    }
+
+   clear_color_buffer[1].vk_clear_value = c.VkClearValue{.depthStencil = c.VkClearDepthStencilValue{
+      .depth   = 1.0,
+      .stencil = 0,
+   }};
 
    const vk_info_render_pass_begin = c.VkRenderPassBeginInfo{
       .sType            = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -864,7 +870,7 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
       .framebuffer      = vk_framebuffer,
       .renderArea       = .{.offset = .{.x = 0, .y = 0}, .extent = swapchain_configuration.extent},
       .clearValueCount  = clear_color_count,
-      .pClearValues     = &clear_color_data.vk_clear_value,
+      .pClearValues     = &clear_color_buffer[0].vk_clear_value,
    };
 
    c.vkCmdBeginRenderPass(vk_command_buffer, &vk_info_render_pass_begin, c.VK_SUBPASS_CONTENTS_INLINE);

@@ -66,13 +66,18 @@ fn _createFramebuffer(create_info : * const Framebuffers.CreateInfo, vk_image_vi
    const vk_swapchain_extent  = create_info.swapchain_configuration.extent;
    const vk_render_pass       = create_info.graphics_pipeline.vk_render_pass;
 
+   const vk_image_views = [_] c.VkImageView {
+      vk_image_view,
+      create_info.swapchain.image_view_depth_buffer.vk_image_view,
+   };
+
    const vk_info_create_framebuffer = c.VkFramebufferCreateInfo{
       .sType            = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
       .pNext            = null,
       .flags            = 0x00000000,
       .renderPass       = vk_render_pass,
-      .attachmentCount  = 1,
-      .pAttachments     = &vk_image_view,
+      .attachmentCount  = @intCast(vk_image_views.len),
+      .pAttachments     = &vk_image_views,
       .width            = vk_swapchain_extent.width,
       .height           = vk_swapchain_extent.height,
       .layers           = 1,

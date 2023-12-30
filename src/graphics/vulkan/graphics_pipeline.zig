@@ -29,6 +29,7 @@ pub const GraphicsPipeline = struct {
       swapchain_configuration : * const root.SwapchainConfiguration,
       shader_vertex           : ShaderSource,
       shader_fragment         : ShaderSource,
+      depth_buffer_format     : c.VkFormat,
       clear_mode              : ClearColorTag,
    };
 
@@ -44,6 +45,7 @@ pub const GraphicsPipeline = struct {
       const swapchain_configuration = create_info.swapchain_configuration;
       const shader_vertex           = &create_info.shader_vertex;
       const shader_fragment         = &create_info.shader_fragment;
+      const depth_buffer_format     = create_info.depth_buffer_format;
       const clear_mode              = create_info.clear_mode;
 
       const vk_shader_module_vertex = try _createShaderModule(vk_device, shader_vertex.bytecode);
@@ -52,7 +54,7 @@ pub const GraphicsPipeline = struct {
       const vk_shader_module_fragment = try _createShaderModule(vk_device, shader_fragment.bytecode);
       defer c.vkDestroyShaderModule(vk_device, vk_shader_module_fragment, null);
 
-      const vk_render_pass = try _createRenderPass(vk_device, swapchain_configuration, clear_mode);
+      const vk_render_pass = try _createRenderPass(vk_device, swapchain_configuration, depth_buffer_format, clear_mode);
       errdefer c.vkDestroyRenderPass(vk_device, vk_render_pass, null);
 
       const vk_descriptor_set_layout_uniform_buffers = try _createDescriptorSetLayoutUniformBuffers(vk_device);
@@ -185,6 +187,21 @@ pub const GraphicsPipeline = struct {
          .alphaToOneEnable       = c.VK_FALSE,
       };
 
+      const vk_info_create_depth_stencil_state = c.VkPipelineDepthStencilStateCreateInfo{
+         .sType                  = c.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+         .pNext                  = null,
+         .flags                  = 0x00000000,
+         .depthTestEnable        = c.VK_TRUE,
+         .depthWriteEnable       = c.VK_TRUE,
+         .depthCompareOp         = c.VK_COMPARE_OP_LESS,
+         .depthBoundsTestEnable  = c.VK_FALSE,
+         .stencilTestEnable      = c.VK_FALSE,
+         .front                  = undefined,
+         .back                   = undefined,
+         .minDepthBounds         = undefined,
+         .maxDepthBounds         = undefined,
+      };
+
       const vk_info_create_color_blend_attachment_state = c.VkPipelineColorBlendAttachmentState{
          .blendEnable         = c.VK_FALSE,
          .srcColorBlendFactor = c.VK_BLEND_FACTOR_ONE,
@@ -219,7 +236,7 @@ pub const GraphicsPipeline = struct {
          .pViewportState      = &vk_info_create_viewport_state,
          .pRasterizationState = &vk_info_create_rasterization_state,
          .pMultisampleState   = &vk_info_create_multisample_state,
-         .pDepthStencilState  = null,
+         .pDepthStencilState  = &vk_info_create_depth_stencil_state,
          .pColorBlendState    = &vk_info_create_color_blend_state,
          .pDynamicState       = &vk_info_create_dynamic_state,
          .layout              = vk_pipeline_layout,
@@ -322,7 +339,7 @@ fn _createPipelineLayout(vk_device : c.VkDevice, vk_descriptor_set_layout_unifor
    return vk_pipeline_layout;
 }
 
-fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const root.SwapchainConfiguration, clear_mode : ClearColorTag) GraphicsPipeline.CreateError!c.VkRenderPass {
+fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const root.SwapchainConfiguration, depth_buffer_format : c.VkFormat, clear_mode : ClearColorTag) GraphicsPipeline.CreateError!c.VkRenderPass {
    var vk_result : c.VkResult = undefined;
 
    const vk_color_load_op : c.VkAttachmentLoadOp = blk: {
@@ -332,7 +349,7 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
       }
    };
 
-   const vk_attachment_descriptor = c.VkAttachmentDescription{
+   const vk_attachment_descriptor_color = c.VkAttachmentDescription{
       .flags            = 0x00000000,
       .format           = swapchain_configuration.format.format,
       .samples          = c.VK_SAMPLE_COUNT_1_BIT,
@@ -344,9 +361,31 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
       .finalLayout      = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
    };
 
-   const vk_attachment_reference = c.VkAttachmentReference{
+   const vk_attachment_descriptor_depth = c.VkAttachmentDescription{
+      .flags            = 0x00000000,
+      .format           = depth_buffer_format,
+      .samples          = c.VK_SAMPLE_COUNT_1_BIT,
+      .loadOp           = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+      .storeOp          = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+      .stencilLoadOp    = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+      .stencilStoreOp   = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+      .initialLayout    = c.VK_IMAGE_LAYOUT_UNDEFINED,
+      .finalLayout      = c.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+   };
+
+   const vk_attachment_descriptors = [_] c.VkAttachmentDescription {
+      vk_attachment_descriptor_color,
+      vk_attachment_descriptor_depth,
+   };
+
+   const vk_attachment_reference_color = c.VkAttachmentReference{
       .attachment = 0,
       .layout     = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+   };
+
+   const vk_attachment_reference_depth = c.VkAttachmentReference{
+      .attachment = 1,
+      .layout     = c.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
    };
 
    const vk_subpass_description = c.VkSubpassDescription{
@@ -355,9 +394,9 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
       .inputAttachmentCount      = 0,
       .pInputAttachments         = undefined,
       .colorAttachmentCount      = 1,
-      .pColorAttachments         = &vk_attachment_reference,
+      .pColorAttachments         = &vk_attachment_reference_color,
       .pResolveAttachments       = null,
-      .pDepthStencilAttachment   = null,
+      .pDepthStencilAttachment   = &vk_attachment_reference_depth,
       .preserveAttachmentCount   = 0,
       .pPreserveAttachments      = undefined,
    };
@@ -365,10 +404,10 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
    const vk_info_create_subpass_dependency = c.VkSubpassDependency{
       .srcSubpass       = c.VK_SUBPASS_EXTERNAL,
       .dstSubpass       = 0,
-      .srcStageMask     = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-      .dstStageMask     = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+      .srcStageMask     = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | c.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+      .dstStageMask     = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | c.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
       .srcAccessMask    = 0x00000000,
-      .dstAccessMask    = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+      .dstAccessMask    = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | c.VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
       .dependencyFlags  = 0x00000000,
    };
 
@@ -376,8 +415,8 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
       .sType            = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
       .pNext            = null,
       .flags            = 0x00000000,
-      .attachmentCount  = 1,
-      .pAttachments     = &vk_attachment_descriptor,
+      .attachmentCount  = @intCast(vk_attachment_descriptors.len),
+      .pAttachments     = &vk_attachment_descriptors,
       .subpassCount     = 1,
       .pSubpasses       = &vk_subpass_description,
       .dependencyCount  = 1,
