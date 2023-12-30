@@ -559,7 +559,7 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       // Create the image object to contain our data
       const vulkan_image = try vulkan.Image.create(&.{
          .vk_device     = vk_device,
-         .format        = texture.data.format,
+         .vk_format     = @intFromEnum(texture.data.format),
          .tiling        = c.VK_IMAGE_TILING_OPTIMAL,
          .width         = texture.data.width,
          .height        = texture.data.height,
@@ -571,7 +571,7 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       const vulkan_image_view = try vulkan.ImageView.create(&.{
          .vk_device     = vk_device,
          .vk_image      = vulkan_image.vk_image,
-         .format        = texture.data.format,
+         .vk_format     = @intFromEnum(texture.data.format),
          .aspect_mask   = c.VK_IMAGE_ASPECT_COLOR_BIT,
       });
       errdefer vulkan_image_view.destroy(vk_device);

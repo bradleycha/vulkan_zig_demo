@@ -171,7 +171,9 @@ pub const Renderer = struct {
          .vk_device                 = vk_device,
          .vk_surface                = vk_surface,
          .queue_family_indices      = &vulkan_physical_device.queue_family_indices,
+         .memory_source_image       = &vulkan_memory_source_image,
          .swapchain_configuration   = &vulkan_swapchain_configuration,
+         .depth_buffer_format       = vulkan_physical_device.depth_buffer_format,
       }) catch return error.VulkanSwapchainCreateError;
       errdefer vulkan_swapchain.destroy(allocator, vk_device);
 
@@ -693,7 +695,9 @@ fn _recreateSwapchain(self : * Renderer) SwapchainRecreateError!void {
       .vk_device                 = vk_device,
       .vk_surface                = vk_surface,
       .queue_family_indices      = &self._vulkan_physical_device.queue_family_indices,
+      .memory_source_image       = &self._vulkan_memory_source_image,
       .swapchain_configuration   = &vulkan_swapchain_configuration,
+      .depth_buffer_format       = self._vulkan_physical_device.depth_buffer_format,
    });
    errdefer vulkan_swapchain.destroy(allocator, vk_device);
 

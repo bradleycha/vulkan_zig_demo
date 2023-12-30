@@ -3,16 +3,20 @@ const std   = @import("std");
 const c     = @import("cimports");
 
 pub const Swapchain = struct {
-   vk_swapchain         : c.VkSwapchainKHR,
-   vk_images_count      : u32,
-   vk_images_ptr        : [*] c.VkImage,
-   vk_image_views_ptr   : [*] c.VkImageView,
+   vk_swapchain            : c.VkSwapchainKHR,
+   vk_images_ptr           : [*] c.VkImage,
+   vk_image_views_ptr      : [*] c.VkImageView,
+   vk_images_count         : u32,
+   image_depth_buffer      : root.Image,
+   image_view_depth_buffer : root.ImageView,
 
    pub const CreateInfo = struct {
       vk_device               : c.VkDevice,
       vk_surface              : c.VkSurfaceKHR,
       queue_family_indices    : * const root.QueueFamilyIndices,
+      memory_source_image     : * const root.MemorySourceImage,
       swapchain_configuration : * const root.SwapchainConfiguration,
+      depth_buffer_format     : c.VkFormat,
    };
    
    pub const CreateError = error {
@@ -49,17 +53,40 @@ pub const Swapchain = struct {
          allocator.free(vk_image_views);
       }
 
+      const image_depth_buffer = try root.Image.create(&.{
+         .vk_device     = vk_device,
+         .vk_format     = create_info.depth_buffer_format,
+         .tiling        = c.VK_IMAGE_TILING_OPTIMAL,
+         .width         = create_info.swapchain_configuration.extent.width,
+         .height        = create_info.swapchain_configuration.extent.height,
+         .usage_flags   = c.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+      }, create_info.memory_source_image);
+      errdefer image_depth_buffer.destroy(vk_device);
+
+      const image_view_depth_buffer = try root.ImageView.create(&.{
+         .vk_device     = vk_device,
+         .vk_image      = image_depth_buffer.vk_image,
+         .vk_format     = create_info.depth_buffer_format,
+         .aspect_mask   = c.VK_IMAGE_ASPECT_DEPTH_BIT,
+      });
+      errdefer image_view_depth_buffer.destroy(vk_device);
+
       return @This(){
-         .vk_swapchain        = vk_swapchain,
-         .vk_images_count     = @intCast(vk_images.len),
-         .vk_images_ptr       = vk_images.ptr,
-         .vk_image_views_ptr  = vk_image_views.ptr,
+         .vk_swapchain              = vk_swapchain,
+         .vk_images_ptr             = vk_images.ptr,
+         .vk_image_views_ptr        = vk_image_views.ptr,
+         .vk_images_count           = @intCast(vk_images.len),
+         .image_depth_buffer        = image_depth_buffer,
+         .image_view_depth_buffer   = image_view_depth_buffer,
       };
    }
 
    pub fn destroy(self : @This(), allocator : std.mem.Allocator, vk_device : c.VkDevice) void {
       const vk_images      = self.vk_images_ptr[0..self.vk_images_count];
       const vk_image_views = self.vk_image_views_ptr[0..self.vk_images_count];
+
+      self.image_view_depth_buffer.destroy(vk_device);
+      self.image_depth_buffer.destroy(vk_device);
 
       for (vk_image_views) |vk_image_view| {
          c.vkDestroyImageView(vk_device, vk_image_view, null);

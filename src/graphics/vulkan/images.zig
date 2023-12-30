@@ -65,7 +65,7 @@ pub const Image = struct {
 
    pub const CreateInfo = struct {
       vk_device      : c.VkDevice,
-      format         : ImageSource.PixelFormat,
+      vk_format      : c.VkFormat,
       tiling         : c.VkImageTiling,
       width          : u32,
       height         : u32,
@@ -87,7 +87,7 @@ pub const Image = struct {
          .pNext                  = null,
          .flags                  = 0x00000000,
          .imageType              = c.VK_IMAGE_TYPE_2D,
-         .format                 = @intFromEnum(create_info.format),
+         .format                 = create_info.vk_format,
          .extent                 = c.VkExtent3D{
             .width   = create_info.width,
             .height  = create_info.height,
@@ -171,7 +171,7 @@ pub const ImageView = struct {
    pub const CreateInfo = struct {
       vk_device   : c.VkDevice,
       vk_image    : c.VkImage,
-      format      : ImageSource.PixelFormat,
+      vk_format   : c.VkFormat,
       aspect_mask : c.VkImageAspectFlags,
    };
 
@@ -180,7 +180,7 @@ pub const ImageView = struct {
 
       const vk_device   = create_info.vk_device;
       const vk_image    = create_info.vk_image;
-      const format      = create_info.format;
+      const vk_format   = create_info.vk_format;
       const aspect_mask = create_info.aspect_mask;
 
       const vk_info_create_image_view = c.VkImageViewCreateInfo{
@@ -189,7 +189,7 @@ pub const ImageView = struct {
          .flags            = 0x00000000,
          .image            = vk_image,
          .viewType         = c.VK_IMAGE_VIEW_TYPE_2D,
-         .format           = @intFromEnum(format),
+         .format           = vk_format,
          .components       = c.VkComponentMapping{
             .r = c.VK_COMPONENT_SWIZZLE_IDENTITY,
             .g = c.VK_COMPONENT_SWIZZLE_IDENTITY,
