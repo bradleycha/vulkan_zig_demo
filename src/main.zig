@@ -263,9 +263,14 @@ pub fn main() MainError!void {
       const time_window_title = @as(f64, @floatFromInt(timer_window_title.read())) / 1000000000.0;
 
       if (time_window_title > WINDOW_TITLE_UPDATE_TIME_SECONDS) {
+         @setCold(true);
+
          timer_window_title.reset();
 
          const fps = blk: {
+            if (frame_time_count == 0) {
+               break :blk 0.0;
+            }
             if (frame_time_accumulated == 0.0) {
                break :blk std.math.inf(f64);
             }
