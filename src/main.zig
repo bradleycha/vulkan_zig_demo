@@ -201,6 +201,9 @@ pub fn main() MainError!void {
       }},
    });
 
+   var frame_time_accumulated : f64    = 0.0;
+   var frame_time_count       : usize  = 0;
+
    var theta : f32 = 0.0;
 
    var mesh_transform_test_pyramid = math.Transform(f32){
@@ -262,7 +265,16 @@ pub fn main() MainError!void {
       if (time_window_title > WINDOW_TITLE_UPDATE_TIME_SECONDS) {
          timer_window_title.reset();
 
-         const fps = 1.0 / time_delta;
+         const fps = blk: {
+            if (frame_time_accumulated == 0.0) {
+               break :blk std.math.inf(f64);
+            }
+
+            break :blk @as(f64, @floatFromInt(frame_time_count)) / frame_time_accumulated;
+         };
+
+         frame_time_accumulated  = 0.0;
+         frame_time_count        = 0;
 
          // The allocations within the loop are fine since we only execute this
          // code and re-allocate when the timer rolls over, which is to say
@@ -288,7 +300,7 @@ pub fn main() MainError!void {
       mesh_matrix_test_pyramid.* = mesh_transform_test_pyramid.toMatrix();
       mesh_matrix_test_cube.*    = mesh_transform_test_cube.toMatrix();
 
-      _ = renderer.drawFrame(&.{
+      const frame_rendered = renderer.drawFrame(&.{
          .{
             .mesh             = mesh_handle_test_plane,
             .texture_sampler  = &texture_sampler_grass,
@@ -301,9 +313,15 @@ pub fn main() MainError!void {
             .mesh             = mesh_handle_test_cube,
             .texture_sampler  = &texture_sampler_tile,
          },
-      }) catch |err| {
+      }) catch |err| blk: {
          std.log.warn("failed to draw frame: {}", .{err});
+         break :blk false;
       };
+
+      if (frame_rendered == true) {
+         frame_time_accumulated  += @floatCast(time_delta);
+         frame_time_count        += 1;
+      }
 
       window.pollEvents() catch |err| {
          std.log.warn("failed to poll window events: {}", .{err});
