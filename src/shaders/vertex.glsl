@@ -7,7 +7,8 @@ layout (location = 3) in vec3 v_normal;
 
 layout (location = 0) smooth out vec4 f_color;
 layout (location = 1) smooth out vec2 f_sample;
-layout (location = 2) smooth out vec3 f_normal;
+layout (location = 2) smooth out vec3 f_normal_world;
+layout (location = 3) smooth out vec3 f_normal_camera;
 
 layout (push_constant) uniform PushConstants {
    mat4  transform_mesh;
@@ -22,12 +23,14 @@ void main() {
    vec4 v_position_world      = push_constants.transform_mesh * vec4(v_position, 1.0);
    vec4 v_normal_world        = push_constants.transform_mesh * vec4(v_normal, 0.0);
    vec4 v_position_camera     = uniforms.transform_view * v_position_world;
+   vec4 v_normal_camera       = uniforms.transform_view * v_normal_world;
    vec4 v_position_projected  = uniforms.transform_project * v_position_camera;
 
-   f_color     = v_color;
-   f_sample    = v_sample;
-   f_normal    = vec3(v_normal_world.xyz);
-   gl_Position = v_position_projected;
+   f_color           = v_color;
+   f_sample          = v_sample;
+   f_normal_world    = vec3(v_normal_world.xyz);
+   f_normal_camera   = vec3(v_normal_camera.xyz);
+   gl_Position       = v_position_projected;
    return;
 }
 
