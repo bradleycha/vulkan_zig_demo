@@ -14,12 +14,14 @@ layout (push_constant) uniform PushConstants {
 } push_constants;
 
 layout (set = 0, binding = 0) uniform UniformBufferObject {
-   mat4  transform_view_projection;
+   mat4  transform_view;
+   mat4  transform_project;
 } uniforms;
 
 void main() {
    vec4 v_position_world      = push_constants.transform_mesh * vec4(v_position, 1.0);
-   vec4 v_position_projected  = uniforms.transform_view_projection * v_position_world;
+   vec4 v_position_camera     = uniforms.transform_view * v_position_world;
+   vec4 v_position_projected  = uniforms.transform_project * v_position_camera;
 
    f_color     = v_color;
    f_sample    = v_sample;

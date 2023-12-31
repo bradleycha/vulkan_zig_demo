@@ -57,7 +57,7 @@ pub const Renderer = struct {
    _refresh_mode                       : RefreshMode,
    _clear_color                        : ClearColor,
    _transform_view                     : math.Matrix4(f32),
-   _transform_projection               : math.Matrix4(f32),
+   _transform_project                  : math.Matrix4(f32),
    _frame_index                        : u32,
    _framebuffer_size                   : present.Window.Resolution,
 
@@ -235,7 +235,7 @@ pub const Renderer = struct {
 
       const transform_view = math.Matrix4(f32).IDENTITY;
 
-      const transform_projection = math.Matrix4(f32).createPerspectiveProjection(
+      const transform_project = math.Matrix4(f32).createPerspectiveProjection(
          window_framebuffer_size.width,
          window_framebuffer_size.height,
          NEAR_PLANE,
@@ -286,7 +286,7 @@ pub const Renderer = struct {
          ._active_texture_samplers              = ([1] bool {false}) ** MAX_TEXTURE_SAMPLERS,
          ._window                               = window,
          ._transform_view                       = transform_view,
-         ._transform_projection                 = transform_projection,
+         ._transform_project                    = transform_project,
          ._refresh_mode                         = create_info.refresh_mode,
          ._clear_color                          = create_info.clear_color,
          ._frame_index                          = 0,
@@ -558,13 +558,12 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.
       else                             => unreachable,
    }
 
-   const transform_view_projection = self._transform_projection.multiplyMatrix(&self._transform_view);
-
    const uniform_buffer_int_ptr = @intFromPtr(self._vulkan_memory_heap_transfer.mapping) + allocation_uniform_transfer.offset;
    const uniform_buffer_ptr = @as(* types.UniformBufferObject, @ptrFromInt(uniform_buffer_int_ptr));
 
    uniform_buffer_ptr.* = .{
-      .transform_view_projection = transform_view_projection,
+      .transform_view      = self._transform_view,
+      .transform_project   = self._transform_project,
    };
 
    // Only poll once.  If we are still in the middle of loading, extra
@@ -710,7 +709,7 @@ fn _recreateSwapchain(self : * Renderer) SwapchainRecreateError!void {
    });
    errdefer vulkan_framebuffers.destroy(allocator, vk_device);
 
-   const transform_projection = math.Matrix4(f32).createPerspectiveProjection(
+   const transform_project = math.Matrix4(f32).createPerspectiveProjection(
       framebuffer_size.width,
       framebuffer_size.height,
       NEAR_PLANE,
@@ -718,7 +717,7 @@ fn _recreateSwapchain(self : * Renderer) SwapchainRecreateError!void {
       FIELD_OF_VIEW,
    );
 
-   self._transform_projection = transform_projection;
+   self._transform_project = transform_project;
 
    self._vulkan_framebuffers.destroy(allocator, vk_device, &vulkan_swapchain);
    self._vulkan_swapchain.destroy(allocator, vk_device);
