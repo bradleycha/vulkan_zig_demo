@@ -828,18 +828,20 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
       };
    }
 
-   c.vkCmdPipelineBarrier(
-      vk_command_buffer,
-      c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-      c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-      0x00000000,
-      0,
-      undefined,
-      0,
-      undefined,
-      @intCast(vk_image_memory_barriers.items.len),
-      vk_image_memory_barriers.items.ptr,
-   );
+   if (vk_image_memory_barriers.items.len != 0) {
+      c.vkCmdPipelineBarrier(
+         vk_command_buffer,
+         c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+         c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+         0x00000000,
+         0,
+         undefined,
+         0,
+         undefined,
+         @intCast(vk_image_memory_barriers.items.len),
+         vk_image_memory_barriers.items.ptr,
+      );
+   }
 
    var clear_color_count : u32 = 1;
    var clear_color_buffer : [2] extern union {
@@ -894,6 +896,7 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
 
    c.vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
 
+   var vk_descriptor_set_texture_sampler_previous = @as(c.VkDescriptorSet, @ptrCast(@alignCast(c.VK_NULL_HANDLE)));
    for (models) |model| {
       const load_item_mesh    = asset_loader.get(model.mesh);
       const load_item_texture = asset_loader.getMut(model.texture_sampler._texture);
@@ -910,12 +913,17 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
 
       const vk_descriptor_set_texture_sampler = vk_descriptor_sets_texture_samplers[model.texture_sampler._index];
 
-      const vk_descriptor_sets = [_] c.VkDescriptorSet {
-         vk_descriptor_set_uniform_buffers,
-         vk_descriptor_set_texture_sampler,
-      };
+      // Optimization to avoid unnecessary uniform buffer rebinding
+      if (vk_descriptor_set_texture_sampler != vk_descriptor_set_texture_sampler_previous) {
+         vk_descriptor_set_texture_sampler_previous = vk_descriptor_set_texture_sampler;
 
-      c.vkCmdBindDescriptorSets(vk_command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, vk_pipeline_layout, 0, @intCast(vk_descriptor_sets.len), &vk_descriptor_sets, 0, undefined);
+         const vk_descriptor_sets = [_] c.VkDescriptorSet {
+            vk_descriptor_set_uniform_buffers,
+            vk_descriptor_set_texture_sampler,
+         };
+
+         c.vkCmdBindDescriptorSets(vk_command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, vk_pipeline_layout, 0, @intCast(vk_descriptor_sets.len), &vk_descriptor_sets, 0, undefined);
+      }
 
       c.vkCmdPushConstants(vk_command_buffer, vk_pipeline_layout, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(types.PushConstants), &mesh.push_constants);
 
