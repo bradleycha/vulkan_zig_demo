@@ -445,7 +445,7 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
 fn _createDescriptorSetLayoutUniformBuffers(vk_device : c.VkDevice) GraphicsPipeline.CreateError!c.VkDescriptorSetLayout {
    var vk_result : c.VkResult = undefined;
 
-   const vk_info_descriptor_set_layout_binding_uniforms = c.VkDescriptorSetLayoutBinding{
+   const vk_info_descriptor_set_layout_binding_uniforms_vertex = c.VkDescriptorSetLayoutBinding{
       .binding             = 0,
       .descriptorType      = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
       .descriptorCount     = 1,
@@ -453,8 +453,17 @@ fn _createDescriptorSetLayoutUniformBuffers(vk_device : c.VkDevice) GraphicsPipe
       .pImmutableSamplers  = null,
    };
 
+   const vk_info_descriptor_set_layout_binding_uniforms_fragment = c.VkDescriptorSetLayoutBinding{
+      .binding             = 1,
+      .descriptorType      = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+      .descriptorCount     = 1,
+      .stageFlags          = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+      .pImmutableSamplers  = null,
+   };
+
    const vk_infos_descriptor_set_layout_bindings = [_] c.VkDescriptorSetLayoutBinding{
-      vk_info_descriptor_set_layout_binding_uniforms,
+      vk_info_descriptor_set_layout_binding_uniforms_vertex,
+      vk_info_descriptor_set_layout_binding_uniforms_fragment,
    };
 
    const vk_info_create_descriptor_set_layout = c.VkDescriptorSetLayoutCreateInfo{

@@ -98,6 +98,30 @@ pub fn main() MainError!void {
          .b = 0.5,
          .a = 1.0,
       }}},
+      .transform_view   = undefined,
+      .color_ambient    = .{.channels = .{
+         .r = 0.30,
+         .g = 0.40,
+         .b = 0.45,
+         .a = 1.00,
+      }},
+      .color_sun        = .{.channels = .{
+         .r = 1.00,
+         .g = 0.80,
+         .b = 0.40,
+         .a = 1.00,
+      }},
+      .color_depth      = .{.channels = .{
+         .r = 0.20,
+         .g = 0.20,
+         .b = 0.20,
+         .a = 1.00,
+      }},
+      .normal_sun       = .{.xyz = .{
+         .x =  1.00,
+         .y = -0.05,
+         .z =  1.00,
+      }},
    }) catch return error.RendererCreateError;
    defer renderer.destroy();
 
@@ -293,7 +317,7 @@ pub fn main() MainError!void {
 
       freefly_camera.update(controller, time_delta);
 
-      renderer.viewTransformMut().* = freefly_camera.toMatrix();
+      renderer.uniformsMut().vertex.transform_view = freefly_camera.toMatrix();
 
       mesh_transform_test_pyramid.rotation.angles.yaw = theta;
 

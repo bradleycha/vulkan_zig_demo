@@ -66,7 +66,7 @@ pub fn DescriptorSets(comptime counts : DescriptorSetCounts) type {
 
          const vk_descriptor_pool_size_uniforms = c.VkDescriptorPoolSize {
             .type             = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount  = counts.uniform_buffers,
+            .descriptorCount  = counts.uniform_buffers * 2, // two bindings
          };
 
          const vk_descriptor_pool_size_texture_samplers = c.VkDescriptorPoolSize {
@@ -132,13 +132,15 @@ pub fn DescriptorSets(comptime counts : DescriptorSetCounts) type {
       }
 
       fn _writeDescriptorSetUniformBuffer(vk_device : c.VkDevice, vk_descriptor_set : c.VkDescriptorSet, vk_buffer : c.VkBuffer, allocation_uniform : root.MemoryHeap.Allocation, allocation_offset : u32) void {
-         const vk_info_descriptor_buffer_uniform = c.VkDescriptorBufferInfo{
+         const buffer_offset = allocation_uniform.offset + allocation_offset * @sizeOf(root.types.UniformBufferObjects);
+
+         const vk_info_descriptor_buffer_uniform_vertex = c.VkDescriptorBufferInfo{
             .buffer  = vk_buffer,
-            .offset  = allocation_uniform.offset + allocation_offset * @sizeOf(root.types.UniformBufferObject),
-            .range   = @sizeOf(root.types.UniformBufferObject),
+            .offset  = buffer_offset + @offsetOf(root.types.UniformBufferObjects, "vertex"),
+            .range   = @sizeOf(root.types.UniformBufferObjects.Vertex),
          };
 
-         const vk_write_descriptor_set_uniform = c.VkWriteDescriptorSet{
+         const vk_write_descriptor_set_uniform_vertex = c.VkWriteDescriptorSet{
             .sType            = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .pNext            = null,
             .dstSet           = vk_descriptor_set,
@@ -147,12 +149,32 @@ pub fn DescriptorSets(comptime counts : DescriptorSetCounts) type {
             .descriptorCount  = 1,
             .descriptorType   = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .pImageInfo       = null,
-            .pBufferInfo      = &vk_info_descriptor_buffer_uniform,
+            .pBufferInfo      = &vk_info_descriptor_buffer_uniform_vertex,
+            .pTexelBufferView = null,
+         };
+
+         const vk_info_descriptor_buffer_uniform_fragment = c.VkDescriptorBufferInfo{
+            .buffer  = vk_buffer,
+            .offset  = buffer_offset + @offsetOf(root.types.UniformBufferObjects, "fragment"),
+            .range   = @sizeOf(root.types.UniformBufferObjects.Fragment),
+         };
+
+         const vk_write_descriptor_set_uniform_fragment = c.VkWriteDescriptorSet{
+            .sType            = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .pNext            = null,
+            .dstSet           = vk_descriptor_set,
+            .dstBinding       = 1,
+            .dstArrayElement  = 0,
+            .descriptorCount  = 1,
+            .descriptorType   = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .pImageInfo       = null,
+            .pBufferInfo      = &vk_info_descriptor_buffer_uniform_fragment,
             .pTexelBufferView = null,
          };
 
          const vk_write_descriptor_sets = [_] c.VkWriteDescriptorSet {
-            vk_write_descriptor_set_uniform, 
+            vk_write_descriptor_set_uniform_vertex,
+            vk_write_descriptor_set_uniform_fragment,
          };
 
          c.vkUpdateDescriptorSets(vk_device, @intCast(vk_write_descriptor_sets.len), &vk_write_descriptor_sets , 0, undefined);

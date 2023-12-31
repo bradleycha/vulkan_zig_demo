@@ -56,8 +56,20 @@ pub const PushConstants = struct {
    transform_mesh : math.Matrix4(f32), // 64 bytes   | offset +0
 };
 
-pub const UniformBufferObject = struct {
-   transform_view    : math.Matrix4(f32), // 64 bytes | offset +0
-   transform_project : math.Matrix4(f32), // 64 bytes | offset +64
+pub const UniformBufferObjects = struct {
+   vertex   : @This().Vertex,    // 128 byets   | offset +0
+   fragment : @This().Fragment,  // 48 bytes    | offset +128
+
+   pub const Vertex = struct {
+      transform_view    : math.Matrix4(f32), // 64 bytes | offset +0
+      transform_project : math.Matrix4(f32), // 64 bytes | offset +64
+   };
+
+   pub const Fragment = struct {
+      color_ambient  : Color.Rgba(f32),   // 16 bytes | offset +0
+      color_sun      : Color.Rgba(f32),   // 16 bytes | offset +16
+      color_depth    : Color.Rgba(f32),   // 16 bytes | offset +32
+      normal_sun     : math.Vector3(f32), // 12 bytes | offset +48
+   };
 };
 

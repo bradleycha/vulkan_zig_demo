@@ -56,8 +56,6 @@ pub const Renderer = struct {
    _window                             : * const present.Window,
    _refresh_mode                       : RefreshMode,
    _clear_color                        : ClearColor,
-   _transform_view                     : math.Matrix4(f32),
-   _transform_project                  : math.Matrix4(f32),
    _frame_index                        : u32,
    _framebuffer_size                   : present.Window.Resolution,
 
@@ -68,6 +66,11 @@ pub const Renderer = struct {
       shader_vertex     : ShaderSource,
       shader_fragment   : ShaderSource,
       clear_color       : ClearColor,
+      transform_view    : math.Matrix4(f32),
+      color_ambient     : types.Color.Rgba(f32),
+      color_sun         : types.Color.Rgba(f32),
+      color_depth       : types.Color.Rgba(f32),
+      normal_sun        : math.Vector3(f32),
    };
 
    pub const CreateError = error {
@@ -222,18 +225,17 @@ pub const Renderer = struct {
       ) catch return error.VulkanFencesInFlightCreateError;
       errdefer vulkan_fences_in_flight.destroy(vk_device);
 
-      const vulkan_uniform_allocation_info = vulkan.MemoryHeap.AllocateInfo{
-         .alignment  = @alignOf(types.UniformBufferObject),
-         .bytes      = @sizeOf(types.UniformBufferObject) * FRAMES_IN_FLIGHT,
-      };
-
-      const vulkan_uniform_allocation_draw = vulkan_memory_heap_draw.memory_heap.allocate(allocator, &vulkan_uniform_allocation_info) catch return error.VulkanUniformAllocationCreateError;
+      const vulkan_uniform_allocation_draw = vulkan_memory_heap_draw.memory_heap.allocate(allocator, &.{
+         .alignment  = @alignOf(types.UniformBufferObjects),
+         .bytes      = @sizeOf(types.UniformBufferObjects) * FRAMES_IN_FLIGHT,
+      }) catch return error.VulkanUniformAllocationCreateError;
       errdefer vulkan_memory_heap_draw.memory_heap.free(allocator, vulkan_uniform_allocation_draw);
 
-      const vulkan_uniform_allocation_transfer = vulkan_memory_heap_transfer.memory_heap.allocate(allocator, &vulkan_uniform_allocation_info) catch return error.VulkanUniformAllocationCreateError;
+      const vulkan_uniform_allocation_transfer = vulkan_memory_heap_transfer.memory_heap.allocate(allocator, &.{
+         .alignment  = @alignOf(types.UniformBufferObjects),
+         .bytes      = @sizeOf(types.UniformBufferObjects),
+      }) catch return error.VulkanUniformAllocationCreateError;
       errdefer vulkan_memory_heap_transfer.memory_heap.free(allocator, vulkan_uniform_allocation_transfer);
-
-      const transform_view = math.Matrix4(f32).IDENTITY;
 
       const transform_project = math.Matrix4(f32).createPerspectiveProjection(
          window_framebuffer_size.width,
@@ -242,6 +244,22 @@ pub const Renderer = struct {
          FAR_PLANE,
          FIELD_OF_VIEW,
       );
+
+      const uniform_buffer_int_ptr = @intFromPtr(vulkan_memory_heap_transfer.mapping) + vulkan_uniform_allocation_draw.offset;
+      const uniform_buffer_ptr = @as(* types.UniformBufferObjects, @ptrFromInt(uniform_buffer_int_ptr));
+
+      uniform_buffer_ptr.* = .{
+         .vertex = .{
+            .transform_view      = create_info.transform_view,
+            .transform_project   = transform_project,
+         },
+         .fragment = .{
+            .color_ambient = create_info.color_ambient,
+            .color_sun     = create_info.color_sun,
+            .color_depth   = create_info.color_depth,
+            .normal_sun    = create_info.normal_sun,
+         },
+      };
 
       const vulkan_descriptor_sets = vulkan.DescriptorSets(.{.uniform_buffers = FRAMES_IN_FLIGHT, .texture_samplers = MAX_TEXTURE_SAMPLERS}).create(&.{
          .vk_device                                   = vk_device,
@@ -285,8 +303,6 @@ pub const Renderer = struct {
          ._asset_loader                         = asset_loader,
          ._active_texture_samplers              = ([1] bool {false}) ** MAX_TEXTURE_SAMPLERS,
          ._window                               = window,
-         ._transform_view                       = transform_view,
-         ._transform_project                    = transform_project,
          ._refresh_mode                         = create_info.refresh_mode,
          ._clear_color                          = create_info.clear_color,
          ._frame_index                          = 0,
@@ -438,12 +454,18 @@ pub const Renderer = struct {
       return &mesh.push_constants.transform_mesh;
    }
 
-   pub fn viewTransform(self : * const @This()) * const math.Matrix4(f32) {
-      return &self._transform_view;
+   pub fn uniforms(self : * const @This()) * const types.UniformBufferObjects {
+      const uniform_buffers_int_ptr = @intFromPtr(self._vulkan_memory_heap_transfer.mapping) + self._vulkan_uniform_allocation_transfer.offset;
+      const uniform_buffers_ptr = @as(* const types.UniformBufferObjects, @ptrFromInt(uniform_buffers_int_ptr));
+
+      return uniform_buffers_ptr;
    }
 
-   pub fn viewTransformMut(self : * @This()) * math.Matrix4(f32) {
-      return &self._transform_view;
+   pub fn uniformsMut(self : * @This()) * types.UniformBufferObjects {
+      const uniform_buffers_int_ptr = @intFromPtr(self._vulkan_memory_heap_transfer.mapping) + self._vulkan_uniform_allocation_transfer.offset;
+      const uniform_buffers_ptr = @as(* types.UniformBufferObjects, @ptrFromInt(uniform_buffers_int_ptr));
+
+      return uniform_buffers_ptr;
    }
 
    pub const DrawError = error {
@@ -490,18 +512,14 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.
    const vk_semaphore_image_available        = self._vulkan_semaphores_image_available.vk_semaphores[frame_index];
    const vk_semaphore_render_finished        = self._vulkan_semaphores_render_finished.vk_semaphores[frame_index];
    const vk_fence_in_flight                  = self._vulkan_fences_in_flight.vk_fences[frame_index];
-   const allocation_uniforms_transfer        = self._vulkan_uniform_allocation_transfer;
+   const allocation_uniform_transfer         = self._vulkan_uniform_allocation_transfer;
    const allocation_uniforms_draw            = self._vulkan_uniform_allocation_draw;
    const vk_descriptor_set_uniform_buffers   = self._vulkan_descriptor_sets.vk_descriptor_sets_uniform_buffers[frame_index];
    const vk_descriptor_sets_texture_samplers = &self._vulkan_descriptor_sets.vk_descriptor_sets_texture_samplers;
 
-   const allocation_uniform_transfer   = vulkan.MemoryHeap.Allocation{
-      .offset  = allocation_uniforms_transfer.offset + @as(u32, @intCast(frame_index * @sizeOf(types.UniformBufferObject))),
-      .bytes   = @intCast(@sizeOf(types.UniformBufferObject)),
-   };
    const allocation_uniform_draw       = vulkan.MemoryHeap.Allocation{
-      .offset  = allocation_uniforms_draw.offset + @as(u32, @intCast(frame_index * @sizeOf(types.UniformBufferObject))),
-      .bytes   = @intCast(@sizeOf(types.UniformBufferObject)),
+      .offset  = allocation_uniforms_draw.offset + @as(u32, @intCast(frame_index * @sizeOf(types.UniformBufferObjects))),
+      .bytes   = @intCast(@sizeOf(types.UniformBufferObjects)),
    };
 
    vk_result = c.vkGetFenceStatus(vk_device, vk_fence_in_flight);
@@ -557,14 +575,6 @@ fn _drawFrameWithSwapchainUpdates(self : * Renderer, models : [] const Renderer.
       c.VK_ERROR_OUT_OF_DEVICE_MEMORY  => return error.OutOfMemory,
       else                             => unreachable,
    }
-
-   const uniform_buffer_int_ptr = @intFromPtr(self._vulkan_memory_heap_transfer.mapping) + allocation_uniform_transfer.offset;
-   const uniform_buffer_ptr = @as(* types.UniformBufferObject, @ptrFromInt(uniform_buffer_int_ptr));
-
-   uniform_buffer_ptr.* = .{
-      .transform_view      = self._transform_view,
-      .transform_project   = self._transform_project,
-   };
 
    // Only poll once.  If we are still in the middle of loading, extra
    // synchronization is done below.
@@ -717,7 +727,7 @@ fn _recreateSwapchain(self : * Renderer) SwapchainRecreateError!void {
       FIELD_OF_VIEW,
    );
 
-   self._transform_project = transform_project;
+   self.uniformsMut().vertex.transform_project = transform_project;
 
    self._vulkan_framebuffers.destroy(allocator, vk_device, &vulkan_swapchain);
    self._vulkan_swapchain.destroy(allocator, vk_device);
@@ -781,7 +791,7 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
    const vk_buffer_copy_uniform = c.VkBufferCopy{
       .srcOffset  = allocation_uniform_transfer.offset,
       .dstOffset  = allocation_uniform_draw.offset,
-      .size       = @sizeOf(types.UniformBufferObject),
+      .size       = @sizeOf(types.UniformBufferObjects),
    };
 
    c.vkCmdCopyBuffer(vk_command_buffer, vk_buffer_transfer, vk_buffer_draw, 1, &vk_buffer_copy_uniform);
