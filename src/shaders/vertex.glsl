@@ -20,7 +20,7 @@ layout (set = 0, binding = 0) uniform UniformBufferObject {
 
 void main() {
    vec4 v_position_world      = push_constants.transform_mesh * vec4(v_position, 1.0);
-   vec4 v_normal_world        = push_constants.transform_mesh * vec4(v_normal, 1.0);
+   vec4 v_normal_world        = push_constants.transform_mesh * vec4(v_normal, 0.0);
    vec4 v_position_camera     = uniforms.transform_view * v_position_world;
    vec4 v_position_projected  = uniforms.transform_project * v_position_camera;
 

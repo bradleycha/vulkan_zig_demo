@@ -1,6 +1,6 @@
 #version 450
 
-const vec3 SUN_ANGLE = vec3(0.0, 0.0, 1.0);
+const vec3 SUN_ANGLE = vec3(1.0, -0.05, 1.0);
 
 layout (set = 1, binding = 0) uniform sampler2D u_sampler;
 
@@ -13,8 +13,8 @@ layout (location = 0) out vec4 p_color;
 void main() {
    const vec4 col_texture = texture(u_sampler, f_sample);
    const vec4 col_vertex  = f_color;
-   const vec4 col_ambient = vec4(0.04, 0.09, 0.30, 1.0);
-   const vec4 col_diffuse = vec4(1.00, 0.80, 0.20, 1.0);
+   const vec4 col_ambient = vec4(0.30, 0.40, 0.45, 1.0);
+   const vec4 col_diffuse = vec4(1.00, 0.80, 0.40, 1.0);
 
    const float lighting_face_angle = dot(normalize(SUN_ANGLE), normalize(f_normal));
    const float lighting_mix_factor = lighting_face_angle * 0.5 + 0.5;
