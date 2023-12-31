@@ -121,6 +121,12 @@ pub const GraphicsPipeline = struct {
             .format     = c.VK_FORMAT_R32G32B32_SFLOAT,
             .offset     = @offsetOf(root.types.Vertex, "position"),
          },
+         .{
+            .location   = root.types.Vertex.INFO.Index.Normal,
+            .binding    = 0,
+            .format     = c.VK_FORMAT_R32G32B32_SFLOAT,
+            .offset     = @offsetOf(root.types.Vertex, "normal"),
+         },
       };
 
       const vk_info_create_vertex_input_state = c.VkPipelineVertexInputStateCreateInfo{

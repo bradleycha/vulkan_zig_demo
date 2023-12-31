@@ -32,6 +32,7 @@ pub const Vertex = packed struct {
    color    : Color.Rgba(f32),   // 16 bytes | offset +0
    sample   : math.Vector2(f32), // 8 bytes  | offset +16
    position : math.Vector3(f32), // 12 bytes | offset +24
+   normal   : math.Vector3(f32), // 12 bytes | offset +36
    
    pub const INFO = struct {
       pub const Count = @typeInfo(Vertex).Struct.fields.len;
@@ -39,6 +40,7 @@ pub const Vertex = packed struct {
          pub const Color      = 0;
          pub const Sample     = 1;
          pub const Position   = 2;
+         pub const Normal     = 3;
       };
    };
 };

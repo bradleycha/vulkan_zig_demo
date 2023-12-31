@@ -18,6 +18,11 @@ pub const MESH_TEST_TRIANGLE = graphics.types.Mesh{
             .y =  0.5,
             .z =  0.0,
          }},
+         .normal = .{.xyz = .{
+            .x =  0.0,
+            .y =  0.0,
+            .z = -1.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -35,6 +40,11 @@ pub const MESH_TEST_TRIANGLE = graphics.types.Mesh{
             .y = -0.5,
             .z =  0.0,
          }},
+         .normal = .{.xyz = .{
+            .x =  0.0,
+            .y =  0.0,
+            .z = -1.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -51,6 +61,11 @@ pub const MESH_TEST_TRIANGLE = graphics.types.Mesh{
             .x = -0.5,
             .y = -0.5,
             .z =  0.0,
+         }},
+         .normal = .{.xyz = .{
+            .x =  0.0,
+            .y =  0.0,
+            .z = -1.0,
          }},
       },
    },
@@ -76,7 +91,12 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
             .x =  0.0,
             .y =  0.0,
             .z =  0.0,
-         }}
+         }},
+         .normal = .{.xyz = .{
+            .x =  0.0,
+            .y =  0.0,
+            .z = -1.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -93,7 +113,12 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
             .x =  0.2071067,
             .y =  0.5000000,
             .z =  0.0,
-         }}
+         }},
+         .normal = .{.xyz = .{
+            .x =  0.0,
+            .y =  0.0,
+            .z = -1.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -110,7 +135,12 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
             .x =  0.5000000,
             .y =  0.2071067,
             .z =  0.0,
-         }}
+         }},
+         .normal = .{.xyz = .{
+            .x =  0.0,
+            .y =  0.0,
+            .z = -1.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -127,7 +157,12 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
             .x =  0.5000000,
             .y = -0.2071067,
             .z =  0.0,
-         }}
+         }},
+         .normal = .{.xyz = .{
+            .x =  0.0,
+            .y =  0.0,
+            .z = -1.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -144,7 +179,12 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
             .x =  0.2071067,
             .y = -0.5000000,
             .z =  0.0,
-         }}
+         }},
+         .normal = .{.xyz = .{
+            .x =  0.0,
+            .y =  0.0,
+            .z = -1.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -161,7 +201,12 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
             .x = -0.2071067,
             .y = -0.5000000,
             .z =  0.0,
-         }}
+         }},
+         .normal = .{.xyz = .{
+            .x =  0.0,
+            .y =  0.0,
+            .z = -1.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -178,7 +223,12 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
             .x = -0.5000000,
             .y = -0.2071067,
             .z =  0.0,
-         }}
+         }},
+         .normal = .{.xyz = .{
+            .x =  0.0,
+            .y =  0.0,
+            .z = -1.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -195,7 +245,12 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
             .x = -0.5000000,
             .y =  0.2071067,
             .z =  0.0,
-         }}
+         }},
+         .normal = .{.xyz = .{
+            .x =  0.0,
+            .y =  0.0,
+            .z = -1.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -212,7 +267,12 @@ pub const MESH_TEST_OCTAGON = graphics.types.Mesh{
             .x = -0.2071067,
             .y =  0.5000000,
             .z =  0.0,
-         }}
+         }},
+         .normal = .{.xyz = .{
+            .x =  0.0,
+            .y =  0.0,
+            .z = -1.0,
+         }},
       },
    },
    .indices = &.{
@@ -247,6 +307,11 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .y = -0.5,
             .z = -0.5,
          }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -264,6 +329,11 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .y =  0.5,
             .z = -0.5,
          }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -280,6 +350,11 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .x = -0.5,
             .y =  0.5,
             .z = -0.5,
+         }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
          }},
       },
       .{
@@ -298,6 +373,11 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .y = -0.5,
             .z = -0.5,
          }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -314,6 +394,11 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .x =  0.5,
             .y = -0.5,
             .z =  0.5,
+         }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
          }},
       },
       .{
@@ -332,6 +417,11 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .y =  0.5,
             .z =  0.5,
          }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -349,6 +439,11 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .y =  0.5,
             .z =  0.5,
          }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -365,6 +460,11 @@ pub const MESH_TEST_CUBE = graphics.types.Mesh{
             .x = -0.5,
             .y = -0.5,
             .z =  0.5,
+         }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
          }},
       },
    },
@@ -403,6 +503,11 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
             .y =  0.5,
             .z =  0.0,
          }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -419,6 +524,11 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
             .x =  0.5,
             .y = -0.5,
             .z =  0.5,
+         }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
          }},
       },
       .{
@@ -437,6 +547,11 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
             .y = -0.5,
             .z = -0.5,
          }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -454,6 +569,11 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
             .y = -0.5,
             .z = -0.5,
          }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -470,6 +590,11 @@ pub const MESH_TEST_PYRAMID  = graphics.types.Mesh{
             .x = -0.5,
             .y = -0.5,
             .z =  0.5,
+         }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
          }},
       },
    },
@@ -502,6 +627,11 @@ pub const MESH_TEST_PLANE  = graphics.types.Mesh{
             .y =  0.0,
             .z = -0.5,
          }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -518,6 +648,11 @@ pub const MESH_TEST_PLANE  = graphics.types.Mesh{
             .x =  0.5,
             .y =  0.0,
             .z = -0.5,
+         }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
          }},
       },
       .{
@@ -536,6 +671,11 @@ pub const MESH_TEST_PLANE  = graphics.types.Mesh{
             .y =  0.0,
             .z =  0.5,
          }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
+         }},
       },
       .{
          .color = .{.channels = .{
@@ -552,6 +692,11 @@ pub const MESH_TEST_PLANE  = graphics.types.Mesh{
             .x =  0.5,
             .y =  0.0,
             .z =  0.5,
+         }},
+         .normal = .{.xyz = .{
+            .x = 0.0,
+            .y = 0.0,
+            .z = 0.0,
          }},
       },
    },
