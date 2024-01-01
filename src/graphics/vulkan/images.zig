@@ -69,6 +69,7 @@ pub const Image = struct {
       tiling         : c.VkImageTiling,
       width          : u32,
       height         : u32,
+      samples        : c.VkSampleCountFlagBits,
       usage_flags    : c.VkImageUsageFlags,
    };
 
@@ -95,7 +96,7 @@ pub const Image = struct {
          },
          .mipLevels              = 1,
          .arrayLayers            = 1,
-         .samples                = c.VK_SAMPLE_COUNT_1_BIT,
+         .samples                = create_info.samples,
          .tiling                 = create_info.tiling,
          .usage                  = create_info.usage_flags,
          .sharingMode            = c.VK_SHARING_MODE_EXCLUSIVE,

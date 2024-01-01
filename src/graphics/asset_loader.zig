@@ -563,6 +563,7 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
          .tiling        = c.VK_IMAGE_TILING_OPTIMAL,
          .width         = texture.data.width,
          .height        = texture.data.height,
+         .samples       = c.VK_SAMPLE_COUNT_1_BIT,
          .usage_flags   = c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | c.VK_IMAGE_USAGE_SAMPLED_BIT,
       }, memory_source_image);
       errdefer vulkan_image.destroy(vk_device);
