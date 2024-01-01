@@ -62,7 +62,7 @@ pub const Swapchain = struct {
          .tiling        = c.VK_IMAGE_TILING_OPTIMAL,
          .width         = create_info.swapchain_configuration.extent.width,
          .height        = create_info.swapchain_configuration.extent.height,
-         .samples       = c.VK_SAMPLE_COUNT_1_BIT,
+         .samples       = create_info.multisampling_level,
          .usage_flags   = c.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
       }, create_info.memory_source_image);
       errdefer image_depth_buffer.destroy(vk_device);

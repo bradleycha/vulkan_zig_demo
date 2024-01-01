@@ -204,6 +204,7 @@ pub const Renderer = struct {
          .shader_fragment           = create_info.shader_fragment,
          .depth_buffer_format       = vulkan_physical_device.depth_buffer_format,
          .clear_mode                = create_info.clear_color,
+         .multisampling_level       = multisampling_level,
       }) catch return error.VulkanGraphicsPipelineCreateError;
       errdefer vulkan_graphics_pipeline.destroy(vk_device);
 
