@@ -8,7 +8,9 @@ pub const Swapchain = struct {
    vk_image_views_ptr      : [*] c.VkImageView,
    vk_images_count         : u32,
    image_depth_buffer      : root.Image,
+   image_msaa_buffer       : root.Image,
    image_view_depth_buffer : root.ImageView,
+   image_view_msaa_buffer  : root.ImageView,
 
    pub const CreateInfo = struct {
       vk_device               : c.VkDevice,
@@ -65,6 +67,17 @@ pub const Swapchain = struct {
       }, create_info.memory_source_image);
       errdefer image_depth_buffer.destroy(vk_device);
 
+      const image_msaa_buffer = try root.Image.create(&.{
+         .vk_device     = vk_device,
+         .vk_format     = create_info.swapchain_configuration.format.format,
+         .tiling        = c.VK_IMAGE_TILING_OPTIMAL,
+         .width         = create_info.swapchain_configuration.extent.width,
+         .height        = create_info.swapchain_configuration.extent.height,
+         .samples       = create_info.multisampling_level,
+         .usage_flags   = c.VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+      }, create_info.memory_source_image);
+      errdefer image_msaa_buffer.destroy(vk_device);
+
       const image_view_depth_buffer = try root.ImageView.create(&.{
          .vk_device     = vk_device,
          .vk_image      = image_depth_buffer.vk_image,
@@ -72,6 +85,14 @@ pub const Swapchain = struct {
          .aspect_mask   = c.VK_IMAGE_ASPECT_DEPTH_BIT,
       });
       errdefer image_view_depth_buffer.destroy(vk_device);
+      
+      const image_view_msaa_buffer = try root.ImageView.create(&.{
+         .vk_device     = vk_device,
+         .vk_image      = image_msaa_buffer.vk_image,
+         .vk_format     = create_info.swapchain_configuration.format.format,
+         .aspect_mask   = c.VK_IMAGE_ASPECT_COLOR_BIT,
+      });
+      errdefer image_view_msaa_buffer.destroy(vk_device);
 
       return @This(){
          .vk_swapchain              = vk_swapchain,
@@ -79,7 +100,9 @@ pub const Swapchain = struct {
          .vk_image_views_ptr        = vk_image_views.ptr,
          .vk_images_count           = @intCast(vk_images.len),
          .image_depth_buffer        = image_depth_buffer,
+         .image_msaa_buffer         = image_msaa_buffer,
          .image_view_depth_buffer   = image_view_depth_buffer,
+         .image_view_msaa_buffer    = image_view_msaa_buffer,
       };
    }
 
@@ -87,7 +110,9 @@ pub const Swapchain = struct {
       const vk_images      = self.vk_images_ptr[0..self.vk_images_count];
       const vk_image_views = self.vk_image_views_ptr[0..self.vk_images_count];
 
+      self.image_view_msaa_buffer.destroy(vk_device);
       self.image_view_depth_buffer.destroy(vk_device);
+      self.image_msaa_buffer.destroy(vk_device);
       self.image_depth_buffer.destroy(vk_device);
 
       for (vk_image_views) |vk_image_view| {
