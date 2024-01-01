@@ -20,6 +20,11 @@ pub const types = vulkan.types;
 
 pub const RefreshMode = vulkan.RefreshMode;
 
+pub const MultisamplingLevel = enum {
+   none,
+   maximum,
+};
+
 pub const ShaderSource = vulkan.ShaderSource;
 
 pub const ClearColor = vulkan.ClearColor;
@@ -56,21 +61,23 @@ pub const Renderer = struct {
    _window                             : * const present.Window,
    _refresh_mode                       : RefreshMode,
    _clear_color                        : ClearColor,
+   _multisampling_level                : c.VkSampleCountFlagBits,
    _frame_index                        : u32,
    _framebuffer_size                   : present.Window.Resolution,
 
    pub const CreateInfo = struct {
-      program_name      : ? [*:0] const u8,
-      debugging         : bool,
-      refresh_mode      : RefreshMode,
-      shader_vertex     : ShaderSource,
-      shader_fragment   : ShaderSource,
-      clear_color       : ClearColor,
-      transform_view    : math.Matrix4(f32),
-      color_ambient     : types.Color.Rgba(f32),
-      color_sun         : types.Color.Rgba(f32),
-      color_depth       : types.Color.Rgba(f32),
-      normal_sun        : math.Vector3(f32),
+      program_name         : ? [*:0] const u8,
+      debugging            : bool,
+      refresh_mode         : RefreshMode,
+      multisampling_level  : MultisamplingLevel,
+      shader_vertex        : ShaderSource,
+      shader_fragment      : ShaderSource,
+      clear_color          : ClearColor,
+      transform_view       : math.Matrix4(f32),
+      color_ambient        : types.Color.Rgba(f32),
+      color_sun            : types.Color.Rgba(f32),
+      color_depth          : types.Color.Rgba(f32),
+      normal_sun           : math.Vector3(f32),
    };
 
    pub const CreateError = error {
@@ -136,6 +143,15 @@ pub const Renderer = struct {
       const vulkan_physical_device           = vulkan_physical_device_selection.physical_device;
       const vulkan_swapchain_configuration   = vulkan_physical_device_selection.swapchain_configuration;
 
+      const multisampling_level : c.VkSampleCountFlagBits = blk: {
+         switch (create_info.multisampling_level) {
+            .none    => break :blk c.VK_SAMPLE_COUNT_1_BIT,
+            .maximum => break :blk vulkan_physical_device.maximum_sample_count,
+         }
+
+         unreachable;
+      };
+
       const vulkan_device = vulkan.Device.create(&.{
          .physical_device     = &vulkan_physical_device,
          .enabled_extensions  = vulkan_device_extensions,
@@ -177,6 +193,7 @@ pub const Renderer = struct {
          .memory_source_image       = &vulkan_memory_source_image,
          .swapchain_configuration   = &vulkan_swapchain_configuration,
          .depth_buffer_format       = vulkan_physical_device.depth_buffer_format,
+         .multisampling_level       = multisampling_level,
       }) catch return error.VulkanSwapchainCreateError;
       errdefer vulkan_swapchain.destroy(allocator, vk_device);
 
@@ -305,6 +322,7 @@ pub const Renderer = struct {
          ._window                               = window,
          ._refresh_mode                         = create_info.refresh_mode,
          ._clear_color                          = create_info.clear_color,
+         ._multisampling_level                  = multisampling_level,
          ._frame_index                          = 0,
          ._framebuffer_size                     = window_framebuffer_size,
       };
@@ -708,6 +726,7 @@ fn _recreateSwapchain(self : * Renderer) SwapchainRecreateError!void {
       .memory_source_image       = &self._vulkan_memory_source_image,
       .swapchain_configuration   = &vulkan_swapchain_configuration,
       .depth_buffer_format       = self._vulkan_physical_device.depth_buffer_format,
+      .multisampling_level       = self._multisampling_level,
    });
    errdefer vulkan_swapchain.destroy(allocator, vk_device);
 

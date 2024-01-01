@@ -17,6 +17,7 @@ pub const Swapchain = struct {
       memory_source_image     : * const root.MemorySourceImage,
       swapchain_configuration : * const root.SwapchainConfiguration,
       depth_buffer_format     : c.VkFormat,
+      multisampling_level     : c.VkSampleCountFlagBits,
    };
    
    pub const CreateError = error {

@@ -25,6 +25,7 @@ pub const PhysicalDevice = struct {
    vk_physical_device_memory_properties   : c.VkPhysicalDeviceMemoryProperties,
    queue_family_indices                   : QueueFamilyIndices,
    depth_buffer_format                    : c.VkFormat,
+   maximum_sample_count                   : c.VkSampleCountFlags,
 };
 
 pub const PhysicalDeviceSelection = struct {
@@ -102,6 +103,8 @@ pub const PhysicalDeviceSelection = struct {
          return null;
       };
 
+      const maximum_sample_count = _selectSampleCount(&vk_physical_device_properties);
+
       const physical_device = PhysicalDevice{
          .vk_physical_device                    = vk_physical_device,
          .vk_physical_device_properties         = vk_physical_device_properties,
@@ -109,6 +112,7 @@ pub const PhysicalDeviceSelection = struct {
          .vk_physical_device_memory_properties  = vk_physical_device_memory_properties,
          .queue_family_indices                  = queue_family_indices,
          .depth_buffer_format                   = depth_buffer_format,
+         .maximum_sample_count                  = maximum_sample_count,
       };
 
       const swapchain_configuration = try root.SwapchainConfiguration.selectMostSuitable(allocator, &.{
@@ -306,6 +310,19 @@ fn _selectDepthBufferFormat(vk_physical_device : c.VkPhysicalDevice) ? c.VkForma
    }
 
    return null;
+}
+
+fn _selectSampleCount(vk_physical_device_properties : * const c.VkPhysicalDeviceProperties) c.VkSampleCountFlagBits {
+   const vk_sample_counts = vk_physical_device_properties.limits.framebufferColorSampleCounts & vk_physical_device_properties.limits.framebufferDepthSampleCounts;
+
+   // Don't do the shit in the tutorial.  The documentation specs these enums
+   // to use bitfields in ascending order.  Just isolate the most significant
+   // bit and mask out the rest.
+
+   const shift_factor : u5 = @intCast(@bitSizeOf(c.VkSampleCountFlagBits) - @clz(vk_sample_counts) - 1);
+   const vk_sample_count = vk_sample_counts & (@as(c.VkSampleCountFlagBits, 1) << shift_factor);
+
+   return vk_sample_count;
 }
 
 fn _imageFormatSupported(vk_physical_device : c.VkPhysicalDevice, vk_format : c.VkFormat, vk_image_tiling : c.VkImageTiling, vk_format_feature_flags : c.VkFormatFeatureFlags) bool {

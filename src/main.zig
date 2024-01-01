@@ -87,37 +87,38 @@ pub fn main() MainError!void {
    const controller = window.controller();
 
    var renderer = graphics.Renderer.create(allocator, &window, &.{
-      .program_name     = PROGRAM_NAME,
-      .debugging        = builtin.mode == .Debug,
-      .refresh_mode     = .triple_buffered,
-      .shader_vertex    = resources.shaders.VERTEX,
-      .shader_fragment  = resources.shaders.FRAGMENT,
-      .clear_color      = .{.color = .{.channels = .{
+      .program_name        = PROGRAM_NAME,
+      .debugging           = builtin.mode == .Debug,
+      .refresh_mode        = .triple_buffered,
+      .multisampling_level = .maximum,
+      .shader_vertex       = resources.shaders.VERTEX,
+      .shader_fragment     = resources.shaders.FRAGMENT,
+      .clear_color         = .{.color = .{.channels = .{
          .r = 0.1,
          .g = 0.2,
          .b = 0.5,
          .a = 1.0,
       }}},
-      .transform_view   = undefined,
-      .color_ambient    = .{.channels = .{
+      .transform_view      = undefined,
+      .color_ambient       = .{.channels = .{
          .r = 0.15,
          .g = 0.20,
          .b = 0.35,
          .a = 1.00,
       }},
-      .color_sun        = .{.channels = .{
+      .color_sun           = .{.channels = .{
          .r = 1.00,
          .g = 0.85,
          .b = 0.60,
          .a = 1.00,
       }},
-      .color_depth      = .{.channels = .{
+      .color_depth         = .{.channels = .{
          .r = 0.25,
          .g = 0.25,
          .b = 0.25,
          .a = 1.00,
       }},
-      .normal_sun       = .{.xyz = .{
+      .normal_sun          = .{.xyz = .{
          .x =  1.00,
          .y = -0.50,
          .z =  1.00,
