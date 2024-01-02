@@ -10,8 +10,7 @@ const camera      = @import("camera.zig");
 
 const MainError = error {
    OutOfMemory,
-   DeltaTimerStartFailure,
-   WindowTitleTimerStartFailure,
+   StopwatchStartFailure,
    CompositorConnectError,
    WindowCreateError,
    RendererCreateError,
@@ -54,8 +53,9 @@ pub fn main() MainError!void {
    const allocator = heap.allocator();
 
    std.log.info("starting timers", .{});
-   var timer_delta         = std.time.Timer.start() catch return error.DeltaTimerStartFailure;
-   var timer_window_title  = std.time.Timer.start() catch return error.DeltaTimerStartFailure;
+   var timer_delta_graphics   = std.time.Timer.start() catch return error.StopwatchStartFailure;
+   var timer_delta_physics    = std.time.Timer.start() catch return error.StopwatchStartFailure;
+   var timer_window_title     = std.time.Timer.start() catch return error.StopwatchStartFailure;
 
    std.log.info("connecting to desktop compostior", .{});
    var compositor = present.Compositor.connect(allocator) catch return error.CompositorConnectError;
@@ -226,8 +226,7 @@ pub fn main() MainError!void {
       }},
    });
 
-   var frame_time_accumulated : f64    = 0.0;
-   var frame_time_count       : usize  = 0;
+   var time_delta_graphics : f32 = 0.0;
 
    var theta : f32 = 0.0;
 
@@ -284,39 +283,29 @@ pub fn main() MainError!void {
          freefly_camera = CAMERA_SPAWN_POINT;
       }
 
-      const time_delta        = @as(f32, @floatFromInt(timer_delta.lap())) / 1000000000.0;
-      const time_window_title = @as(f64, @floatFromInt(timer_window_title.read())) / 1000000000.0;
+      const time_delta_physics   = @as(f32, @floatFromInt(timer_delta_physics.lap())) / 1000000000.0;
+      const time_window_title    = @as(f64, @floatFromInt(timer_window_title.read())) / 1000000000.0;
 
       if (time_window_title > WINDOW_TITLE_UPDATE_TIME_SECONDS) {
          @setCold(true);
 
          timer_window_title.reset();
 
-         const fps = blk: {
-            if (frame_time_count == 0) {
-               break :blk 0.0;
-            }
-            if (frame_time_accumulated == 0.0) {
-               break :blk std.math.inf(f64);
-            }
-
-            break :blk @as(f64, @floatFromInt(frame_time_count)) / frame_time_accumulated;
-         };
-
-         frame_time_accumulated  = 0.0;
-         frame_time_count        = 0;
+         // TODO: Calculate the averge fps/tps instead.
+         const fps = 1.0 / time_delta_graphics;
+         const tps = 1.0 / time_delta_physics;
 
          // The allocations within the loop are fine since we only execute this
          // code and re-allocate when the timer rolls over, which is to say
          // very infrequently.  The added jank for guessing a reasonable buffer
          // length isn't worth the microscopic performance gain.
-         const title = try std.fmt.allocPrintZ(allocator, PROGRAM_NAME ++ " - {d:0.0} fps", .{fps});
+         const title = try std.fmt.allocPrintZ(allocator, PROGRAM_NAME ++ " - {d:0.0} fps, {d:0.0} tps", .{fps, tps});
          defer allocator.free(title);
 
          window.setTitle(title);
       }
 
-      freefly_camera.update(controller, time_delta);
+      freefly_camera.update(controller, time_delta_physics);
 
       renderer.uniformsMut().vertex.transform_view = freefly_camera.toMatrix();
 
@@ -349,15 +338,14 @@ pub fn main() MainError!void {
       };
 
       if (frame_rendered == true) {
-         frame_time_accumulated  += @floatCast(time_delta);
-         frame_time_count        += 1;
+         time_delta_graphics = @as(f32, @floatFromInt(timer_delta_graphics.lap())) / 1000000000.0;
       }
 
       window.pollEvents() catch |err| {
          std.log.warn("failed to poll window events: {}", .{err});
       };
 
-      theta = @floatCast(@rem(theta + SPIN_SPEED * time_delta, std.math.pi * 2.0));
+      theta = @floatCast(@rem(theta + SPIN_SPEED * time_delta_physics, std.math.pi * 2.0));
    }
 
    return;
