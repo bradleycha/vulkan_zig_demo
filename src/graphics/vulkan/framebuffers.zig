@@ -67,9 +67,8 @@ fn _createFramebuffer(create_info : * const Framebuffers.CreateInfo, vk_image_vi
    const vk_render_pass       = create_info.graphics_pipeline.vk_render_pass;
 
    const vk_image_views = [_] c.VkImageView {
-      create_info.swapchain.image_view_msaa_buffer.vk_image_view,
-      create_info.swapchain.image_view_depth_buffer.vk_image_view,
       vk_image_view,
+      create_info.swapchain.image_view_depth_buffer.vk_image_view,
    };
 
    const vk_info_create_framebuffer = c.VkFramebufferCreateInfo{

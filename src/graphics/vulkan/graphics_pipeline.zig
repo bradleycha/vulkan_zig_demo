@@ -187,7 +187,7 @@ pub const GraphicsPipeline = struct {
          .sType                  = c.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
          .pNext                  = null,
          .flags                  = 0x00000000,
-         .rasterizationSamples   = multisampling_level,
+         .rasterizationSamples   = c.VK_SAMPLE_COUNT_1_BIT,
          .sampleShadingEnable    = c.VK_FALSE,
          .minSampleShading       = 1.0,
          .pSampleMask            = null,
@@ -350,6 +350,9 @@ fn _createPipelineLayout(vk_device : c.VkDevice, vk_descriptor_set_layout_unifor
 fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const root.SwapchainConfiguration, depth_buffer_format : c.VkFormat, clear_mode : ClearColorTag, multisampling_level : c.VkSampleCountFlagBits) GraphicsPipeline.CreateError!c.VkRenderPass {
    var vk_result : c.VkResult = undefined;
 
+   // TODO: Reimplement MSAA
+   _ = multisampling_level;
+
    const vk_color_load_op : c.VkAttachmentLoadOp = blk: {
       switch (clear_mode) {
          .none    => break :blk c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
@@ -360,19 +363,19 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
    const vk_attachment_descriptor_color = c.VkAttachmentDescription{
       .flags            = 0x00000000,
       .format           = swapchain_configuration.format.format,
-      .samples          = multisampling_level,
+      .samples          = c.VK_SAMPLE_COUNT_1_BIT,
       .loadOp           = vk_color_load_op,
       .storeOp          = c.VK_ATTACHMENT_STORE_OP_STORE,
       .stencilLoadOp    = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
       .stencilStoreOp   = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
       .initialLayout    = c.VK_IMAGE_LAYOUT_UNDEFINED,
-      .finalLayout      = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      .finalLayout      = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
    };
 
    const vk_attachment_descriptor_depth = c.VkAttachmentDescription{
       .flags            = 0x00000000,
       .format           = depth_buffer_format,
-      .samples          = multisampling_level,
+      .samples          = c.VK_SAMPLE_COUNT_1_BIT,
       .loadOp           = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
       .storeOp          = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
       .stencilLoadOp    = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
@@ -381,22 +384,9 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
       .finalLayout      = c.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
    };
 
-   const vk_attachment_descriptor_color_resolve = c.VkAttachmentDescription{
-      .flags            = 0x00000000,
-      .format           = swapchain_configuration.format.format,
-      .samples          = c.VK_SAMPLE_COUNT_1_BIT,
-      .loadOp           = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-      .storeOp          = c.VK_ATTACHMENT_STORE_OP_STORE,
-      .stencilLoadOp    = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-      .stencilStoreOp   = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
-      .initialLayout    = c.VK_IMAGE_LAYOUT_UNDEFINED,
-      .finalLayout      = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-   };
-
    const vk_attachment_descriptors = [_] c.VkAttachmentDescription {
       vk_attachment_descriptor_color,
       vk_attachment_descriptor_depth,
-      vk_attachment_descriptor_color_resolve,
    };
 
    const vk_attachment_reference_color = c.VkAttachmentReference{
@@ -409,11 +399,6 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
       .layout     = c.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
    };
 
-   const vk_attachment_reference_color_resolve = c.VkAttachmentReference{
-      .attachment = 2,
-      .layout     = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-   };
-
    const vk_subpass_description = c.VkSubpassDescription{
       .flags                     = 0x00000000,
       .pipelineBindPoint         = c.VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -421,7 +406,7 @@ fn _createRenderPass(vk_device : c.VkDevice, swapchain_configuration : * const r
       .pInputAttachments         = undefined,
       .colorAttachmentCount      = 1,
       .pColorAttachments         = &vk_attachment_reference_color,
-      .pResolveAttachments       = &vk_attachment_reference_color_resolve,
+      .pResolveAttachments       = null,
       .pDepthStencilAttachment   = &vk_attachment_reference_depth,
       .preserveAttachmentCount   = 0,
       .pPreserveAttachments      = undefined,
