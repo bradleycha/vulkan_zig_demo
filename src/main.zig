@@ -228,6 +228,11 @@ pub fn main() MainError!void {
 
    var time_delta_graphics : f32 = 0.0;
 
+   var time_accumulated_graphics       : f32 = 0.0;
+   var time_accumulated_physics        : f32 = 0.0;
+   var time_accumulated_graphics_count : u32 = 0;
+   var time_accumulated_physics_count  : u32 = 0;
+
    var theta : f32 = 0.0;
 
    var mesh_transform_test_pyramid = math.Transform(f32){
@@ -286,14 +291,21 @@ pub fn main() MainError!void {
       const time_delta_physics   = @as(f32, @floatFromInt(timer_delta_physics.lap())) / 1000000000.0;
       const time_window_title    = @as(f64, @floatFromInt(timer_window_title.read())) / 1000000000.0;
 
+      time_accumulated_physics         += time_delta_physics;
+      time_accumulated_physics_count   += 1;
+
       if (time_window_title > WINDOW_TITLE_UPDATE_TIME_SECONDS) {
          @setCold(true);
 
          timer_window_title.reset();
 
-         // TODO: Calculate the averge fps/tps instead.
-         const fps = 1.0 / time_delta_graphics;
-         const tps = 1.0 / time_delta_physics;
+         const fps = calculateAverageRate(time_accumulated_graphics, time_accumulated_graphics_count);
+         const tps = calculateAverageRate(time_accumulated_physics, time_accumulated_physics_count);
+
+         time_accumulated_graphics        = 0.0;
+         time_accumulated_physics         = 0.0;
+         time_accumulated_graphics_count  = 0;
+         time_accumulated_physics_count   = 0;
 
          // The allocations within the loop are fine since we only execute this
          // code and re-allocate when the timer rolls over, which is to say
@@ -339,6 +351,9 @@ pub fn main() MainError!void {
 
       if (frame_rendered == true) {
          time_delta_graphics = @as(f32, @floatFromInt(timer_delta_graphics.lap())) / 1000000000.0;
+
+         time_accumulated_graphics        += time_delta_graphics;
+         time_accumulated_graphics_count  += 1;
       }
 
       window.pollEvents() catch |err| {
@@ -367,5 +382,19 @@ fn chooseBackingAllocator() std.mem.Allocator {
    }
 
    return std.heap.raw_c_allocator;
+}
+
+fn calculateAverageRate(sum : f32, count : u32) f32 {
+   if (sum == 0.0) {
+      @setCold(true);
+      return 0.0;
+   }
+
+   if (count == 0) {
+      @setCold(true);
+      return 0;
+   }
+
+   return @as(f32, @floatFromInt(count)) / sum;
 }
 
