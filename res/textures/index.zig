@@ -25,16 +25,32 @@ fn _parseTarga(comptime reader : * std.io.FixedBufferStream([] const u8).Reader)
    // Skip past the Image ID field.
    try reader.skipBytes(header.image_id_length, .{});
 
-   // For now, we only want to parse truecolor uncompressed data
+   // For now, we only want to parse truecolor uncompressed data stored as
+   // RGBA8888 with no data offset.
    if (header.image_type != .truecolor) {
       return error.UnimplementedImageType;
+   }
+   if (header.image_spec.pixel_depth != 32) {
+      return error.UnimplementedImagePixelDepth;
+   }
+   if (header.image_spec.x_offset != 0 or header.image_spec.y_offset != 0) {
+      return error.UnimplementedImagePixelOffset;
    }
 
    // Skip past the color map field, if present
    try reader.skipBytes(header.color_map_spec.bytes(), .{});
 
-   // TODO: Implement rest
-   return error.NotImplemented;
+   // Read in the image data.
+   var image_data : [header.image_spec.bytes()] u8 = undefined;
+   _ = try reader.readAtLeast(&image_data, header.image_spec.bytes());
+
+   // Return the parsed image.
+   return graphics.ImageSource{
+      .data    = &image_data,
+      .format  = .rgba8888,
+      .width   = header.image_spec.width,
+      .height  = header.image_spec.height,
+   };
 }
 
 const TargaHeader = packed struct {
