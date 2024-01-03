@@ -17,20 +17,10 @@ layout (location = 3) in vec3 f_normal_camera;
 layout (location = 0) out vec4 p_color;
 
 void main() {
-   const vec3 normal_sun_unit = normalize(uniforms.normal_sun);
+   const vec4 color_vertex    = f_color;
+   const vec4 color_texture   = texture(u_sampler, f_sample);
 
-   const float lighting_sun_face_angle = dot(normal_sun_unit, normalize(f_normal_world));
-   const float lighting_cam_face_angle = dot(normal_sun_unit, normalize(f_normal_camera));
-
-   const float lighting_sun_mix_factor = lighting_sun_face_angle * 0.5 + 0.5;
-   const float lighting_cam_mix_factor = lighting_cam_face_angle * 0.5 + 0.5;
-
-   const vec4 color_vertex          = f_color;
-   const vec4 color_texture         = texture(u_sampler, f_sample);
-   const vec4 color_lighting_sun    = mix(uniforms.color_ambient, uniforms.color_sun, lighting_sun_mix_factor);
-   const vec4 color_lighting_depth  = mix(uniforms.color_depth, vec4(1.0, 1.0, 1.0, 1.0), lighting_cam_mix_factor);
-
-   p_color = color_vertex * color_texture * color_lighting_sun * color_lighting_depth;
+   p_color = color_vertex * color_texture;
    return;
 }
 
