@@ -1,15 +1,7 @@
 const std      = @import("std");
-const math     = @import("math");
 const graphics = @import("graphics");
 
-pub const TILE    = _embedTarga("tile.tga");
-pub const GRASS   = _embedTarga("grass.tga");
-pub const ROCK    = _embedTarga("rock.tga");
-
-// Yes, I wrote a complete .tga image parser using comptime just to make my
-// program work since I'm too good for abstraction and others' code.
-
-fn _embedTarga(comptime path : [] const u8) graphics.ImageSource {
+pub fn embedTarga(comptime path : [] const u8) graphics.ImageSource {
    const bytes = @embedFile(path);
    
    var stream = std.io.FixedBufferStream([] const u8){.buffer = bytes, .pos = 0};
@@ -28,8 +20,9 @@ fn _parseTarga(comptime reader : * std.io.FixedBufferStream([] const u8).Reader)
    // Skip past the Image ID field.
    try reader.skipBytes(header.image_id_length, .{});
 
-   // TODO: We shouldn't need these guards.
-   if (header.image_type != .truecolor and header.image_type != .truecolor_compressed) {
+   // For now, we only want to parse truecolor uncompressed data stored as
+   // RGBA8888 with no data offset.
+   if (header.image_type != .truecolor) {
       return error.UnimplementedImageType;
    }
    if (header.image_spec.pixel_depth != 32) {
@@ -39,31 +32,12 @@ fn _parseTarga(comptime reader : * std.io.FixedBufferStream([] const u8).Reader)
       return error.UnimplementedImagePixelOffset;
    }
 
-   // Skip past the color map field, if present.
-   // TODO: Actually handle color-mapped data.
+   // Skip past the color map field, if present
    try reader.skipBytes(header.color_map_spec.bytes(), .{});
 
-   // Read in the raw image data, decompressing if needed.
+   // Read in the image data.
    var image_data : [header.image_spec.bytes()] u8 = undefined;
-   switch (header.image_type.isCompressed()) {
-      true  => {
-         var expected_pixels     = header.image_spec.width * header.image_spec.height;
-         var image_data_stream   = std.io.FixedBufferStream([] const u8){.buffer = &image_data, .pos = 0};
-         var image_data_writer   = image_data_stream.writer();
-         try _decompressImageData(reader, &image_data_writer, expected_pixels);
-      },
-      false => {
-         _ = try reader.readAtLeast(&image_data, image_data.len);
-      },
-   }
-
-   // TODO: Perform color format conversion to RGBA8888 here.  Since right now
-   // we are only allowing 32-bit truecolor, we can directly use the decompressed
-   // image data for our ImageSource.
-
-
-   // TODO: Apply image offsets.
-
+   _ = try reader.readAtLeast(&image_data, header.image_spec.bytes());
 
    // Return the parsed image.
    return graphics.ImageSource{
@@ -165,25 +139,4 @@ const TargaHeader = packed struct {
       };
    }
 };
-
-fn _decompressImageData(comptime reader : * std.io.FixedBufferStream([] const u8).Reader, comptime writer : * std.io.FixedBufferStream([] const u8).Writer, comptime expected_pixels : comptime_int) anyerror!void {
-   // TOOD: Allow this to support more than RGBA8888.  Currently this assumes
-   // a single pixels will be 4 bytes.
-
-   var decompressed_pixels : comptime_int = 0;
-   while (decompressed_pixels < expected_pixels) {
-      // TODO: Implement
-      _ = reader;
-      _ = writer;
-      unreachable;
-   }
-
-   // If we decompressed more pixels than expected, the only reason is because
-   // our compressed image data is malformed.
-   if (decompressed_pixels > expected_pixels) {
-      return error.MalformedImageData;
-   }
-
-   return;
-}
 
