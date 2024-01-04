@@ -27,15 +27,10 @@ fn _embedWavefront(comptime paths : struct {
    obj : [] const u8,
    mtl : [] const u8,
 }) graphics.types.Mesh {
-   const bytes_obj   = @embedFile(paths.obj);
-   const bytes_mtl   = @embedFile(paths.mtl);
+   const bytes_obj = @embedFile(paths.obj);
+   const bytes_mtl = @embedFile(paths.mtl);
 
-   var stream_obj = std.io.FixedBufferStream([] const u8){.buffer = bytes_obj, .pos = 0};
-   var stream_mtl = std.io.FixedBufferStream([] const u8){.buffer = bytes_mtl, .pos = 0};
-   var reader_obj = stream_obj.reader();
-   var reader_mtl = stream_mtl.reader();
-
-   const mesh = parser.wavefront.parseWavefrontComptime(&reader_obj, &reader_mtl) catch |err| {
+   const mesh = parser.wavefront.parseWavefrontComptime(bytes_obj, bytes_mtl) catch |err| {
       @compileError(std.fmt.comptimePrint("failed to parse mesh \'{s}\' / \'{s}\': {s}", .{paths.obj, paths.mtl, @errorName(err)}));
    };
 
