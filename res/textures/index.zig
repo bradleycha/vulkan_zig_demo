@@ -50,7 +50,7 @@ fn _parseTarga(comptime reader : * std.io.FixedBufferStream([] const u8).Reader)
          var expected_pixels     = header.image_spec.width * header.image_spec.height;
          var image_data_stream   = std.io.FixedBufferStream([] const u8){.buffer = &image_data, .pos = 0};
          var image_data_writer   = image_data_stream.writer();
-         try _decompressImageData(reader, &image_data_writer, expected_pixels);
+         try _decompressImageData(reader, &image_data_writer, expected_pixels, header.image_spec.pixel_depth);
       },
       false => {
          _ = try reader.readAtLeast(&image_data, image_data.len);
@@ -120,8 +120,9 @@ const TargaHeader = packed struct {
       descriptor  : u8,
 
       pub fn bytes(comptime self : @This()) comptime_int {
-         const bits = self.width * self.height * self.pixel_depth;
-         return std.math.divCeil(comptime_int, bits, 8) catch unreachable;
+         const pixels            = self.width * self.height;
+         const bytes_per_pixel   = std.math.divCeil(comptime_int, self.pixel_depth, 8) catch unreachable;
+         return pixels * bytes_per_pixel;
       }
    };
 
@@ -166,15 +167,15 @@ const TargaHeader = packed struct {
    }
 };
 
-fn _decompressImageData(comptime reader : * std.io.FixedBufferStream([] const u8).Reader, comptime writer : * std.io.FixedBufferStream([] const u8).Writer, comptime expected_pixels : comptime_int) anyerror!void {
-   // TOOD: Allow this to support more than RGBA8888.  Currently this assumes
-   // a single pixels will be 4 bytes.
+fn _decompressImageData(comptime reader : * std.io.FixedBufferStream([] const u8).Reader, comptime writer : * std.io.FixedBufferStream([] const u8).Writer, comptime expected_pixels : comptime_int, comptime bits_per_pixel : comptime_int) anyerror!void {
+   const bytes_per_pixel = std.math.divCeil(comptime_int, bits_per_pixel, 8) catch unreachable;
 
    var decompressed_pixels : comptime_int = 0;
    while (decompressed_pixels < expected_pixels) {
       // TODO: Implement
       _ = reader;
       _ = writer;
+      _ = bytes_per_pixel;
       unreachable;
    }
 
