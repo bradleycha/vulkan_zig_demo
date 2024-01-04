@@ -1,30 +1,23 @@
 const std      = @import("std");
 const graphics = @import("graphics");
 
-pub fn embedTarga(comptime path : [] const u8) graphics.ImageSource {
-   const bytes = @embedFile(path);
-   
-   var stream = std.io.FixedBufferStream([] const u8){.buffer = bytes, .pos = 0};
-   var reader = stream.reader();
+const TARGA_ENDIANESS = std.builtin.Endian.Little;
 
-   const image_source = _parseTarga(&reader) catch |err| {
-      @compileError(std.fmt.comptimePrint("failed to parse image \'{s}\': {s}", .{path, @errorName(err)}));
-   };
-
-   return image_source;
-}
-
-fn _parseTarga(comptime reader : * std.io.FixedBufferStream([] const u8).Reader) anyerror!graphics.ImageSource {
+pub fn parseTargaComptime(comptime reader : * std.io.FixedBufferStream([] const u8).Reader) anyerror!graphics.ImageSource {
    const header = try TargaHeader.parseFromStream(reader);
 
    // Skip past the Image ID field.
    try reader.skipBytes(header.image_id_length, .{});
 
-   // For now, we only want to parse truecolor uncompressed data stored as
-   // RGBA8888 with no data offset.
-   if (header.image_type != .truecolor) {
-      return error.UnimplementedImageType;
+   // For now we don't care to parse monochrome or color-mapped images since
+   // we don't live in 1984 and they're much less common.
+   switch (header.image_type) {
+      .truecolor,
+      .truecolor_compressed => {},
+      else => return error.UnsupportedImageType,
    }
+
+   // TODO: We shouldn't need these guards.  Implement these features.
    if (header.image_spec.pixel_depth != 32) {
       return error.UnimplementedImagePixelDepth;
    }
@@ -32,12 +25,31 @@ fn _parseTarga(comptime reader : * std.io.FixedBufferStream([] const u8).Reader)
       return error.UnimplementedImagePixelOffset;
    }
 
-   // Skip past the color map field, if present
+   // Skip past the color map field, if present.
+   // TODO: Actually handle color-mapped data.
    try reader.skipBytes(header.color_map_spec.bytes(), .{});
 
-   // Read in the image data.
+   // Read in the raw image data, decompressing if needed.
    var image_data : [header.image_spec.bytes()] u8 = undefined;
-   _ = try reader.readAtLeast(&image_data, header.image_spec.bytes());
+   switch (header.image_type.isCompressed()) {
+      true  => {
+         var expected_pixels     = header.image_spec.width * header.image_spec.height;
+         var image_data_stream   = std.io.FixedBufferStream([] u8){.buffer = &image_data, .pos = 0};
+         var image_data_writer   = image_data_stream.writer();
+         try _decompressImageData(reader, &image_data_writer, expected_pixels, header.image_spec.pixel_depth);
+      },
+      false => {
+         _ = try reader.readAtLeast(&image_data, image_data.len);
+      },
+   }
+
+   // TODO: Perform color format conversion to RGBA8888 here.  Since right now
+   // we are only allowing 32-bit truecolor, we can directly use the decompressed
+   // image data for our ImageSource.
+
+
+   // TODO: Apply image offsets.
+
 
    // Return the parsed image.
    return graphics.ImageSource{
@@ -94,27 +106,25 @@ const TargaHeader = packed struct {
       descriptor  : u8,
 
       pub fn bytes(comptime self : @This()) comptime_int {
-         const bits = self.width * self.height * self.pixel_depth;
-         return std.math.divCeil(comptime_int, bits, 8) catch unreachable;
+         const pixels            = self.width * self.height;
+         const bytes_per_pixel   = std.math.divCeil(comptime_int, self.pixel_depth, 8) catch unreachable;
+         return pixels * bytes_per_pixel;
       }
    };
 
    pub fn parseFromStream(comptime reader : * std.io.FixedBufferStream([] const u8).Reader) anyerror!@This() {
-      // Spec'd for all integers to be little-endian.
-      const ENDIANESS = std.builtin.Endian.Little;
-
-      const image_id_length         = try reader.readInt(u8, ENDIANESS);
-      const color_map_type_tag      = try reader.readInt(u8, ENDIANESS);
-      const image_type_tag          = try reader.readInt(u8, ENDIANESS);
-      const color_map_spec_offset   = try reader.readInt(u16, ENDIANESS);
-      const color_map_spec_length   = try reader.readInt(u16, ENDIANESS);
-      const color_map_spec_depth    = try reader.readInt(u8, ENDIANESS);
-      const image_spec_x_offset     = try reader.readInt(u16, ENDIANESS);
-      const image_spec_y_offset     = try reader.readInt(u16, ENDIANESS);
-      const image_spec_width        = try reader.readInt(u16, ENDIANESS);
-      const image_spec_height       = try reader.readInt(u16, ENDIANESS);
-      const image_spec_pixel_depth  = try reader.readInt(u8, ENDIANESS);
-      const image_spec_descriptor   = try reader.readInt(u8, ENDIANESS);
+      const image_id_length         = try reader.readInt(u8, TARGA_ENDIANESS);
+      const color_map_type_tag      = try reader.readInt(u8, TARGA_ENDIANESS);
+      const image_type_tag          = try reader.readInt(u8, TARGA_ENDIANESS);
+      const color_map_spec_offset   = try reader.readInt(u16, TARGA_ENDIANESS);
+      const color_map_spec_length   = try reader.readInt(u16, TARGA_ENDIANESS);
+      const color_map_spec_depth    = try reader.readInt(u8, TARGA_ENDIANESS);
+      const image_spec_x_offset     = try reader.readInt(u16, TARGA_ENDIANESS);
+      const image_spec_y_offset     = try reader.readInt(u16, TARGA_ENDIANESS);
+      const image_spec_width        = try reader.readInt(u16, TARGA_ENDIANESS);
+      const image_spec_height       = try reader.readInt(u16, TARGA_ENDIANESS);
+      const image_spec_pixel_depth  = try reader.readInt(u8, TARGA_ENDIANESS);
+      const image_spec_descriptor   = try reader.readInt(u8, TARGA_ENDIANESS);
 
       const color_map_type = std.meta.intToEnum(ColorMapType, color_map_type_tag) catch return error.UnsupportedColorMapType;
       const image_type     = std.meta.intToEnum(ImageType, image_type_tag) catch return error.UnsupportedImageType;
@@ -139,4 +149,55 @@ const TargaHeader = packed struct {
       };
    }
 };
+
+fn _decompressImageData(comptime reader : * std.io.FixedBufferStream([] const u8).Reader, comptime writer : * std.io.FixedBufferStream([] u8).Writer, comptime expected_pixels : comptime_int, comptime bits_per_pixel : comptime_int) anyerror!void {
+   const bytes_per_pixel = std.math.divCeil(comptime_int, bits_per_pixel, 8) catch unreachable;
+
+   var decompressed_pixels : comptime_int = 0;
+   while (decompressed_pixels < expected_pixels) {
+      const raw_count = try reader.readInt(u8, TARGA_ENDIANESS);
+
+      // The actual pixels count is a 7-bit integer.  The 8th bit is a flag for
+      // whether the following data is a single run-length encoded pixel or many
+      // raw pixels.
+      const RLE_BIT  = @as(u8, 1) << 7;
+      const is_rle   = raw_count & RLE_BIT != 0;
+      const count    = (raw_count & ~RLE_BIT) + 1;
+
+      switch (is_rle) {
+         true  => try _decompressRunLengthPixel(reader, writer, bytes_per_pixel, count),
+         false => try _decompressRawPixels(reader, writer, bytes_per_pixel, count),
+      }
+
+      decompressed_pixels += @as(comptime_int, count);
+   }
+
+   // If we decompressed more pixels than expected, the only reason is because
+   // our compressed image data is malformed.
+   if (decompressed_pixels > expected_pixels) {
+      return error.MalformedImageData;
+   }
+
+   return;
+}
+
+fn _decompressRunLengthPixel(comptime reader : * std.io.FixedBufferStream([] const u8).Reader, comptime writer : * std.io.FixedBufferStream([] u8).Writer, comptime bytes_per_pixel : comptime_int, comptime pixels : comptime_int) anyerror!void {
+   var read_buffer : [bytes_per_pixel] u8 = undefined;
+   _ = try reader.readAtLeast(&read_buffer, read_buffer.len);
+
+   for (0..pixels) |_| {
+      try writer.writeAll(&read_buffer);
+   }
+
+   return;
+}
+
+fn _decompressRawPixels(comptime reader : * std.io.FixedBufferStream([] const u8).Reader, comptime writer : * std.io.FixedBufferStream([] u8).Writer, comptime bytes_per_pixel : comptime_int, comptime pixels : comptime_int) anyerror!void {
+   var read_buffer : [bytes_per_pixel * pixels] u8 = undefined;
+   _ = try reader.readAtLeast(&read_buffer, read_buffer.len);
+
+   try writer.writeAll(&read_buffer);
+
+   return;
+}
 

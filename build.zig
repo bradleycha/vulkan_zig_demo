@@ -25,6 +25,7 @@ const MODULE_NAME = struct {
    pub const input      = "input";
    pub const present    = "present";
    pub const graphics   = "graphics";
+   pub const parser     = "parser";
    pub const resources  = "resources";
 };
 
@@ -35,6 +36,7 @@ const MODULE_ROOT_SOURCE_PATH = struct {
    pub const input      = "src/input/index.zig";
    pub const present    = "src/present/index.zig";
    pub const graphics   = "src/graphics/index.zig";
+   pub const parser     = "src/parser/index.zig";
    pub const resources  = "res/index.zig";
 };
 
@@ -201,6 +203,36 @@ pub fn build(b : * std.Build) void {
       },
    });
 
+   const module_parser = b.addModule(MODULE_NAME.parser, .{
+      .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.parser},
+      .dependencies  = &.{
+         .{
+            .name    = MODULE_NAME.options,
+            .module  = module_options,
+         },
+         .{
+            .name    = MODULE_NAME.cimports,
+            .module  = module_cimports,
+         },
+         .{
+            .name    = MODULE_NAME.present,
+            .module  = module_present,
+         },
+         .{
+            .name    = MODULE_NAME.structures,
+            .module  = module_structures,
+         },
+         .{
+            .name    = MODULE_NAME.math,
+            .module  = module_math,
+         },
+         .{
+            .name    = MODULE_NAME.graphics,
+            .module  = module_graphics,
+         },
+      },
+   });
+
    const module_resources = b.addModule(MODULE_NAME.resources, .{
       .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.resources},
       .dependencies  = &.{
@@ -220,10 +252,14 @@ pub fn build(b : * std.Build) void {
             .name    = MODULE_NAME.structures,
             .module  = module_structures,
          },
-        .{
+         .{
             .name    = MODULE_NAME.math,
             .module  = module_math,
-        },
+         },
+         .{
+            .name    = MODULE_NAME.parser,
+            .module  = module_parser,
+         },
       },
    });
 
@@ -244,6 +280,7 @@ pub fn build(b : * std.Build) void {
    exe_main.addModule(MODULE_NAME.input, module_input);
    exe_main.addModule(MODULE_NAME.present, module_present);
    exe_main.addModule(MODULE_NAME.graphics, module_graphics);
+   exe_main.addModule(MODULE_NAME.parser, module_parser);
    exe_main.addModule(MODULE_NAME.resources, module_resources);
    exe_main.strip = opt_optimize_mode != .Debug;
 
