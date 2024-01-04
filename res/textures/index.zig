@@ -36,10 +36,15 @@ fn _parseTarga(comptime reader : * std.io.FixedBufferStream([] const u8).Reader)
    // Skip past the Image ID field.
    try reader.skipBytes(header.image_id_length, .{});
 
-   // TODO: We shouldn't need these guards.
-   if (header.image_type != .truecolor and header.image_type != .truecolor_compressed) {
-      return error.UnimplementedImageType;
+   // For now we don't care to parse monochrome or color-mapped images since
+   // we don't live in 1984 and they're much less common.
+   switch (header.image_type) {
+      .truecolor,
+      .truecolor_compressed => {},
+      else => return error.UnsupportedImageType,
    }
+
+   // TODO: We shouldn't need these guards.  Implement these features.
    if (header.image_spec.pixel_depth != 32) {
       return error.UnimplementedImagePixelDepth;
    }
