@@ -120,7 +120,7 @@ pub fn main() MainError!void {
       }},
       .normal_sun          = .{.xyz = .{
          .x =  1.00,
-         .y = -0.50,
+         .y =  1.00,
          .z =  1.00,
       }},
    }) catch return error.RendererCreateError;
