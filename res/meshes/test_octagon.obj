@@ -1,5 +1,6 @@
 # Blender 4.0.1
 # www.blender.org
+mtllib test_octagon.mtl
 o Circle
 v 0.000000 0.382683 -0.923880
 v -0.000000 -0.382683 -0.923880
