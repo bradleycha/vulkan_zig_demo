@@ -3,6 +3,8 @@ const math     = @import("math");
 const graphics = @import("graphics");
 
 pub fn parseWavefrontComptime(comptime obj : [] const u8, comptime mtl : [] const u8) anyerror!graphics.types.Mesh {
+   @setEvalBranchQuota(999999); // :(
+
    const obj_items = try ObjItemList.deserialize(obj);
    const mtl_items = try MtlItemList.deserialize(mtl);
 
@@ -40,10 +42,10 @@ const ObjItemTag = enum {
 };
 
 const ObjItemList = struct {
-   vertices             : [] math.Vector4(f32),
-   texture_coordinates  : [] math.Vector3(f32),
-   normals              : [] math.Vector3(f32),
-   faces                : [] ObjItemTag.Face,
+   vertices             : [] const math.Vector4(f32),
+   texture_coordinates  : [] const math.Vector3(f32),
+   normals              : [] const math.Vector3(f32),
+   faces                : [] const ObjItemTag.Face,
 
    pub fn deserialize(comptime text : [] const u8) anyerror!@This() {
       var items = @This(){
@@ -98,19 +100,19 @@ const ObjItemList = struct {
       switch (obj_item_tag) {
          .vertex => {
             const vertex = try _deserializeVertex(&tokens);
-            self.vertices = self.vertices ++ &.{vertex};
+            self.vertices = self.vertices ++ .{vertex};
          },
          .texture_coordinate => {
             const texture_coordinate = try _deserializeTextureCoordinate(&tokens);
-            self.texture_coordinates = self.texture_coordinates ++ &.{texture_coordinate};
+            self.texture_coordinates = self.texture_coordinates ++ .{texture_coordinate};
          },
          .normal => {
             const normal = try _deserializeNormal(&tokens);
-            self.normals = self.normals ++ &.{normal};
+            self.normals = self.normals ++ .{normal};
          },
          .face => {
             const face = try _deserializeFace(&tokens);
-            self.faces = self.faces ++ &.{face};
+            self.faces = self.faces ++ .{face};
          },
          .material => {
             const material = try _deserializeMaterial(&tokens);
@@ -123,8 +125,34 @@ const ObjItemList = struct {
    }
 
    fn _deserializeVertex(comptime tokens : * std.mem.SplitIterator(u8, .scalar)) anyerror!math.Vector4(f32) {
-      _ = tokens;
-      unreachable;
+      const token_x = tokens.next() orelse return error.MissingRequiredParameter;
+      const token_y = tokens.next() orelse return error.MissingRequiredParameter;
+      const token_z = tokens.next() orelse return error.MissingRequiredParameter;
+      const token_w = tokens.next();
+
+      if (tokens.next() != null) {
+         return error.MalformedParameters;
+      }
+
+      const x = try std.fmt.parseFloat(f32, token_x);
+      const y = try std.fmt.parseFloat(f32, token_y);
+      const z = try std.fmt.parseFloat(f32, token_z);
+      const w = blk: {
+         if (token_w) |token_w_unwrapped| {
+            break :blk try std.fmt.parseFloat(f32, token_w_unwrapped);
+         } else {
+            break :blk 1.0;
+         }
+      };
+
+      const vertex = math.Vector4(f32){.xyzw = .{
+         .x = x,
+         .y = y,
+         .z = z,
+         .w = w,
+      }};
+
+      return vertex;
    }
 
    fn _deserializeTextureCoordinate(comptime tokens : * std.mem.SplitIterator(u8, .scalar)) anyerror!math.Vector3(f32) {
@@ -148,19 +176,15 @@ const ObjItemList = struct {
    }
 };
 
+const MtlItemTag = enum {
+
+};
+
 const MtlItemList = struct {
    pub fn deserialize(comptime text : [] const u8) anyerror!@This() {
       // TODO: Implement
       _ = text;
       unreachable;
    }
-};
-
-const MtlItemTag = enum {
-
-};
-
-const MtlItem = union(MtlItemTag) {
-
 };
 
