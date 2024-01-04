@@ -138,15 +138,15 @@ pub fn main() MainError!void {
       .meshes = &.{
          .{
             .push_constants   = null,
-            .data             = &resources.meshes.MESH_TEST_PLANE,
+            .data             = &resources.meshes.TEST_PLANE,
          },
          .{
             .push_constants   = null,
-            .data             = &resources.meshes.MESH_TEST_PYRAMID,
+            .data             = &resources.meshes.TEST_PYRAMID,
          },
          .{
             .push_constants   = null,
-            .data             = &resources.meshes.MESH_TEST_CUBE,
+            .data             = &resources.meshes.TEST_CUBE,
          },
       },
      .textures = &.{
