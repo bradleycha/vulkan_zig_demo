@@ -9,7 +9,15 @@ pub const ROCK    = _embedTarga("rock.tga");
 // Yes, I wrote a complete .tga image parser using comptime just to make my
 // program work since I'm too good for abstraction and others' code.
 
+const ENDIANESS = std.builtin.Endian.Little;
+
 fn _embedTarga(comptime path : [] const u8) graphics.ImageSource {
+   // My man, Andrew...I understand the purpose of limiting comptime execution,
+   // but this kind of sucks.  I'd prefer if I could simply disable comptime
+   // execution limits temporarily instead of finding some random magical value
+   // which doesn't kill compilation.
+   @setEvalBranchQuota(10000);
+
    const bytes = @embedFile(path);
    
    var stream = std.io.FixedBufferStream([] const u8){.buffer = bytes, .pos = 0};
@@ -48,7 +56,7 @@ fn _parseTarga(comptime reader : * std.io.FixedBufferStream([] const u8).Reader)
    switch (header.image_type.isCompressed()) {
       true  => {
          var expected_pixels     = header.image_spec.width * header.image_spec.height;
-         var image_data_stream   = std.io.FixedBufferStream([] const u8){.buffer = &image_data, .pos = 0};
+         var image_data_stream   = std.io.FixedBufferStream([] u8){.buffer = &image_data, .pos = 0};
          var image_data_writer   = image_data_stream.writer();
          try _decompressImageData(reader, &image_data_writer, expected_pixels, header.image_spec.pixel_depth);
       },
@@ -127,9 +135,6 @@ const TargaHeader = packed struct {
    };
 
    pub fn parseFromStream(comptime reader : * std.io.FixedBufferStream([] const u8).Reader) anyerror!@This() {
-      // Spec'd for all integers to be little-endian.
-      const ENDIANESS = std.builtin.Endian.Little;
-
       const image_id_length         = try reader.readInt(u8, ENDIANESS);
       const color_map_type_tag      = try reader.readInt(u8, ENDIANESS);
       const image_type_tag          = try reader.readInt(u8, ENDIANESS);
@@ -167,16 +172,26 @@ const TargaHeader = packed struct {
    }
 };
 
-fn _decompressImageData(comptime reader : * std.io.FixedBufferStream([] const u8).Reader, comptime writer : * std.io.FixedBufferStream([] const u8).Writer, comptime expected_pixels : comptime_int, comptime bits_per_pixel : comptime_int) anyerror!void {
+fn _decompressImageData(comptime reader : * std.io.FixedBufferStream([] const u8).Reader, comptime writer : * std.io.FixedBufferStream([] u8).Writer, comptime expected_pixels : comptime_int, comptime bits_per_pixel : comptime_int) anyerror!void {
    const bytes_per_pixel = std.math.divCeil(comptime_int, bits_per_pixel, 8) catch unreachable;
 
    var decompressed_pixels : comptime_int = 0;
    while (decompressed_pixels < expected_pixels) {
-      // TODO: Implement
-      _ = reader;
-      _ = writer;
-      _ = bytes_per_pixel;
-      unreachable;
+      const raw_count = try reader.readInt(u8, ENDIANESS) + 1;
+
+      // The actual pixels count is a 7-bit integer.  The 8th bit is a flag for
+      // whether the following data is a single run-length encoded pixel or many
+      // raw pixels.
+      const RLE_BIT  = @as(u8, 1) << 7;
+      const is_rle   = raw_count & RLE_BIT != 0;
+      const count    = raw_count & ~RLE_BIT;
+
+      switch (is_rle) {
+         true  => try _decompressRunLengthPixel(reader, writer, bytes_per_pixel, count),
+         false => try _decompressRawPixels(reader, writer, bytes_per_pixel, count),
+      }
+
+      decompressed_pixels += @as(comptime_int, count);
    }
 
    // If we decompressed more pixels than expected, the only reason is because
@@ -184,6 +199,26 @@ fn _decompressImageData(comptime reader : * std.io.FixedBufferStream([] const u8
    if (decompressed_pixels > expected_pixels) {
       return error.MalformedImageData;
    }
+
+   return;
+}
+
+fn _decompressRunLengthPixel(comptime reader : * std.io.FixedBufferStream([] const u8).Reader, comptime writer : * std.io.FixedBufferStream([] u8).Writer, comptime bytes_per_pixel : comptime_int, comptime pixels : comptime_int) anyerror!void {
+   var read_buffer : [bytes_per_pixel] u8 = undefined;
+   _ = try reader.readAtLeast(&read_buffer, read_buffer.len);
+
+   for (0..pixels) |_| {
+      try writer.writeAll(&read_buffer);
+   }
+
+   return;
+}
+
+fn _decompressRawPixels(comptime reader : * std.io.FixedBufferStream([] const u8).Reader, comptime writer : * std.io.FixedBufferStream([] u8).Writer, comptime bytes_per_pixel : comptime_int, comptime pixels : comptime_int) anyerror!void {
+   var read_buffer : [bytes_per_pixel * pixels] u8 = undefined;
+   _ = try reader.readAtLeast(&read_buffer, read_buffer.len);
+
+   try writer.writeAll(&read_buffer);
 
    return;
 }
