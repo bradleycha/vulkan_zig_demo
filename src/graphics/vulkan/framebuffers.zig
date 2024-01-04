@@ -66,18 +66,35 @@ fn _createFramebuffer(create_info : * const Framebuffers.CreateInfo, vk_image_vi
    const vk_swapchain_extent  = create_info.swapchain_configuration.extent;
    const vk_render_pass       = create_info.graphics_pipeline.vk_render_pass;
 
-   const vk_image_views = [_] c.VkImageView {
-      vk_image_view,
-      create_info.swapchain.image_view_depth_buffer.vk_image_view,
-   };
+   var vk_image_views_count : u32 = undefined;
+   var vk_image_views_buffer : [3] c.VkImageView = undefined;
+
+   switch (create_info.swapchain.multisampling_enabled) {
+      true  => {
+         vk_image_views_count    = 3;
+         vk_image_views_buffer   = .{
+            create_info.swapchain.image_view_msaa_buffer.vk_image_view,
+            create_info.swapchain.image_view_depth_buffer.vk_image_view,
+            vk_image_view,
+         };
+      },
+      false => {
+         vk_image_views_count    = 2;
+         vk_image_views_buffer   = .{
+            vk_image_view,
+            create_info.swapchain.image_view_depth_buffer.vk_image_view,
+            undefined,
+         };
+      },
+   }
 
    const vk_info_create_framebuffer = c.VkFramebufferCreateInfo{
       .sType            = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
       .pNext            = null,
       .flags            = 0x00000000,
       .renderPass       = vk_render_pass,
-      .attachmentCount  = @intCast(vk_image_views.len),
-      .pAttachments     = &vk_image_views,
+      .attachmentCount  = vk_image_views_count,
+      .pAttachments     = &vk_image_views_buffer,
       .width            = vk_swapchain_extent.width,
       .height           = vk_swapchain_extent.height,
       .layers           = 1,
