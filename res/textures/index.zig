@@ -6,7 +6,7 @@ pub const TILE    = _embedTarga("tile.tga");
 pub const GRASS   = _embedTarga("grass.tga");
 pub const ROCK    = _embedTarga("rock.tga");
 
-// Yes, I wrote a complete .tga image parser using comptime just to make my
+// Yes, I wrote an entire targa image parser using comptime just to make my
 // program work since I'm too good for abstraction and others' code.
 
 const ENDIANESS = std.builtin.Endian.Little;
