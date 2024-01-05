@@ -16,9 +16,22 @@ const SHADER_MAIN = struct {
    pub const fragment   = "main";
 };
 
+const TEXTURE_PATH = struct {
+   pub const grass   = "res/textures/grass.tga";
+   pub const rock    = "res/textures/rock.tga";
+   pub const tile    = "res/textures/tile.tga";
+};
+
+const TEXTURE_IDENTIFIER = struct {
+   pub const grass   = "grass";
+   pub const rock    = "rock";
+   pub const tile    = "tile";
+};
+
 const MODULE_NAME = struct {
    pub const options    = "options";
    pub const shaders    = "shaders";
+   pub const textures   = "textures";
    pub const cimports   = "cimports";
    pub const math       = "math";
    pub const structures = "structures";
@@ -81,9 +94,30 @@ pub fn build(b : * std.Build) void {
       .entrypoint    = SHADER_MAIN.fragment,
    });
 
+   const texture_grass  = bd.targa.TargaParseStep.create(b, .{.path = TEXTURE_PATH.grass});
+   const texture_rock   = bd.targa.TargaParseStep.create(b, .{.path = TEXTURE_PATH.rock});
+   const texture_tile   = bd.targa.TargaParseStep.create(b, .{.path = TEXTURE_PATH.tile});
+
+   const targa_bundle = bd.targa.TargaBundle.create(b);
+
+   targa_bundle.addTarga(.{
+      .parse_step = texture_grass,
+      .identifier = TEXTURE_IDENTIFIER.grass,
+   });
+   targa_bundle.addTarga(.{
+      .parse_step = texture_rock,
+      .identifier = TEXTURE_IDENTIFIER.rock,
+   });
+   targa_bundle.addTarga(.{
+      .parse_step = texture_tile,
+      .identifier = TEXTURE_IDENTIFIER.tile,
+   });
+
    const module_options = options.createModule();
 
    const module_shaders = shader_bundle.createModule();
+
+   const module_textures = targa_bundle.createModule();
 
    const module_cimports = b.addModule(MODULE_NAME.cimports, .{
       .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.cimports},
@@ -211,6 +245,10 @@ pub fn build(b : * std.Build) void {
          .{
             .name    = MODULE_NAME.shaders,
             .module  = module_shaders,
+         },
+         .{
+            .name    = MODULE_NAME.textures,
+            .module  = module_textures,
          },
          .{
             .name    = MODULE_NAME.graphics,

@@ -1,0 +1,64 @@
+const std = @import("std");
+
+pub const TargaBundle = struct {
+   step           : std.Build.Step,
+   contents       : std.ArrayList(Entry),
+   generated_file : std.Build.GeneratedFile,
+
+   pub const Entry = struct {
+      path        : std.Build.LazyPath,
+      identifier  : [] const u8,
+   };
+
+   pub fn create(owner : * std.Build) * @This() {
+      const self = owner.allocator.create(@This()) catch @panic("out of memory");
+      self.* = .{
+         .step = std.Build.Step.init(.{
+            .id      = .custom,
+            .name    = "targaparsestep",
+            .owner   = owner,
+            .makeFn  = make,
+         }),
+         .contents         = std.ArrayList(Entry).init(owner.allocator),
+         .generated_file   = .{.step = &self.step},
+      };
+
+      return self;
+   }
+
+   pub fn addImage(self : * @This(), image_entry : Entry) void {
+      const b = self.step.owner;
+
+      const path        = image_entry.path.dupe(b);
+      const identifier  = b.allocator.dupe(u8, image_entry.identifier) catch @panic("out of memory");
+
+      self.contents.append(.{
+         .path       = path,
+         .identifier = identifier,
+      }) catch @panic("out of memory");
+
+      path.addStepDependencies(&self.step);
+      return;
+   }
+
+   pub fn getOutput(self : * const @This()) std.Build.LazyPath {
+      return .{.generated = &self.generated_file};
+   }
+
+   pub fn createModule(self : * @This()) * std.Build.Module {
+      return self.step.owner.createModule(.{
+         .source_file   = self.getOutput(),
+         .dependencies  = &.{},
+      });
+   }
+
+   fn make(step : * std.Build.Step, prog_node : * std.Progress.Node) anyerror!void {
+      const b     = step.owner;
+      const self  = @fieldParentPtr(@This(), "step", step);
+
+      const image_entries = self.contents.items;
+
+      prog_node.setEstimatedTotalItems(iamge_entries.len);
+   }
+};
+
