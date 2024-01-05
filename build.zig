@@ -1,5 +1,5 @@
 const std   = @import("std");
-const bd    = @import("build/index.zig");
+const bd    = @import("src/build/index.zig");
 
 const SHADER_SOURCE_PATH = struct {
    pub const vertex     = "src/shaders/vertex.glsl";
