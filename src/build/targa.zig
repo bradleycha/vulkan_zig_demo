@@ -283,8 +283,8 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
    const pixels_final = try b.allocator.alignedAlloc(u8, MAX_PIXEL_BUFFER_ALIGN, header.image_spec.pixels() * BYTES_PER_PIXEL_RGBA8888);
    defer b.allocator.free(pixels_final);
    switch (header.image_spec.pixel_depth) {
-      .bgr888     => try _convertOffsetColorspaceBgr888(pixels_raw, pixels_final, &header),
-      .bgra8888   => try _convertOffsetColorspaceBgra8888(pixels_raw, pixels_final, &header),
+      .bgr888     => _convertOffsetColorspaceBgr888(pixels_raw, pixels_final, &header),
+      .bgra8888   => _convertOffsetColorspaceBgra8888(pixels_raw, pixels_final, &header),
    }
 
    try _writeDecodedImageToZigSource(output, pixels_final, header.image_spec.width, header.image_spec.height);
@@ -359,20 +359,50 @@ fn _readPixelDataUncompressed(reader : * _BufferedReader.Reader, buffer : [] u8)
    return;
 }
 
-fn _convertOffsetColorspaceBgr888(buffer_src : [] const align(MAX_PIXEL_BUFFER_ALIGN) u8, buffer_dst : [] align(MAX_PIXEL_BUFFER_ALIGN) u8, header : * const TargaHeader) anyerror!void {
-   // TODO: Implement
-   _ = buffer_src;
-   _ = buffer_dst;
-   _ = header;
-   return error.NotImplemented;
+fn _convertOffsetColorspaceBgr888(buffer_src : [] const align(MAX_PIXEL_BUFFER_ALIGN) u8, buffer_dst : [] align(MAX_PIXEL_BUFFER_ALIGN) u8, header : * const TargaHeader) void {
+   return _convertOffsetColorspaceGeneric(
+      3,
+      4,
+      _convertPixelFromBgr888,
+      buffer_src,
+      buffer_dst,
+      header,
+   );
 }
 
-fn _convertOffsetColorspaceBgra8888(buffer_src : [] const align(MAX_PIXEL_BUFFER_ALIGN) u8, buffer_dst : [] align(MAX_PIXEL_BUFFER_ALIGN) u8, header : * const TargaHeader) anyerror!void {
+fn _convertOffsetColorspaceBgra8888(buffer_src : [] const align(MAX_PIXEL_BUFFER_ALIGN) u8, buffer_dst : [] align(MAX_PIXEL_BUFFER_ALIGN) u8, header : * const TargaHeader) void {
+   return _convertOffsetColorspaceGeneric(
+      4,
+      4,
+      _convertPixelFromBgra8888,
+      buffer_src,
+      buffer_dst,
+      header,
+   );
+}
+
+fn _convertPixelFromBgr888(pixel : @Vector(3, u8)) @Vector(4, u8) {
+   return .{pixel[2], pixel[1], pixel[0], 0};
+}
+
+fn _convertPixelFromBgra8888(pixel : @Vector(4, u8)) @Vector(4, u8) {
+   return .{pixel[2], pixel[1], pixel[0], pixel[3]};
+}
+
+fn _convertOffsetColorspaceGeneric(
+   comptime VEC_COMPONENTS_SRC   : comptime_int,
+   comptime VEC_COMPONENTS_DST   : comptime_int,
+   comptime PFN_CONVERT          : * const fn (@Vector(VEC_COMPONENTS_SRC, u8)) @Vector(VEC_COMPONENTS_DST, u8),
+   buffer_src                    : [] const align(@alignOf(@Vector(VEC_COMPONENTS_SRC, u8))) u8,
+   buffer_dst                    : [] align(@alignOf(@Vector(VEC_COMPONENTS_DST, u8))) u8,
+   header                        : * const TargaHeader,
+) void {
    // TODO: Implement
+   _ = PFN_CONVERT;
    _ = buffer_src;
    _ = buffer_dst;
    _ = header;
-   return;
+   unreachable;
 }
 
 fn _writeDecodedImageToZigSource(writer : * _BufferedWriter.Writer, data : [] const u8, width : u32, height : u32) anyerror!void {
