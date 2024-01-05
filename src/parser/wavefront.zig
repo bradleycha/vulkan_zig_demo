@@ -19,14 +19,6 @@ pub fn parseWavefrontComptime(comptime bytes_obj : [] const u8) anyerror!graphic
    };
 }
 
-fn _triangulateObj(comptime obj : * const ObjItemList, comptime vertices : * [] const graphics.types.Vertex, comptime indices : * [] const graphics.types.Mesh.IndexElement) anyerror!void {
-   // TODO: Implement
-   _ = obj;
-   _ = vertices;
-   _ = indices;
-   unreachable;
-}
-
 const ObjItemTag = enum {
    comment,
    vertex,
@@ -317,4 +309,44 @@ const ObjItemList = struct {
       return token;
    }
 };
+
+fn _triangulateObj(comptime obj : * const ObjItemList, comptime vertices : * [] const graphics.types.Vertex, comptime indices : * [] const graphics.types.Mesh.IndexElement) anyerror!void {
+   // TODO: Use a smarter algorithm.  This is complete and utter dogshit because
+   // it throws away all the memory savings an index buffer and triangle fan +
+   // primitive restart gives us, but I want results so this works for now.
+
+   for (obj.faces) |face| {
+      const vertex_anchor        = try face.indices[0].toVertex(obj);
+      const vertex_index_anchor  = @as(graphics.types.Mesh.IndexElement, @intCast(vertices.len));
+      vertices.* = vertices.* ++ .{vertex_anchor};
+
+      for (1..face.indices.len - 2) |i| {
+         const vertex_a = try face.indices[i].toVertex(obj);
+         const vertex_b = try face.indices[i + 1].toVertex(obj);
+         const vertex_index_a = @as(graphics.types.Mesh.IndexElement, @intCast(vertices.len));
+         const vertex_index_b = @as(graphics.types.Mesh.IndexElement, @intCast(vertices.len + 1));
+
+         vertices.* = vertices.* ++ .{vertex_a, vertex_b};
+         indices.* = indices.* ++ .{
+            vertex_index_b,
+            vertex_index_a,
+            vertex_index_anchor,
+            std.math.maxInt(graphics.types.Mesh.IndexElement),
+         };
+      }
+
+      const vertex_a = try face.indices[face.indices.len - 2].toVertex(obj);
+      const vertex_b = try face.indices[face.indices.len - 1].toVertex(obj);
+      const vertex_index_a = @as(graphics.types.Mesh.IndexElement, @intCast(vertices.len));
+      const vertex_index_b = @as(graphics.types.Mesh.IndexElement, @intCast(vertices.len + 1));
+
+      vertices.* = vertices.* ++ .{vertex_a, vertex_b};
+      indices.* = indices.* ++ .{
+         vertex_index_b,
+         vertex_index_a,
+         vertex_index_anchor,
+         std.math.maxInt(graphics.types.Mesh.IndexElement),
+      };
+   }
+}
 
