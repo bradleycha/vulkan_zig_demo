@@ -1,5 +1,9 @@
 const std = @import("std");
 
+const BUFFERED_IO_SIZE  = 4096;
+const _BufferedReader   = std.io.BufferedReader(BUFFERED_IO_SIZE, std.fs.File.Reader);
+const _BufferedWriter   = std.io.BufferedWriter(BUFFERED_IO_SIZE, std.fs.File.Writer);
+
 pub const TargaParseStep = struct {
    step        : std.Build.Step,
    input_file  : std.Build.LazyPath,
@@ -31,11 +35,64 @@ pub const TargaParseStep = struct {
       const b     = step.owner;
       const self  = @fieldParentPtr(@This(), "step", step);
 
-      // TODO: Implement
-      _ = b;
-      _ = self;
+      const input_path = self.input_file.getPath(b);
+
+      var man = b.cache.obtain();
+      defer man.deinit();
+
+      man.hash.add(@as(u32, 0x9efd4658));
+      _ = try man.addFile(input_path, null);
+
+      const cache_hit   = try step.cacheHit(&man);
+      const digest      = man.final();
+
+      const cache_dir = try std.fs.path.join(b.allocator, &.{
+         "o", &digest,
+      });
+      defer b.allocator.free(cache_dir);
+
+      const output_dir = try b.cache_root.join(b.allocator, &.{
+         cache_dir,
+      });
+      defer b.allocator.free(output_dir);
+
+      const basename = std.fs.path.stem(input_path);
+
+      const output_path = try std.fs.path.join(b.allocator, &.{
+         output_dir, b.fmt("{s}.zig", .{basename}),
+      });
+      errdefer b.allocator.free(output_path);
+
+      if (cache_hit == true) {
+         self.output_file.path = output_path;
+         return;
+      }
+
+      const input_file  = try std.fs.openFileAbsolute(input_path, .{});
+      defer input_file.close();
+
+      try b.cache_root.handle.makePath(cache_dir);
+      errdefer b.cache_root.handle.deleteTree(cache_dir) catch @panic("failed to delete cache dir on error cleanup");
+
+      const output_file = try std.fs.createFileAbsolute(output_path, .{});
+      defer output_file.close();
+      errdefer b.cache_root.handle.deleteFile(output_path) catch @panic("failed to delete output file on error cleanup");
+
+      var input_reader_buffer    = _BufferedReader{.unbuffered_reader = input_file.reader()};
+      var output_writer_buffer   = _BufferedWriter{.unbuffered_writer = output_file.writer()};
+
+      var input_reader  = input_reader_buffer.reader();
+      var output_writer = output_writer_buffer.writer();
+
+      try _parseTargaToZigSource(b, &input_reader, &output_writer);
+
+      try output_writer_buffer.flush();
+
       _ = prog_node;
-      unreachable;
+
+      self.output_file.path = output_path;
+      try man.writeManifest();
+      return;
    }
 };
 
@@ -96,11 +153,104 @@ pub const TargaBundle = struct {
       const b     = step.owner;
       const self  = @fieldParentPtr(@This(), "step", step);
 
-      // TODO: Implement
-      _ = b;
-      _ = self;
+      const targa_entries = self.contents.items;
+
+      var man = b.cache.obtain();
+      defer man.deinit();
+
+      man.hash.add(@as(u32, 0x76a260c1));
+
+      for (targa_entries) |targa_entry| {
+         const targa_zig_source_path = targa_entry.parse_step.getOutput().getPath(b);
+
+         _ = try man.addFile(targa_zig_source_path, null);
+         man.hash.addBytes(targa_entry.identifier);
+      }
+
+      const cache_hit   = try step.cacheHit(&man);
+      const digest      = man.final();
+
+      const cache_dir = try std.fs.path.join(b.allocator, &.{
+         "o", &digest,
+      });
+      defer b.allocator.free(cache_dir);
+
+      const output_dir = try b.cache_root.join(b.allocator, &.{
+         cache_dir,
+      });
+      defer b.allocator.free(output_dir);
+
+      const basename = "targa_bundle.zig";
+
+      const output_path = try std.fs.path.join(b.allocator, &.{
+         output_dir, basename,
+      });
+      errdefer b.allocator.free(output_path);
+
+      if (cache_hit == true) {
+         self.generated_file.path = output_path;
+         return;
+      }
+
+      try b.cache_root.handle.makePath(cache_dir);
+      errdefer b.cache_root.handle.deleteTree(cache_dir) catch @panic("failed to delete cache dir on error cleanup");
+
+      const output_file = try std.fs.createFileAbsolute(output_path, .{});
+      defer output_file.close();
+
+      var output_writer_buffer   = _BufferedWriter{.unbuffered_writer = output_file.writer()};
+      var output_writer          = output_writer_buffer.writer();
+
+      for (targa_entries) |targa_entry| {
+         try _concatenateAndNamespaceParsedTarga(b, &output_writer, &targa_entry);
+      }
+
+      try output_writer_buffer.flush();
+
       _ = prog_node;
-      unreachable;
+
+      self.generated_file.path = output_path;
+      try man.writeManifest();
+      return;
+   }
+
+   fn _concatenateAndNamespaceParsedTarga(b : * std.Build, output_writer : * _BufferedWriter.Writer, targa_entry : * const Entry) anyerror!void {
+      const input_path  = targa_entry.parse_step.getOutput().getPath(b);
+      const input_file  = try std.fs.openFileAbsolute(input_path, .{});
+      defer input_file.close();
+
+      var input_reader_buffer = _BufferedReader{.unbuffered_reader = input_file.reader()};
+      var input_reader        = input_reader_buffer.reader();
+
+      try output_writer.print("pub const {s} = struct {{\n", .{targa_entry.identifier});
+
+      // This may look bad, but since we are using buffered I/O, this is
+      // actually good since we're not loading the entire file into memory
+      // at once.
+      while (input_reader.readByte()) |byte| {
+         try output_writer.writeByte(byte);
+      } else |err| switch (err) {
+         error.EndOfStream => {},
+         else => return err,
+      }
+
+      try output_writer.print("\n}};\n\n", .{});
+
+      return;
    }
 };
+
+fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, output : * _BufferedWriter.Writer) anyerror!void {
+   // TODO: Implement everything lol
+
+   try output.print(
+      \\   pub const data     : [] const u8  = &.{{0xff, 0x80, 0x00, 0xff}};
+      \\   pub const width    : u32          = 1;
+      \\   pub const height   : u32          = 1;
+   , .{});
+
+   _ = b;
+   _ = input;
+   return;
+}
 
