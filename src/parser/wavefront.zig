@@ -2,15 +2,13 @@ const std      = @import("std");
 const math     = @import("math");
 const graphics = @import("graphics");
 
-pub fn parseWavefrontComptime(comptime bytes_obj : [] const u8, comptime bytes_mtl : [] const u8) anyerror!graphics.types.Mesh {
+pub fn parseWavefrontComptime(comptime bytes_obj : [] const u8) anyerror!graphics.types.Mesh {
    @setEvalBranchQuota(999999); // :(
 
    const obj = try ObjItemList.deserialize(bytes_obj);
-   const mtl = try MtlItemList.deserialize(bytes_mtl);
 
    // TODO: Implement rest
    _ = obj;
-   _ = mtl;
    return error.NotImplemented;
 }
 
@@ -278,18 +276,6 @@ const ObjItemList = struct {
       }
 
       return token;
-   }
-};
-
-const MtlItemTag = enum {
-
-};
-
-const MtlItemList = struct {
-   pub fn deserialize(comptime text : [] const u8) anyerror!@This() {
-      // TODO: Implement
-      _ = text;
-      unreachable;
    }
 };
 
