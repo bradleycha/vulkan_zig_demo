@@ -17,7 +17,7 @@ const SHADER_MAIN = struct {
 };
 
 const TEXTURE_PATH = struct {
-   pub const grass   = "res/textures/grass.tga";
+   pub const grass   = "res/textures/water.tga";
    pub const rock    = "res/textures/rock.tga";
    pub const tile    = "res/textures/tile.tga";
 };

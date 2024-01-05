@@ -1,5 +1,9 @@
 const std = @import("std");
 
+const MAX_PIXEL_BUFFER_ALIGN     = @alignOf(@Vector(4, u8));
+const TARGA_ENDIANESS            = std.builtin.Endian.Little;
+const BYTES_PER_PIXEL_RGBA8888   = 4;
+
 const BUFFERED_IO_SIZE  = 4096;
 const _BufferedReader   = std.io.BufferedReader(BUFFERED_IO_SIZE, std.fs.File.Reader);
 const _BufferedWriter   = std.io.BufferedWriter(BUFFERED_IO_SIZE, std.fs.File.Writer);
@@ -249,24 +253,13 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
       return error.NoDataPresent;
    }
 
-   // TODO: Color map support, we can get away without it for now since we're
-   // not living in 1984 anymore, but this should be supported.
+   // TODO: Color map and monochrome support, we can get away without it for now
+   // since we're not living in 1984 anymore, but this should be supported.
    if (header.color_map_type != .none) {
       return error.ColorMapUnsupported;
    }
-   
-   // TODO: Allow formats other than RGBA8888.
-   if (header.image_type != .truecolor and header.image_type != .truecolor_compressed) {
-      return error.UnimplementedPixelFormat;
-   }
-   if (header.image_spec.pixel_depth != .rgba8888) {
-      return error.UnimplementedPixelFormat;
-   }
-
-   // TODO: Image offset support.  There's no excuse for this one, this is
-   // simply a skill issue.
-   if (header.image_spec.x_offset != 0 or header.image_spec.y_offset != 0) {
-      return error.ImageDataOffsetUnsupported;
+   if (header.image_type == .monochrome or header.image_type == .monochrome_compressed) {
+      return error.MonochromeUnsupported;
    }
 
    // We don't care about the image identity stuff, skip over it.  We use a
@@ -279,17 +272,22 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
    try input.skipBytes(header.color_map_spec.bytes(), .{.buf_size = 1});
 
    // Read in the raw pixel data, decompressing if needed
-   const pixels_raw = try b.allocator.alloc(u8, header.image_spec.bytes());
+   const pixels_raw = try b.allocator.alignedAlloc(u8, MAX_PIXEL_BUFFER_ALIGN, header.image_spec.bytes());
    defer b.allocator.free(pixels_raw);
    switch (header.image_type.isCompressed()) {
       true  => try _readPixelDataCompressed(input, pixels_raw, &header),
       false => try _readPixelDataUncompressed(input, pixels_raw),
    }
 
-   // TODO: Implement pixel format conversion to RGBA8888 and offsets, for now
-   // we just write the raw data and assume it will work :')
+   // Convert from the current pixel format to RGBA8888 and apply image offsets.
+   const pixels_final = try b.allocator.alignedAlloc(u8, MAX_PIXEL_BUFFER_ALIGN, header.image_spec.pixels() * BYTES_PER_PIXEL_RGBA8888);
+   defer b.allocator.free(pixels_final);
+   switch (header.image_spec.pixel_depth) {
+      .bgr888     => try _convertOffsetColorspaceBgr888(pixels_raw, pixels_final, &header),
+      .bgra8888   => try _convertOffsetColorspaceBgra8888(pixels_raw, pixels_final, &header),
+   }
 
-   try _writeDecodedImageToZigSource(output, pixels_raw, header.image_spec.width, header.image_spec.height);
+   try _writeDecodedImageToZigSource(output, pixels_final, header.image_spec.width, header.image_spec.height);
 
    return;
 }
@@ -361,6 +359,22 @@ fn _readPixelDataUncompressed(reader : * _BufferedReader.Reader, buffer : [] u8)
    return;
 }
 
+fn _convertOffsetColorspaceBgr888(buffer_src : [] const align(MAX_PIXEL_BUFFER_ALIGN) u8, buffer_dst : [] align(MAX_PIXEL_BUFFER_ALIGN) u8, header : * const TargaHeader) anyerror!void {
+   // TODO: Implement
+   _ = buffer_src;
+   _ = buffer_dst;
+   _ = header;
+   return error.NotImplemented;
+}
+
+fn _convertOffsetColorspaceBgra8888(buffer_src : [] const align(MAX_PIXEL_BUFFER_ALIGN) u8, buffer_dst : [] align(MAX_PIXEL_BUFFER_ALIGN) u8, header : * const TargaHeader) anyerror!void {
+   // TODO: Implement
+   _ = buffer_src;
+   _ = buffer_dst;
+   _ = header;
+   return;
+}
+
 fn _writeDecodedImageToZigSource(writer : * _BufferedWriter.Writer, data : [] const u8, width : u32, height : u32) anyerror!void {
    const INDENT            = "   ";
    const IDENTIFIER_DATA   = "data";
@@ -383,8 +397,6 @@ fn _writeDecodedImageToZigSource(writer : * _BufferedWriter.Writer, data : [] co
 
    return;
 }
-
-const TARGA_ENDIANESS = std.builtin.Endian.Little;
 
 const TargaHeader = struct {
    image_id_length   : u8,
@@ -435,9 +447,9 @@ const TargaHeader = struct {
       descriptor  : u8,
 
       pub const PixelDepth = enum(u8) {
-         // TODO: The order may be wrong, test this
-         // TODO: Support more than 32-bit RGBA
-         rgba8888 = 32,
+         // TODO: Support more pixel formats
+         bgr888   = 24,
+         bgra8888 = 32,
       };
 
       pub fn bytesPerPixel(self : * const @This()) u5 {
