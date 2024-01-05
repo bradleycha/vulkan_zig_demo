@@ -283,7 +283,6 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
    const pixels_final = try b.allocator.alignedAlloc(u8, MAX_PIXEL_BUFFER_ALIGN, header.image_spec.pixels() * BYTES_PER_PIXEL_RGBA8888);
    defer b.allocator.free(pixels_final);
    switch (header.image_spec.pixel_depth) {
-      .bgr888     => _convertOffsetColorspaceBgr888(pixels_raw, pixels_final, &header),
       .bgra8888   => _convertOffsetColorspaceBgra8888(pixels_raw, pixels_final, &header),
    }
 
@@ -359,16 +358,6 @@ fn _readPixelDataUncompressed(reader : * _BufferedReader.Reader, buffer : [] u8)
    return;
 }
 
-fn _convertOffsetColorspaceBgr888(buffer_src : [] const align(MAX_PIXEL_BUFFER_ALIGN) u8, buffer_dst : [] align(MAX_PIXEL_BUFFER_ALIGN) u8, header : * const TargaHeader) void {
-   return _convertOffsetColorspaceGeneric(
-      3,
-      _convertPixelFromBgr888,
-      buffer_src,
-      buffer_dst,
-      header,
-   );
-}
-
 fn _convertOffsetColorspaceBgra8888(buffer_src : [] const align(MAX_PIXEL_BUFFER_ALIGN) u8, buffer_dst : [] align(MAX_PIXEL_BUFFER_ALIGN) u8, header : * const TargaHeader) void {
    return _convertOffsetColorspaceGeneric(
       4,
@@ -377,10 +366,6 @@ fn _convertOffsetColorspaceBgra8888(buffer_src : [] const align(MAX_PIXEL_BUFFER
       buffer_dst,
       header,
    );
-}
-
-fn _convertPixelFromBgr888(pixel : @Vector(3, u8)) @Vector(BYTES_PER_PIXEL_RGBA8888, u8) {
-   return .{pixel[2], pixel[1], pixel[0], 0};
 }
 
 fn _convertPixelFromBgra8888(pixel : @Vector(4, u8)) @Vector(BYTES_PER_PIXEL_RGBA8888, u8) {
