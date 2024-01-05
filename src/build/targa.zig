@@ -241,16 +241,130 @@ pub const TargaBundle = struct {
 };
 
 fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, output : * _BufferedWriter.Writer) anyerror!void {
-   // TODO: Implement everything lol
+   const header = try TargaHeader.parse(input);
 
-   try output.print(
-      \\   pub const data     : [] const u8  = &.{{0xff, 0x80, 0x00, 0xff}};
-      \\   pub const width    : u32          = 1;
-      \\   pub const height   : u32          = 1;
-   , .{});
+   // We don't want to allow images with no data included as this will break our
+   // asset loader at runtime.
+   if (header.image_type == .none or header.image_spec.width == 0 or header.image_spec.height == 0) {
+      return error.NoDataPresent;
+   }
 
+   // TODO: Color map support, we can get away without it for now since we're
+   // not living in 1984 anymore, but this should be supported.
+   if (header.color_map_type != .none) {
+      return error.ColorMapUnsupported;
+   }
+
+   // We don't care about the image identity stuff, skip over it.  We use a
+   // buffer size of 1 because I/O is already buffered, we don't need further
+   // buffering on top of that.
+   try input.skipBytes(header.image_id_length, .{.buf_size = 1});
+
+   // TODO: This shouldn't be here.  For now it is because we're not allowing
+   // color-mapped images but for the future we should parse this, not skip it.
+   try input.skipBytes(header.color_map_spec.bytes(), .{.buf_size = 1});
+
+   // TODO: Implement rest - decompression and pixel format conversion
    _ = b;
-   _ = input;
-   return;
+   _ = output;
+   return error.NotImplemented;
 }
+
+const TARGA_ENDIANESS = std.builtin.Endian.Little;
+
+const TargaHeader = struct {
+   image_id_length   : u8,
+   color_map_type    : ColorMapType,
+   image_type        : ImageType,
+   color_map_spec    : ColorMapSpecification,
+   image_spec        : ImageSpecification,
+
+   pub const ColorMapType = enum(u8) {
+      none        = 0,
+      colormapped = 1,
+   };
+
+   pub const ImageType = enum(u8) {
+      none                    = 0,
+      colormapped             = 1,
+      truecolor               = 2,
+      monochrome              = 3,
+      colormapped_compressed  = 9,
+      truecolor_compressed    = 10,
+      monochrome_compressed   = 11,
+
+      pub fn isCompressed(self : @This()) bool {
+         return @intFromEnum(self) >= 9;
+      }
+   };
+
+   pub const ColorMapSpecification = struct {
+      start    : u16,
+      length   : u16,
+      depth    : u8,
+
+      pub fn bytesPerEntry(self : * const @This()) u5 {
+         return @intCast(std.math.divCeil(u8, self.depth, 8) catch unreachable);
+      }
+
+      pub fn bytes(self : * const @This()) u24 {
+         return @as(u24, self.length) * @as(u24, self.bytesPerEntry());
+      }
+   };
+
+   pub const ImageSpecification = struct {
+      x_offset    : u16,
+      y_offset    : u16,
+      width       : u16,
+      height      : u16,
+      pixel_depth : PixelDepth,
+      descriptor  : u8,
+
+      pub const PixelDepth = enum(u8) {
+         // TODO: The order may be wrong, test this
+         // TODO: Support more than 32-bit RGBA
+         rgba8888 = 32,
+      };
+   };
+
+   pub fn parse(reader : * _BufferedReader.Reader) anyerror!@This() {
+      const image_id_length            = try reader.readInt(u8,   TARGA_ENDIANESS);
+      const color_map_type_tag         = try reader.readInt(u8,   TARGA_ENDIANESS);
+      const image_type_tag             = try reader.readInt(u8,   TARGA_ENDIANESS);
+      const color_map_spec_start       = try reader.readInt(u16,  TARGA_ENDIANESS);
+      const color_map_spec_length      = try reader.readInt(u16,  TARGA_ENDIANESS);
+      const color_map_spec_depth       = try reader.readInt(u8,   TARGA_ENDIANESS);
+      const image_spec_x_offset        = try reader.readInt(u16,  TARGA_ENDIANESS);
+      const image_spec_y_offset        = try reader.readInt(u16,  TARGA_ENDIANESS);
+      const image_spec_width           = try reader.readInt(u16,  TARGA_ENDIANESS);
+      const image_spec_height          = try reader.readInt(u16,  TARGA_ENDIANESS);
+      const image_spec_pixel_depth_tag = try reader.readInt(u8,   TARGA_ENDIANESS);
+      const image_spec_descriptor      = try reader.readInt(u8,   TARGA_ENDIANESS);
+
+      const color_map_type          = std.meta.intToEnum(@This().ColorMapType, color_map_type_tag)                            catch return error.UnsupportedColorMapType;
+      const image_type              = std.meta.intToEnum(@This().ImageType, image_type_tag)                                   catch return error.UnsupportedImageType;
+      const image_spec_pixel_depth  = std.meta.intToEnum(@This().ImageSpecification.PixelDepth, image_spec_pixel_depth_tag)   catch return error.UnsupportedPixelFormat;
+
+      const header = @This(){
+         .image_id_length  = image_id_length,
+         .color_map_type   = color_map_type,
+         .image_type       = image_type,
+         .color_map_spec   = .{
+            .start         = color_map_spec_start,
+            .length        = color_map_spec_length,
+            .depth         = color_map_spec_depth,
+         },
+         .image_spec       = .{
+            .x_offset      = image_spec_x_offset,
+            .y_offset      = image_spec_y_offset,
+            .width         = image_spec_width,
+            .height        = image_spec_height,
+            .pixel_depth   = image_spec_pixel_depth,
+            .descriptor    = image_spec_descriptor,
+         },
+      };
+
+      return header;
+   }
+};
 
