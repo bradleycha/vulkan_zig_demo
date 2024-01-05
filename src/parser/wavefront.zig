@@ -32,8 +32,8 @@ const ObjItemTag = enum {
 
       pub const Index = struct {
          vertex               : usize,
-         texture_coordinate   : ? usize,
-         normal               : ? usize,
+         texture_coordinate   : usize,
+         normal               : usize,
       };
    };
 };
@@ -233,33 +233,18 @@ const ObjItemList = struct {
    }
 
    fn _deserializeFaceIndex(comptime tokens : * std.mem.SplitIterator(u8, .scalar)) anyerror!ObjItemTag.Face.Index {
+      // Everything is made mandatory since our vertex data should contain these.
       const token_vertex               = tokens.next() orelse return error.MissingRequiredVertexIndex;
-      const token_texture_coordinate   = tokens.next();
-      const token_normal               = tokens.next();
+      const token_texture_coordinate   = tokens.next() orelse return error.MissingRequiredTextureCoordinateIndex;
+      const token_normal               = tokens.next() orelse return error.MissingRequiredNormalIndex;
 
       if (tokens.next() != null) {
          return error.MalformedParameters;
       }
 
       const vertex               = try std.fmt.parseInt(usize, token_vertex, 10);
-      const texture_coordinate   = blk: {
-         if (token_texture_coordinate) |token_texture_coordinate_unwrapped| {
-            if (token_texture_coordinate_unwrapped.len == 0) {
-               break :blk null;
-            } else {
-               break :blk try std.fmt.parseInt(usize, token_texture_coordinate_unwrapped, 10);
-            }
-         } else {
-            break :blk null;
-         }
-      };
-      const normal               = blk: {
-         if (token_normal) |token_normal_unwrapped| {
-            break :blk try std.fmt.parseInt(usize, token_normal_unwrapped, 10);
-         } else {
-            break :blk null;
-         }
-      };
+      const texture_coordinate   = try std.fmt.parseInt(usize, token_texture_coordinate, 10);
+      const normal               = try std.fmt.parseInt(usize, token_normal, 10);
 
       return .{
          .vertex              = vertex,
