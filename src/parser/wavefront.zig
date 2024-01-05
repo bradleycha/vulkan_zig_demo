@@ -2,15 +2,15 @@ const std      = @import("std");
 const math     = @import("math");
 const graphics = @import("graphics");
 
-pub fn parseWavefrontComptime(comptime obj : [] const u8, comptime mtl : [] const u8) anyerror!graphics.types.Mesh {
+pub fn parseWavefrontComptime(comptime bytes_obj : [] const u8, comptime bytes_mtl : [] const u8) anyerror!graphics.types.Mesh {
    @setEvalBranchQuota(999999); // :(
 
-   const obj_items = try ObjItemList.deserialize(obj);
-   const mtl_items = try MtlItemList.deserialize(mtl);
+   const obj = try ObjItemList.deserialize(bytes_obj);
+   const mtl = try MtlItemList.deserialize(bytes_mtl);
 
    // TODO: Implement rest
-   _ = obj_items;
-   _ = mtl_items;
+   _ = obj;
+   _ = mtl;
    return error.NotImplemented;
 }
 
@@ -29,14 +29,13 @@ const ObjItemTag = enum {
    group_name,
 
    pub const Face = struct {
-      material       : ? [] const u8,
-      smooth_shading : bool,
-      indices        : [] @This().Index,
+      material : [] const u8,
+      indices  : [] const @This().Index,
 
       pub const Index = struct {
-         vertex               : comptime_int,
-         texture_coordinate   : ? comptime_int,
-         normal               : ? comptime_int,
+         vertex               : usize,
+         texture_coordinate   : ? usize,
+         normal               : ? usize,
       };
    };
 };
@@ -58,7 +57,12 @@ const ObjItemList = struct {
       var current_material : [] const u8  = "";
       var lines = std.mem.splitScalar(u8, text, '\n');
       while (lines.next()) |line| {
-         try _deserializeLine(&items, line, &current_material);
+         const line_trimmed = std.mem.trim(u8, line, &.{' '});
+         if (line_trimmed.len == 0) {
+            continue;
+         }
+
+         try _deserializeLine(&items, line_trimmed, &current_material);
       }
 
       return items;
@@ -111,7 +115,7 @@ const ObjItemList = struct {
             self.normals = self.normals ++ .{normal};
          },
          .face => {
-            const face = try _deserializeFace(&tokens);
+            const face = try _deserializeFace(&tokens, current_material.*);
             self.faces = self.faces ++ .{face};
          },
          .material => {
@@ -125,9 +129,9 @@ const ObjItemList = struct {
    }
 
    fn _deserializeVertex(comptime tokens : * std.mem.SplitIterator(u8, .scalar)) anyerror!math.Vector4(f32) {
-      const token_x = tokens.next() orelse return error.MissingRequiredParameter;
-      const token_y = tokens.next() orelse return error.MissingRequiredParameter;
-      const token_z = tokens.next() orelse return error.MissingRequiredParameter;
+      const token_x = tokens.next() orelse return error.MissingVertexCoordinateX;
+      const token_y = tokens.next() orelse return error.MissingVertexCoordinateY;
+      const token_z = tokens.next() orelse return error.MissingVertexCoordinateZ;
       const token_w = tokens.next();
 
       if (tokens.next() != null) {
@@ -156,23 +160,124 @@ const ObjItemList = struct {
    }
 
    fn _deserializeTextureCoordinate(comptime tokens : * std.mem.SplitIterator(u8, .scalar)) anyerror!math.Vector3(f32) {
-      _ = tokens;
-      unreachable;
+      const token_u = tokens.next() orelse return error.MissingTextureCoordinateU;
+      const token_v = tokens.next();
+      const token_w = tokens.next();
+
+      if (tokens.next() != null) {
+         return error.MalformedParameters;
+      }
+
+      const u = try std.fmt.parseFloat(f32, token_u);
+      const v = blk: {
+         if (token_v) |token_v_unwrapped| {
+            break :blk try std.fmt.parseFloat(f32, token_v_unwrapped);
+         } else {
+            break :blk 0.0;
+         }
+      };
+      const w = blk: {
+         if (token_w) |token_w_unwrapped| {
+            break :blk try std.fmt.parseFloat(f32, token_w_unwrapped);
+         } else {
+            break :blk 0.0;
+         }
+      };
+
+      const texture_coordinate = math.Vector3(f32){.xyz = .{
+         .x = u,
+         .y = v,
+         .z = w,
+      }};
+      
+      return texture_coordinate;
    }
 
    fn _deserializeNormal(comptime tokens : * std.mem.SplitIterator(u8, .scalar)) anyerror!math.Vector3(f32) {
-      _ = tokens;
-      unreachable;
+      const token_x = tokens.next() orelse return error.MissingNormalComponentX;
+      const token_y = tokens.next() orelse return error.MissingNormalComponentY;
+      const token_z = tokens.next() orelse return error.MissingNormalComponentZ;
+
+      if (tokens.next() != null) {
+         return error.MalformedParameters;
+      }
+
+      const x = try std.fmt.parseFloat(f32, token_x);
+      const y = try std.fmt.parseFloat(f32, token_y);
+      const z = try std.fmt.parseFloat(f32, token_z);
+
+      const normal = math.Vector3(f32){.xyz = .{
+         .x = x,
+         .y = y,
+         .z = z,
+      }};
+
+      return normal;
    }
 
-   fn _deserializeFace(comptime tokens : * std.mem.SplitIterator(u8, .scalar)) anyerror!ObjItemTag.Face {
-      _ = tokens;
-      unreachable;
+   fn _deserializeFace(comptime tokens : * std.mem.SplitIterator(u8, .scalar), comptime current_material : [] const u8) anyerror!ObjItemTag.Face {
+      var indices : [] const ObjItemTag.Face.Index = &.{};
+
+      while (tokens.next()) |token| {
+         var index_tokens = std.mem.splitScalar(u8, token, '/');
+         const index = try _deserializeFaceIndex(&index_tokens);
+         indices = indices ++ .{index};
+      }
+
+      if (indices.len == 0) {
+         return error.MissingFaceVertexData;
+      }
+
+      return .{
+         .material   = current_material,
+         .indices    = indices,
+      };
+   }
+
+   fn _deserializeFaceIndex(comptime tokens : * std.mem.SplitIterator(u8, .scalar)) anyerror!ObjItemTag.Face.Index {
+      const token_vertex               = tokens.next() orelse return error.MissingRequiredVertexIndex;
+      const token_texture_coordinate   = tokens.next();
+      const token_normal               = tokens.next();
+
+      if (tokens.next() != null) {
+         return error.MalformedParameters;
+      }
+
+      const vertex               = try std.fmt.parseInt(usize, token_vertex, 10);
+      const texture_coordinate   = blk: {
+         if (token_texture_coordinate) |token_texture_coordinate_unwrapped| {
+            if (token_texture_coordinate_unwrapped.len == 0) {
+               break :blk null;
+            } else {
+               break :blk try std.fmt.parseInt(usize, token_texture_coordinate_unwrapped, 10);
+            }
+         } else {
+            break :blk null;
+         }
+      };
+      const normal               = blk: {
+         if (token_normal) |token_normal_unwrapped| {
+            break :blk try std.fmt.parseInt(usize, token_normal_unwrapped, 10);
+         } else {
+            break :blk null;
+         }
+      };
+
+      return .{
+         .vertex              = vertex,
+         .texture_coordinate  = texture_coordinate,
+         .normal              = normal,
+      };
    }
 
    fn _deserializeMaterial(comptime tokens : * std.mem.SplitIterator(u8, .scalar)) anyerror![] const u8 {
-      _ = tokens;
-      unreachable;
+      const token = tokens.next() orelse return error.MissingMaterialName;
+
+      if (tokens.next() != null) {
+         return error.MalformedParameters;
+      }
+
+      return token;
    }
 };
 
