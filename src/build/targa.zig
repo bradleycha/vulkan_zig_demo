@@ -254,6 +254,20 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
    if (header.color_map_type != .none) {
       return error.ColorMapUnsupported;
    }
+   
+   // TODO: Allow formats other than RGBA8888.
+   if (header.image_type != .truecolor and header.image_type != .truecolor_compressed) {
+      return error.UnimplementedPixelFormat;
+   }
+   if (header.image_spec.pixel_depth != .rgba8888) {
+      return error.UnimplementedPixelFormat;
+   }
+
+   // TODO: Image offset support.  There's no excuse for this one, this is
+   // simply a skill issue.
+   if (header.image_spec.x_offset != 0 or header.image_spec.y_offset != 0) {
+      return error.ImageDataOffsetUnsupported;
+   }
 
    // We don't care about the image identity stuff, skip over it.  We use a
    // buffer size of 1 because I/O is already buffered, we don't need further
@@ -264,9 +278,94 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
    // color-mapped images but for the future we should parse this, not skip it.
    try input.skipBytes(header.color_map_spec.bytes(), .{.buf_size = 1});
 
-   // TODO: Implement rest - decompression and pixel format conversion
-   _ = b;
-   _ = output;
+   // Read in the raw pixel data, decompressing if needed
+   const pixels_raw = try b.allocator.alloc(u8, header.image_spec.bytes());
+   defer b.allocator.free(pixels_raw);
+   switch (header.image_type.isCompressed()) {
+      true  => try _readPixelDataCompressed(input, pixels_raw, &header),
+      false => try _readPixelDataUncompressed(input, pixels_raw),
+   }
+
+   // TODO: Implement pixel format conversion to RGBA8888 and offsets, for now
+   // we just write the raw data and assume it will work :')
+
+   try _writeDecodedImageToZigSource(output, pixels_raw, header.image_spec.width, header.image_spec.height);
+
+   return;
+}
+
+fn _readPixelDataCompressed(reader : * _BufferedReader.Reader, buffer : [] u8, header : * const TargaHeader) anyerror!void {
+   const bytes_per_pixel   = header.image_spec.bytesPerPixel();
+   const pixels_expected   = header.image_spec.pixels();
+
+   var pixels_decoded : usize = 0;
+   while (pixels_decoded < pixels_expected) {
+      const count_packet = try reader.readByte();
+
+      // The MSB states whether this signifies a single pixel being repeated
+      // or a collection of uncompressed pixels.  The actual count is the lowest
+      // 7 bits plus 1, so its in the range 1-128
+      const COMPRESSION_BIT   = @as(u8, 1) << 7;
+      const is_compressed     = count_packet & COMPRESSION_BIT != 0;
+      const count             = (count_packet & ~COMPRESSION_BIT) + 1;
+
+      const buffer_decode = buffer[pixels_decoded * bytes_per_pixel..][0..count * bytes_per_pixel];
+
+      switch (is_compressed) {
+         true  => try _decodePixelCompressed(reader, buffer_decode, count, bytes_per_pixel),
+         false => try _decodePixelUncompressed(reader, buffer_decode, count, bytes_per_pixel),
+      }
+
+      pixels_decoded += count;
+   }
+
+   if (pixels_decoded != pixels_expected) {
+      return error.ImageDataCorrupt;
+   }
+
+   return;
+}
+
+fn _decodePixelCompressed(reader : * _BufferedReader.Reader, buffer : [] u8, count : u8, bytes_per_pixel : u5) anyerror!void {
+   const bytes_to_read = bytes_per_pixel;
+
+   const read_count = try reader.readAtLeast(buffer[0..bytes_to_read], bytes_to_read);
+   if (read_count != bytes_to_read) {
+      return error.ImageDataTruncated;
+   }
+
+   for (1..count) |i| {
+      @memcpy(buffer[bytes_per_pixel * i..][0..bytes_per_pixel], buffer[0..bytes_per_pixel]);
+   }
+
+   return;
+}
+
+fn _decodePixelUncompressed(reader : * _BufferedReader.Reader, buffer : [] u8, count : u8, bytes_per_pixel : u5) anyerror!void {
+   const bytes_to_read = count * bytes_per_pixel;
+
+   const read_count = try reader.readAtLeast(buffer[0..bytes_to_read], bytes_to_read);
+   if (read_count != bytes_to_read) {
+      return error.ImageDataTruncated;
+   }
+
+   return;
+}
+
+fn _readPixelDataUncompressed(reader : * _BufferedReader.Reader, buffer : [] u8) anyerror!void {
+   const read_count = try reader.readAtLeast(buffer, buffer.len);
+   if (read_count != buffer.len) {
+      return error.ImageDataTruncated;
+   }
+
+   return;
+}
+
+fn _writeDecodedImageToZigSource(writer : * _BufferedWriter.Writer, data : [] const u8, width : u32, height : u32) anyerror!void {
+   _ = writer;
+   _ = data;
+   _ = width;
+   _ = height;
    return error.NotImplemented;
 }
 
@@ -325,6 +424,18 @@ const TargaHeader = struct {
          // TODO: Support more than 32-bit RGBA
          rgba8888 = 32,
       };
+
+      pub fn bytesPerPixel(self : * const @This()) u5 {
+         return @intCast(std.math.divCeil(u8, @intFromEnum(self.pixel_depth), 8) catch unreachable);
+      }
+
+      pub fn pixels(self : * const @This()) u32 {
+         return @as(u32, self.width) * @as(u32, self.height);
+      }
+
+      pub fn bytes(self : * const @This()) u37 {
+         return @as(u37, self.pixels()) * @as(u37, self.bytesPerPixel());
+      }
    };
 
    pub fn parse(reader : * _BufferedReader.Reader) anyerror!@This() {
