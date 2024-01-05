@@ -7,9 +7,24 @@ pub fn parseWavefrontComptime(comptime bytes_obj : [] const u8) anyerror!graphic
 
    const obj = try ObjItemList.deserialize(bytes_obj);
 
-   // TODO: Implement rest
+   // Create a triangle mesh from all the face data.
+   var vertices   : [] const graphics.types.Vertex             = &.{};
+   var indices    : [] const graphics.types.Mesh.IndexElement  = &.{};
+   try _triangulateObj(&obj, &vertices, &indices);
+
+   // Done!
+   return .{
+      .vertices   = vertices,
+      .indices    = indices,
+   };
+}
+
+fn _triangulateObj(comptime obj : * const ObjItemList, comptime vertices : * [] const graphics.types.Vertex, comptime indices : * [] const graphics.types.Mesh.IndexElement) anyerror!void {
+   // TODO: Implement
    _ = obj;
-   return error.NotImplemented;
+   _ = vertices;
+   _ = indices;
+   unreachable;
 }
 
 const ObjItemTag = enum {
@@ -34,6 +49,45 @@ const ObjItemTag = enum {
          vertex               : usize,
          texture_coordinate   : usize,
          normal               : usize,
+
+         pub fn toVertex(comptime self : * const @This(), comptime obj_item_list : * const ObjItemList) anyerror!graphics.types.Vertex {
+            const index_vertex               = self.vertex - 1;
+            const index_texture_coordinate   = self.texture_coordinate - 1;
+            const index_normal               = self.normal - 1;
+
+            if (index_vertex >= obj_item_list.vertices.len) {
+               return error.InvalidVertexIndex;
+            }
+            if (index_texture_coordinate >= obj_item_list.texture_coordinates.len) {
+               return error.InvalidTextureCoordinateIndex;
+            }
+            if (index_normal >= obj_item_list.normals.len) {
+               return error.InvalidNormalIndex;
+            }
+
+            const vertex               = obj_item_list.vertices[index_vertex];
+            const texture_coordinate   = obj_item_list.texture_coordinates[index_texture_coordinate];
+            const normal               = obj_item_list.normals[index_normal];
+
+            return .{
+               .color      = .{.channels = .{
+                  .r = 1.0,
+                  .g = 1.0,
+                  .b = 1.0,
+                  .a = 1.0,
+               }},
+               .sample     = .{.uv = .{
+                  .u = texture_coordinate.xyz.x,
+                  .v = texture_coordinate.xyz.y,
+               }},
+               .position   = .{.xyz = .{
+                  .x = vertex.xyzw.x,
+                  .y = vertex.xyzw.y,
+                  .z = vertex.xyzw.z,
+               }},
+               .normal     = normal.normalize(),
+            };
+         }
       };
    };
 };
