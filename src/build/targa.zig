@@ -362,11 +362,26 @@ fn _readPixelDataUncompressed(reader : * _BufferedReader.Reader, buffer : [] u8)
 }
 
 fn _writeDecodedImageToZigSource(writer : * _BufferedWriter.Writer, data : [] const u8, width : u32, height : u32) anyerror!void {
-   _ = writer;
-   _ = data;
-   _ = width;
-   _ = height;
-   return error.NotImplemented;
+   const INDENT            = "   ";
+   const IDENTIFIER_DATA   = "data";
+   const IDENTIFIER_WIDTH  = "width";
+   const IDENTIFIER_HEIGHT = "height";
+
+   try writer.writeAll(
+      INDENT ++ "pub const " ++ IDENTIFIER_DATA ++ " : " ++ @typeName(@TypeOf(data)) ++ " = &.{"
+   );
+
+   for (data) |byte| {
+      try writer.print("{},", .{byte});
+   }
+
+   try writer.print(
+      "}};\n" ++
+      INDENT ++ "pub const " ++ IDENTIFIER_WIDTH ++ " : " ++ @typeName(@TypeOf(width)) ++ " = {};\n" ++
+      INDENT ++ "pub const " ++ IDENTIFIER_HEIGHT ++ " : " ++ @typeName(@TypeOf(height)) ++ " = {};"
+   , .{width, height});
+
+   return;
 }
 
 const TARGA_ENDIANESS = std.builtin.Endian.Little;
