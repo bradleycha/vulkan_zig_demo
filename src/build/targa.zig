@@ -516,7 +516,6 @@ const TargaHeader = struct {
 
       pub const PixelDepth = enum(u8) {
          // TODO: Support more pixel formats
-         bgr888   = 24,
          bgra8888 = 32,
       };
 
