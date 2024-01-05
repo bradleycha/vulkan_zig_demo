@@ -362,7 +362,6 @@ fn _readPixelDataUncompressed(reader : * _BufferedReader.Reader, buffer : [] u8)
 fn _convertOffsetColorspaceBgr888(buffer_src : [] const align(MAX_PIXEL_BUFFER_ALIGN) u8, buffer_dst : [] align(MAX_PIXEL_BUFFER_ALIGN) u8, header : * const TargaHeader) void {
    return _convertOffsetColorspaceGeneric(
       3,
-      4,
       _convertPixelFromBgr888,
       buffer_src,
       buffer_dst,
@@ -373,7 +372,6 @@ fn _convertOffsetColorspaceBgr888(buffer_src : [] const align(MAX_PIXEL_BUFFER_A
 fn _convertOffsetColorspaceBgra8888(buffer_src : [] const align(MAX_PIXEL_BUFFER_ALIGN) u8, buffer_dst : [] align(MAX_PIXEL_BUFFER_ALIGN) u8, header : * const TargaHeader) void {
    return _convertOffsetColorspaceGeneric(
       4,
-      4,
       _convertPixelFromBgra8888,
       buffer_src,
       buffer_dst,
@@ -381,28 +379,68 @@ fn _convertOffsetColorspaceBgra8888(buffer_src : [] const align(MAX_PIXEL_BUFFER
    );
 }
 
-fn _convertPixelFromBgr888(pixel : @Vector(3, u8)) @Vector(4, u8) {
+fn _convertPixelFromBgr888(pixel : @Vector(3, u8)) @Vector(BYTES_PER_PIXEL_RGBA8888, u8) {
    return .{pixel[2], pixel[1], pixel[0], 0};
 }
 
-fn _convertPixelFromBgra8888(pixel : @Vector(4, u8)) @Vector(4, u8) {
+fn _convertPixelFromBgra8888(pixel : @Vector(4, u8)) @Vector(BYTES_PER_PIXEL_RGBA8888, u8) {
    return .{pixel[2], pixel[1], pixel[0], pixel[3]};
 }
 
 fn _convertOffsetColorspaceGeneric(
    comptime VEC_COMPONENTS_SRC   : comptime_int,
-   comptime VEC_COMPONENTS_DST   : comptime_int,
-   comptime PFN_CONVERT          : * const fn (@Vector(VEC_COMPONENTS_SRC, u8)) @Vector(VEC_COMPONENTS_DST, u8),
+   comptime PFN_CONVERT          : * const fn (@Vector(VEC_COMPONENTS_SRC, u8)) @Vector(BYTES_PER_PIXEL_RGBA8888, u8),
    buffer_src                    : [] const align(@alignOf(@Vector(VEC_COMPONENTS_SRC, u8))) u8,
-   buffer_dst                    : [] align(@alignOf(@Vector(VEC_COMPONENTS_DST, u8))) u8,
+   buffer_dst                    : [] align(@alignOf(@Vector(BYTES_PER_PIXEL_RGBA8888, u8))) u8,
    header                        : * const TargaHeader,
 ) void {
-   // TODO: Implement
-   _ = PFN_CONVERT;
-   _ = buffer_src;
-   _ = buffer_dst;
-   _ = header;
-   unreachable;
+   // We do this funky type-casting stuff so we can use vector extensions to
+   // hopefully speed up pixel conversion, since this could be a serious bottleneck
+   // for very large images.  Every small performance gain here is worth it.
+
+   const VEC_SRC = @Vector(VEC_COMPONENTS_SRC, u8);
+   const VEC_DST = @Vector(BYTES_PER_PIXEL_RGBA8888, u8);
+
+   // @sizeOf(...) will align the vector lengths, so we instead use the component
+   // counts for calculating pointer lengths to prevent this from ruining our life.
+   const buffer_src_vec_ptr   = @as([*] const VEC_SRC, @ptrCast(buffer_src.ptr));
+   const buffer_dst_vec_ptr   = @as([*] VEC_DST, @ptrCast(buffer_dst.ptr));
+   const buffer_src_vec       = buffer_src_vec_ptr[0..buffer_src.len / VEC_COMPONENTS_SRC];
+   const buffer_dst_vec       = buffer_dst_vec_ptr[0..buffer_dst.len / BYTES_PER_PIXEL_RGBA8888];
+
+   // Pixel count of 0 is checked previously, no need for safety checks
+   const pixels         = header.image_spec.pixels();
+   const x_offset_mod   = @mod(header.image_spec.x_offset, header.image_spec.width);
+   const y_offset_mod   = @mod(header.image_spec.y_offset, header.image_spec.height);
+
+   var index_src : usize = 0;
+   var index_dst : usize = (y_offset_mod * header.image_spec.height) + x_offset_mod;
+   for (0..pixels) |_| {
+      // We can do this instead of @mod(...) in the loop since the above code
+      // ensures we will always be at most a factor of 1 out of range.  This
+      // allows us to avoid a very costly div instruction on most architectures.
+      // Hopefully the compiler will use conditional move instructions here.
+      // I don't think there's a builtin to do this more explicitly.
+      const subtract = blk: {
+         switch (index_dst >= pixels) {
+            true  => break :blk pixels,
+            false => break :blk 0,
+         }
+      };
+
+      index_dst -= subtract;
+
+      const src = buffer_src_vec[index_src];
+
+      const transformed = PFN_CONVERT(src);
+
+      buffer_dst_vec[index_dst] = transformed;
+
+      index_src += 1;
+      index_dst += 1;
+   }
+
+   return;
 }
 
 fn _writeDecodedImageToZigSource(writer : * _BufferedWriter.Writer, data : [] const u8, width : u32, height : u32) anyerror!void {
