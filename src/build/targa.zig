@@ -257,19 +257,12 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
    // buffering on top of that.
    try input.skipBytes(header.image_id_length, .{.buf_size = 1});
 
-   // Read in the raw pixel data
    const pixels_raw = try _readPixelDataAlloc(b.allocator, input, &header); 
    defer b.allocator.free(pixels_raw);
 
-   // Convert from the current pixel format to RGBA8888 and apply image offsets.
-   const pixels_final = try b.allocator.alloc(u8, header.image_spec.pixels() * BYTES_PER_PIXEL_RGBA8888);
+   const pixels_final = try _convertOffsetColorspace(b.allocator, pixels_raw, &header);
    defer b.allocator.free(pixels_final);
-   switch (header.image_spec.pixel_depth) {
-      .bgr888     => _convertOffsetColorspaceBgr888(pixels_raw, pixels_final, &header),
-      .bgra8888   => _convertOffsetColorspaceBgra8888(pixels_raw, pixels_final, &header),
-   }
 
-   // Finally, generate zig source code which embeds the decoded image data.
    try _writeDecodedImageToZigSource(output, pixels_final, header.image_spec.width, header.image_spec.height);
 
    return;
@@ -360,6 +353,18 @@ fn _readPixelDataUncompressed(reader : * _BufferedReader.Reader, buffer : [] u8)
    }
 
    return;
+}
+
+fn _convertOffsetColorspace(allocator : std.mem.Allocator, pixels_raw : [] const u8, header : * const TargaHeader) void {
+   const pixels_final = try allocator.alloc(u8, header.image_spec.pixels() * BYTES_PER_PIXEL_RGBA8888);
+   errdefer allocator.free(pixels_final);
+
+   switch (header.image_spec.pixel_depth) {
+      .bgr888     => _convertOffsetColorspaceBgr888(pixels_raw, pixels_final, &header),
+      .bgra8888   => _convertOffsetColorspaceBgra8888(pixels_raw, pixels_final, &header),
+   }
+
+   return pixels_final;
 }
 
 fn _convertOffsetColorspaceBgr888(buffer_src : [] const u8, buffer_dst : [] u8, header : * const TargaHeader) void {
