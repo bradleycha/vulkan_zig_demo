@@ -22,6 +22,12 @@ const TEXTURE_PATH = struct {
    pub const tile    = "res/textures/tile.tga";
 };
 
+const TEXTURE_FORMAT = struct {
+   pub const grass   = .targa;
+   pub const rock    = .targa;
+   pub const tile    = .targa;
+};
+
 const TEXTURE_IDENTIFIER = struct {
    pub const grass   = "grass";
    pub const rock    = "rock";
@@ -94,21 +100,30 @@ pub fn build(b : * std.Build) void {
       .entrypoint    = SHADER_MAIN.fragment,
    });
 
-   const texture_grass  = bd.targa.TargaParseStep.create(b, .{.path = TEXTURE_PATH.grass});
-   const texture_rock   = bd.targa.TargaParseStep.create(b, .{.path = TEXTURE_PATH.rock});
-   const texture_tile   = bd.targa.TargaParseStep.create(b, .{.path = TEXTURE_PATH.tile});
+   const texture_grass  = bd.image.ImageParseStep.create(b, &.{
+      .path    = .{.path = TEXTURE_PATH.grass},
+      .format  = TEXTURE_FORMAT.grass,
+   });
+   const texture_rock   = bd.image.ImageParseStep.create(b, &.{
+      .path    = .{.path = TEXTURE_PATH.rock},
+      .format  = TEXTURE_FORMAT.rock,
+   });
+   const texture_tile   = bd.image.ImageParseStep.create(b, &.{
+      .path    = .{.path = TEXTURE_PATH.tile},
+      .format  = TEXTURE_FORMAT.tile,
+   });
 
-   const targa_bundle = bd.targa.TargaBundle.create(b);
+   const image_bundle = bd.image.ImageBundle.create(b);
 
-   targa_bundle.addTarga(.{
+   image_bundle.addImage(.{
       .parse_step = texture_grass,
       .identifier = TEXTURE_IDENTIFIER.grass,
    });
-   targa_bundle.addTarga(.{
+   image_bundle.addImage(.{
       .parse_step = texture_rock,
       .identifier = TEXTURE_IDENTIFIER.rock,
    });
-   targa_bundle.addTarga(.{
+   image_bundle.addImage(.{
       .parse_step = texture_tile,
       .identifier = TEXTURE_IDENTIFIER.tile,
    });
@@ -117,7 +132,7 @@ pub fn build(b : * std.Build) void {
 
    const module_shaders = shader_bundle.createModule();
 
-   const module_textures = targa_bundle.createModule();
+   const module_textures = image_bundle.createModule();
 
    const module_cimports = b.addModule(MODULE_NAME.cimports, .{
       .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.cimports},
