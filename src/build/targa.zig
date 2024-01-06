@@ -355,13 +355,13 @@ fn _readPixelDataUncompressed(reader : * _BufferedReader.Reader, buffer : [] u8)
    return;
 }
 
-fn _convertOffsetColorspace(allocator : std.mem.Allocator, pixels_raw : [] const u8, header : * const TargaHeader) void {
+fn _convertOffsetColorspace(allocator : std.mem.Allocator, pixels_raw : [] const u8, header : * const TargaHeader) anyerror![] const u8 {
    const pixels_final = try allocator.alloc(u8, header.image_spec.pixels() * BYTES_PER_PIXEL_RGBA8888);
    errdefer allocator.free(pixels_final);
 
    switch (header.image_spec.pixel_depth) {
-      .bgr888     => _convertOffsetColorspaceBgr888(pixels_raw, pixels_final, &header),
-      .bgra8888   => _convertOffsetColorspaceBgra8888(pixels_raw, pixels_final, &header),
+      .bgr888     => _convertOffsetColorspaceBgr888(pixels_raw, pixels_final, header),
+      .bgra8888   => _convertOffsetColorspaceBgra8888(pixels_raw, pixels_final, header),
    }
 
    return pixels_final;
