@@ -36,14 +36,14 @@ const TEXTURE_IDENTIFIER = struct {
 
 const MODULE_NAME = struct {
    pub const options    = "options";
-   pub const shaders    = "shaders";
-   pub const textures   = "textures";
    pub const cimports   = "cimports";
    pub const math       = "math";
    pub const structures = "structures";
    pub const input      = "input";
    pub const present    = "present";
    pub const graphics   = "graphics";
+   pub const shaders    = "shaders";
+   pub const textures   = "textures";
    pub const resources  = "resources";
 };
 
@@ -74,65 +74,7 @@ pub fn build(b : * std.Build) void {
    const options = b.addOptions();
    options.addOption(bd.present.PresentBackend, "present_backend", opt_present_backend);
 
-   const shader_vertex = bd.shader.ShaderCompileStep.create(b, &.{
-      .input_file = .{.path = SHADER_SOURCE_PATH.vertex},
-      .optimize   = opt_optimize_mode,
-      .stage      = .vertex,
-   });
-
-   const shader_fragment = bd.shader.ShaderCompileStep.create(b, &.{
-      .input_file = .{.path = SHADER_SOURCE_PATH.fragment},
-      .optimize   = opt_optimize_mode,
-      .stage      = .fragment,
-   });
-
-   const shader_bundle = bd.shader.ShaderBundle.create(b);
-
-   shader_bundle.addShader(.{
-      .compile_step  = shader_vertex,
-      .identifier    = SHADER_IDENTIFIER.vertex,
-      .entrypoint    = SHADER_MAIN.vertex,
-   });
-
-   shader_bundle.addShader(.{
-      .compile_step  = shader_fragment,
-      .identifier    = SHADER_IDENTIFIER.fragment,
-      .entrypoint    = SHADER_MAIN.fragment,
-   });
-
-   const texture_grass  = bd.image.ImageParseStep.create(b, &.{
-      .path    = .{.path = TEXTURE_PATH.grass},
-      .format  = TEXTURE_FORMAT.grass,
-   });
-   const texture_rock   = bd.image.ImageParseStep.create(b, &.{
-      .path    = .{.path = TEXTURE_PATH.rock},
-      .format  = TEXTURE_FORMAT.rock,
-   });
-   const texture_tile   = bd.image.ImageParseStep.create(b, &.{
-      .path    = .{.path = TEXTURE_PATH.tile},
-      .format  = TEXTURE_FORMAT.tile,
-   });
-
-   const image_bundle = bd.image.ImageBundle.create(b);
-
-   image_bundle.addImage(.{
-      .parse_step = texture_grass,
-      .identifier = TEXTURE_IDENTIFIER.grass,
-   });
-   image_bundle.addImage(.{
-      .parse_step = texture_rock,
-      .identifier = TEXTURE_IDENTIFIER.rock,
-   });
-   image_bundle.addImage(.{
-      .parse_step = texture_tile,
-      .identifier = TEXTURE_IDENTIFIER.tile,
-   });
-
    const module_options = options.createModule();
-
-   const module_shaders = shader_bundle.createModule();
-
-   const module_textures = image_bundle.createModule();
 
    const module_cimports = b.addModule(MODULE_NAME.cimports, .{
       .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.cimports},
@@ -249,6 +191,64 @@ pub fn build(b : * std.Build) void {
         },
       },
    });
+
+   const shader_vertex = bd.shader.ShaderCompileStep.create(b, &.{
+      .input_file = .{.path = SHADER_SOURCE_PATH.vertex},
+      .optimize   = opt_optimize_mode,
+      .stage      = .vertex,
+   });
+
+   const shader_fragment = bd.shader.ShaderCompileStep.create(b, &.{
+      .input_file = .{.path = SHADER_SOURCE_PATH.fragment},
+      .optimize   = opt_optimize_mode,
+      .stage      = .fragment,
+   });
+
+   const shader_bundle = bd.shader.ShaderBundle.create(b);
+
+   shader_bundle.addShader(.{
+      .compile_step  = shader_vertex,
+      .identifier    = SHADER_IDENTIFIER.vertex,
+      .entrypoint    = SHADER_MAIN.vertex,
+   });
+
+   shader_bundle.addShader(.{
+      .compile_step  = shader_fragment,
+      .identifier    = SHADER_IDENTIFIER.fragment,
+      .entrypoint    = SHADER_MAIN.fragment,
+   });
+
+   const texture_grass  = bd.image.ImageParseStep.create(b, &.{
+      .path    = .{.path = TEXTURE_PATH.grass},
+      .format  = TEXTURE_FORMAT.grass,
+   });
+   const texture_rock   = bd.image.ImageParseStep.create(b, &.{
+      .path    = .{.path = TEXTURE_PATH.rock},
+      .format  = TEXTURE_FORMAT.rock,
+   });
+   const texture_tile   = bd.image.ImageParseStep.create(b, &.{
+      .path    = .{.path = TEXTURE_PATH.tile},
+      .format  = TEXTURE_FORMAT.tile,
+   });
+
+   const image_bundle = bd.image.ImageBundle.create(b);
+
+   image_bundle.addImage(.{
+      .parse_step = texture_grass,
+      .identifier = TEXTURE_IDENTIFIER.grass,
+   });
+   image_bundle.addImage(.{
+      .parse_step = texture_rock,
+      .identifier = TEXTURE_IDENTIFIER.rock,
+   });
+   image_bundle.addImage(.{
+      .parse_step = texture_tile,
+      .identifier = TEXTURE_IDENTIFIER.tile,
+   });
+
+   const module_shaders = shader_bundle.createModule(module_graphics);
+
+   const module_textures = image_bundle.createModule(module_graphics);
 
    const module_resources = b.addModule(MODULE_NAME.resources, .{
       .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.resources},

@@ -119,6 +119,8 @@ pub const ImageBundle = struct {
    contents       : std.ArrayList(Entry),
    generated_file : std.Build.GeneratedFile,
 
+   const MODULE_NAME_GRAPHICS = "graphics";
+
    pub const Entry = struct {
       parse_step  : * ImageParseStep,
       identifier  : [] const u8,
@@ -160,10 +162,15 @@ pub const ImageBundle = struct {
       return .{.generated = &self.generated_file};
    }
 
-   pub fn createModule(self : * @This()) * std.Build.Module {
+   pub fn createModule(self : * @This(), module_graphics : * std.Build.Module) * std.Build.Module {
       return self.step.owner.createModule(.{
          .source_file   = self.getOutput(),
-         .dependencies  = &.{},
+         .dependencies  = &.{
+            .{
+               .name    = MODULE_NAME_GRAPHICS,
+               .module  = module_graphics,
+            },
+         },
       });
    }
 
@@ -219,6 +226,8 @@ pub const ImageBundle = struct {
       var output_writer_buffer   = _BufferedWriter{.unbuffered_writer = output_file.writer()};
       var output_writer          = output_writer_buffer.writer();
 
+      try output_writer.writeAll("const graphics = @import(\"" ++ MODULE_NAME_GRAPHICS ++ "\");\n\n");
+
       for (image_entries) |targa_entry| {
          try _concatenateAndNamespaceParsedImage(b, &output_writer, &targa_entry);
       }
@@ -240,7 +249,7 @@ pub const ImageBundle = struct {
       var input_reader_buffer = _BufferedReader{.unbuffered_reader = input_file.reader()};
       var input_reader        = input_reader_buffer.reader();
 
-      try output_writer.print("pub const {s} = struct {{\n", .{image_entry.identifier});
+      try output_writer.print("pub const {s} = graphics.ImageSource{{\n", .{image_entry.identifier});
 
       // This may look bad, but since we are using buffered I/O, this is
       // actually good since we're not loading the entire file into memory

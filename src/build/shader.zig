@@ -129,10 +129,16 @@ pub const ShaderBundle = struct {
    contents       : std.ArrayList(Entry),
    generated_file : std.Build.GeneratedFile,
 
+   const MODULE_NAME_GRAPHICS = "graphics";
+
    pub const Entry = struct {
       compile_step   : * ShaderCompileStep,
       identifier     : [] const u8,
       entrypoint     : [] const u8,
+   };
+
+   pub const CreateInfo = struct {
+      module_graphics   : * std.Build.Module,
    };
 
    pub fn create(owner : * std.Build) * @This() {
@@ -173,10 +179,15 @@ pub const ShaderBundle = struct {
       return .{.generated = &self.generated_file};
    }
 
-   pub fn createModule(self : * @This()) * std.Build.Module {
+   pub fn createModule(self : * @This(), module_graphics : * std.Build.Module) * std.Build.Module {
       return self.step.owner.createModule(.{
          .source_file   = self.getOutput(),
-         .dependencies  = &.{},
+         .dependencies  = &.{
+            .{
+               .name    = MODULE_NAME_GRAPHICS,
+               .module  = module_graphics,
+            },
+         },
       });
    }
 
@@ -238,6 +249,8 @@ pub const ShaderBundle = struct {
       var output_writer_buffer   = _BufferedWriter{.unbuffered_writer = output_file.writer()};
       var output_writer          = output_writer_buffer.writer();
 
+      try output_writer.writeAll("const graphics = @import(\"" ++ MODULE_NAME_GRAPHICS ++ "\");\n\n");
+
       for (shader_entries) |shader_entry| {
          try embedShaderCode(b, &output_writer, &shader_entry);
       }
@@ -250,9 +263,7 @@ pub const ShaderBundle = struct {
    }
 
    fn embedShaderCode(b : * std.Build, output_writer : * _BufferedWriter.Writer, shader_entry : * const Entry) anyerror!void {
-      const INDENT                  = "   ";
-      const IDENTIFIER_BYTECODE     = "bytecode";
-      const IDENTIFIER_ENTRYPOINT   = "entrypoint";
+      const INDENT = "   ";
 
       const input_path = shader_entry.compile_step.getOutput().getPath(b);
       const input_file = try std.fs.openFileAbsolute(input_path, .{.mode = .read_only});
@@ -260,9 +271,9 @@ pub const ShaderBundle = struct {
       var input_reader_buffer = _BufferedReader{.unbuffered_reader = input_file.reader()};
       var input_reader        = input_reader_buffer.reader();
 
-      try output_writer.print("pub const {s} = struct {{\n", .{shader_entry.identifier});
+      try output_writer.print("pub const {s} = graphics.ShaderSource{{\n", .{shader_entry.identifier});
 
-      try output_writer.writeAll(INDENT ++ "pub const " ++ IDENTIFIER_BYTECODE ++ " align(@alignOf(u32)) = [_] u8 {");
+      try output_writer.writeAll(INDENT ++ ".bytecode = blk: {const data align(@alignOf(u32)) = [_] u8 {");
 
       while (input_reader.readByte()) |byte| {
          try output_writer.print("{},", .{byte});
@@ -271,7 +282,7 @@ pub const ShaderBundle = struct {
          else              => return err,
       }
 
-      try output_writer.print("}};\n" ++ INDENT ++ "pub const " ++ IDENTIFIER_ENTRYPOINT ++ " = [_:0] u8 {{}} ++ \"{s}\";\n}};\n\n", .{shader_entry.entrypoint});
+      try output_writer.print("}}; break :blk &data;}},\n" ++ INDENT ++ ".entrypoint = \"{s}\",\n}};\n\n", .{shader_entry.entrypoint});
 
       return;
    }

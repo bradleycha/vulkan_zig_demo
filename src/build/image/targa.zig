@@ -359,23 +359,19 @@ fn _convertOffsetColorspaceGeneric(
 }
 
 fn _writeDecodedImageToZigSource(writer : * _BufferedWriter.Writer, data : [] const u8, width : u32, height : u32) anyerror!void {
-   const INDENT            = "   ";
-   const IDENTIFIER_DATA   = "data";
-   const IDENTIFIER_WIDTH  = "width";
-   const IDENTIFIER_HEIGHT = "height";
+   const INDENT = "   ";
 
-   try writer.writeAll(
-      INDENT ++ "pub const " ++ IDENTIFIER_DATA ++ " : " ++ @typeName(@TypeOf(data)) ++ " = &.{"
-   );
+   try writer.writeAll(INDENT ++ ".data = &.{");
 
    for (data) |byte| {
       try writer.print("{},", .{byte});
    }
 
    try writer.print(
-      "}};\n" ++
-      INDENT ++ "pub const " ++ IDENTIFIER_WIDTH ++ " : " ++ @typeName(@TypeOf(width)) ++ " = {};\n" ++
-      INDENT ++ "pub const " ++ IDENTIFIER_HEIGHT ++ " : " ++ @typeName(@TypeOf(height)) ++ " = {};"
+      "}},\n" ++
+      INDENT ++ ".format = .rgba8888,\n" ++
+      INDENT ++ ".width = {},\n" ++
+      INDENT ++ ".height = {},"
    , .{width, height});
 
    return;
