@@ -407,11 +407,14 @@ fn _readPixelDataColormapped(reader : * _BufferedReader.Reader, buffer : [] u8, 
 }
 
 fn _readPixelDataCompressed(reader : * _BufferedReader.Reader, buffer : [] u8, header : * const TargaHeader) anyerror!void {
-   const bytes_per_pixel   = header.image_spec.bytesPerPixel();
-   const pixels_expected   = header.image_spec.pixels();
+   const bytes_per_packet  = header.image_spec.bytesPerPixel();
+   const expected_packets  = header.image_spec.pixels();
+   return _decodeCompressedPackets(reader, buffer, bytes_per_packet, expected_packets);
+}
 
-   var pixels_decoded : usize = 0;
-   while (pixels_decoded < pixels_expected) {
+fn _decodeCompressedPackets(reader : * _BufferedReader.Reader, buffer : [] u8, bytes_per_packet : usize, packets_expected : usize) anyerror!void {
+   var packets_decoded : usize = 0;
+   while (packets_decoded < packets_expected) {
       const count_packet = try reader.readByte();
 
       // The MSB states whether this signifies a single pixel being repeated
@@ -421,25 +424,25 @@ fn _readPixelDataCompressed(reader : * _BufferedReader.Reader, buffer : [] u8, h
       const is_compressed     = count_packet & COMPRESSION_BIT != 0;
       const count             = (count_packet & ~COMPRESSION_BIT) + 1;
 
-      const buffer_decode = buffer[pixels_decoded * bytes_per_pixel..][0..count * bytes_per_pixel];
+      const buffer_decode = buffer[packets_decoded * bytes_per_packet..][0..count * bytes_per_packet];
 
       switch (is_compressed) {
-         true  => try _decodePixelCompressed(reader, buffer_decode, count, bytes_per_pixel),
-         false => try _decodePixelUncompressed(reader, buffer_decode, count, bytes_per_pixel),
+         true  => try _decodePacketCompressed(reader, buffer_decode, count, bytes_per_packet),
+         false => try _decodePacketUncompressed(reader, buffer_decode, count, bytes_per_packet),
       }
 
-      pixels_decoded += count;
+      packets_decoded += count;
    }
 
-   if (pixels_decoded != pixels_expected) {
+   if (packets_decoded != packets_expected) {
       return error.ImageDataCorrupt;
    }
 
    return;
 }
 
-fn _decodePixelCompressed(reader : * _BufferedReader.Reader, buffer : [] u8, count : u8, bytes_per_pixel : u5) anyerror!void {
-   const bytes_to_read = bytes_per_pixel;
+fn _decodePacketCompressed(reader : * _BufferedReader.Reader, buffer : [] u8, count : u8, bytes_per_packet : usize) anyerror!void {
+   const bytes_to_read = bytes_per_packet;
 
    const read_count = try reader.readAtLeast(buffer[0..bytes_to_read], bytes_to_read);
    if (read_count != bytes_to_read) {
@@ -447,14 +450,14 @@ fn _decodePixelCompressed(reader : * _BufferedReader.Reader, buffer : [] u8, cou
    }
 
    for (1..count) |i| {
-      @memcpy(buffer[bytes_per_pixel * i..][0..bytes_per_pixel], buffer[0..bytes_per_pixel]);
+      @memcpy(buffer[bytes_per_packet * i..][0..bytes_per_packet], buffer[0..bytes_per_packet]);
    }
 
    return;
 }
 
-fn _decodePixelUncompressed(reader : * _BufferedReader.Reader, buffer : [] u8, count : u8, bytes_per_pixel : u5) anyerror!void {
-   const bytes_to_read = count * bytes_per_pixel;
+fn _decodePacketUncompressed(reader : * _BufferedReader.Reader, buffer : [] u8, count : u8, bytes_per_packet : usize) anyerror!void {
+   const bytes_to_read = count * bytes_per_packet;
 
    const read_count = try reader.readAtLeast(buffer[0..bytes_to_read], bytes_to_read);
    if (read_count != bytes_to_read) {
