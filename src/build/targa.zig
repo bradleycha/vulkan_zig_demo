@@ -273,18 +273,9 @@ fn _readPixelDataAlloc(allocator : std.mem.Allocator, reader : * _BufferedReader
    errdefer allocator.free(pixels);
 
    const pfn_read_pixel_data : * const fn(* _BufferedReader.Reader, [] u8, * const TargaHeader) anyerror!void = blk: {
-      switch (header.image_type) {
-         .none
-            => unreachable,   // checked previously
-
-         .colormapped, .colormapped_compressed
-            => break :blk _readPixelDataColorMapped,
-
-         .monochrome, .monochrome_compressed
-            => break :blk _readPixelDataMonochrome,
-
-         .truecolor, .truecolor_compressed
-            => break :blk _readPixelDataTruecolor,
+      switch (header.color_map_type) {
+         .none          => break :blk _readPixelDataUnmapped,
+         .colormapped   => break :blk _readPixelDataColormapped,
       }
    };
 
@@ -293,23 +284,7 @@ fn _readPixelDataAlloc(allocator : std.mem.Allocator, reader : * _BufferedReader
    return pixels;
 }
 
-fn _readPixelDataColorMapped(reader : * _BufferedReader.Reader, buffer : [] u8, header : * const TargaHeader) anyerror!void {
-   // TODO: Implement
-   _ = reader;
-   _ = buffer;
-   _ = header;
-   return error.ColorMappingNotImplemented;
-}
-
-fn _readPixelDataMonochrome(reader : * _BufferedReader.Reader, buffer : [] u8, header : * const TargaHeader) anyerror!void {
-   // TODO: Implement
-   _ = reader;
-   _ = buffer;
-   _ = header;
-   return error.MonochromeNotImplemented;
-}
-
-fn _readPixelDataTruecolor(reader : * _BufferedReader.Reader, buffer : [] u8, header : * const TargaHeader) anyerror!void {
+fn _readPixelDataUnmapped(reader : * _BufferedReader.Reader, buffer : [] u8, header : * const TargaHeader) anyerror!void {
    // Since our I/O is already buffered, we don't need additional buffering on
    // top.  This is why our buffer size is 1.
    try reader.skipBytes(header.color_map_spec.bytes(), .{.buf_size = 1});
@@ -320,6 +295,14 @@ fn _readPixelDataTruecolor(reader : * _BufferedReader.Reader, buffer : [] u8, he
    }
    
    return;
+}
+
+fn _readPixelDataColormapped(reader : * _BufferedReader.Reader, buffer : [] u8, header : * const TargaHeader) anyerror!void {
+   // TODO: Implement
+   _ = reader;
+   _ = buffer;
+   _ = header;
+   return error.ColorMappingNotImplemented;
 }
 
 fn _readPixelDataCompressed(reader : * _BufferedReader.Reader, buffer : [] u8, header : * const TargaHeader) anyerror!void {
@@ -395,6 +378,7 @@ fn _convertOffsetColorspace(allocator : std.mem.Allocator, pixels_raw : [] const
 
    const pfn_convert : * const fn ([] const u8, [] u8, * const TargaHeader) void = blk: {
       switch (header.image_spec.pixel_depth) {
+         .grayscale8 => break :blk _convertOffsetColorspaceGrayscale8,
          .bgr888     => break :blk _convertOffsetColorspaceBgr888,
          .bgra8888   => break :blk _convertOffsetColorspaceBgra8888,
       }
@@ -403,6 +387,20 @@ fn _convertOffsetColorspace(allocator : std.mem.Allocator, pixels_raw : [] const
    pfn_convert(pixels_raw, pixels_final, header);
 
    return pixels_final;
+}
+
+fn _convertOffsetColorspaceGrayscale8(buffer_src : [] const u8, buffer_dst : [] u8, header : * const TargaHeader) void {
+   return _convertOffsetColorspaceGeneric(
+      1,
+      _convertPixelFromGrayscale8,
+      buffer_src,
+      buffer_dst,
+      header,
+   );
+}
+
+fn _convertPixelFromGrayscale8(pixel : @Vector(1, u8)) @Vector(BYTES_PER_PIXEL_RGBA8888, u8) {
+   return .{pixel[0], pixel[0], pixel[0], std.math.maxInt(u8)};
 }
 
 fn _convertOffsetColorspaceBgr888(buffer_src : [] const u8, buffer_dst : [] u8, header : * const TargaHeader) void {
@@ -557,9 +555,9 @@ const TargaHeader = struct {
       descriptor  : u8,
 
       pub const PixelDepth = enum(u8) {
-         // TODO: Support more pixel formats
-         bgr888   = 24,
-         bgra8888 = 32,
+         grayscale8  = 8,
+         bgr888      = 24,
+         bgra8888    = 32,
       };
 
       pub fn bytesPerPixel(self : * const @This()) u5 {
