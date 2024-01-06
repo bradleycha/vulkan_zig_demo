@@ -413,8 +413,14 @@ fn _convertOffsetColorspaceGeneric(
       // I don't think there's a builtin to do this more explicitly.
       const subtract = blk: {
          switch (index_dst >= pixels_mul) {
-            true  => break :blk pixels_mul,
-            false => break :blk 0,
+            true  => {
+               @setCold(true);
+               break :blk pixels_mul;
+            },
+            false => {
+               @setCold(false);
+               break :blk 0;
+            },
          }
       };
 
