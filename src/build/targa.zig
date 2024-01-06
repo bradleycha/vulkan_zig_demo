@@ -268,6 +268,107 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
    return;
 }
 
+const TargaHeader = struct {
+   image_id_length   : u8,
+   color_map_type    : ColorMapType,
+   image_type        : ImageType,
+   color_map_spec    : ColorMapSpecification,
+   image_spec        : ImageSpecification,
+
+   pub const ColorMapType = enum(u8) {
+      none        = 0,
+      colormapped = 1,
+   };
+
+   pub const ImageType = enum(u8) {
+      none                    = 0,
+      colormapped             = 1,
+      truecolor               = 2,
+      monochrome              = 3,
+      colormapped_compressed  = 9,
+      truecolor_compressed    = 10,
+      monochrome_compressed   = 11,
+
+      pub fn isCompressed(self : @This()) bool {
+         return @intFromEnum(self) >= 9;
+      }
+   };
+
+   pub const ColorMapSpecification = struct {
+      start    : u16,
+      length   : u16,
+      depth    : u8,
+
+      pub fn bytesPerEntry(self : * const @This()) u5 {
+         return @intCast(std.math.divCeil(u8, self.depth, 8) catch unreachable);
+      }
+
+      pub fn bytes(self : * const @This()) u24 {
+         return @as(u24, self.length) * @as(u24, self.bytesPerEntry());
+      }
+   };
+
+   pub const ImageSpecification = struct {
+      x_offset    : u16,
+      y_offset    : u16,
+      width       : u16,
+      height      : u16,
+      pixel_depth : u8,
+      descriptor  : u8,
+
+      pub fn bytesPerPixel(self : * const @This()) u5 {
+         return @intCast(std.math.divCeil(u8, self.pixel_depth, 8) catch unreachable);
+      }
+
+      pub fn pixels(self : * const @This()) u32 {
+         return @as(u32, self.width) * @as(u32, self.height);
+      }
+
+      pub fn bytes(self : * const @This()) u37 {
+         return @as(u37, self.pixels()) * @as(u37, self.bytesPerPixel());
+      }
+   };
+
+   pub fn parse(reader : * _BufferedReader.Reader) anyerror!@This() {
+      const image_id_length            = try reader.readInt(u8,   TARGA_ENDIANESS);
+      const color_map_type_tag         = try reader.readInt(u8,   TARGA_ENDIANESS);
+      const image_type_tag             = try reader.readInt(u8,   TARGA_ENDIANESS);
+      const color_map_spec_start       = try reader.readInt(u16,  TARGA_ENDIANESS);
+      const color_map_spec_length      = try reader.readInt(u16,  TARGA_ENDIANESS);
+      const color_map_spec_depth       = try reader.readInt(u8,   TARGA_ENDIANESS);
+      const image_spec_x_offset        = try reader.readInt(u16,  TARGA_ENDIANESS);
+      const image_spec_y_offset        = try reader.readInt(u16,  TARGA_ENDIANESS);
+      const image_spec_width           = try reader.readInt(u16,  TARGA_ENDIANESS);
+      const image_spec_height          = try reader.readInt(u16,  TARGA_ENDIANESS);
+      const image_spec_pixel_depth     = try reader.readInt(u8,   TARGA_ENDIANESS);
+      const image_spec_descriptor      = try reader.readInt(u8,   TARGA_ENDIANESS);
+
+      const color_map_type = std.meta.intToEnum(@This().ColorMapType, color_map_type_tag)                            catch return error.UnsupportedColorMapType;
+      const image_type     = std.meta.intToEnum(@This().ImageType, image_type_tag)                                   catch return error.UnsupportedImageType;
+
+      const header = @This(){
+         .image_id_length  = image_id_length,
+         .color_map_type   = color_map_type,
+         .image_type       = image_type,
+         .color_map_spec   = .{
+            .start         = color_map_spec_start,
+            .length        = color_map_spec_length,
+            .depth         = color_map_spec_depth,
+         },
+         .image_spec       = .{
+            .x_offset      = image_spec_x_offset,
+            .y_offset      = image_spec_y_offset,
+            .width         = image_spec_width,
+            .height        = image_spec_height,
+            .pixel_depth   = image_spec_pixel_depth,
+            .descriptor    = image_spec_descriptor,
+         },
+      };
+
+      return header;
+   }
+};
+
 fn _readPixelDataAlloc(allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, header : * const TargaHeader) anyerror![] const u8 {
    const pixels = try allocator.alloc(u8, header.image_spec.bytes());
    errdefer allocator.free(pixels);
@@ -377,10 +478,16 @@ fn _convertOffsetColorspace(allocator : std.mem.Allocator, pixels_raw : [] const
    errdefer allocator.free(pixels_final);
 
    const pfn_convert : * const fn ([] const u8, [] u8, * const TargaHeader) void = blk: {
-      switch (header.image_spec.pixel_depth) {
-         .grayscale8 => break :blk _convertOffsetColorspaceGrayscale8,
-         .bgr888     => break :blk _convertOffsetColorspaceBgr888,
-         .bgra8888   => break :blk _convertOffsetColorspaceBgra8888,
+      switch (header.image_type) {
+         .monochrome, .monochrome_compressed => switch (header.image_spec.pixel_depth) {
+            8     => break :blk _convertOffsetColorspaceGrayscale8,
+            else  => return error.UnsupportedPixelFormat,
+         },
+         else => switch (header.image_spec.pixel_depth) {
+            24    => break :blk _convertOffsetColorspaceBgr888,
+            32    => break :blk _convertOffsetColorspaceBgra8888,
+            else  => return error.UnsupportedPixelFormat,
+         },
       }
    };
    
@@ -505,112 +612,4 @@ fn _writeDecodedImageToZigSource(writer : * _BufferedWriter.Writer, data : [] co
 
    return;
 }
-
-const TargaHeader = struct {
-   image_id_length   : u8,
-   color_map_type    : ColorMapType,
-   image_type        : ImageType,
-   color_map_spec    : ColorMapSpecification,
-   image_spec        : ImageSpecification,
-
-   pub const ColorMapType = enum(u8) {
-      none        = 0,
-      colormapped = 1,
-   };
-
-   pub const ImageType = enum(u8) {
-      none                    = 0,
-      colormapped             = 1,
-      truecolor               = 2,
-      monochrome              = 3,
-      colormapped_compressed  = 9,
-      truecolor_compressed    = 10,
-      monochrome_compressed   = 11,
-
-      pub fn isCompressed(self : @This()) bool {
-         return @intFromEnum(self) >= 9;
-      }
-   };
-
-   pub const ColorMapSpecification = struct {
-      start    : u16,
-      length   : u16,
-      depth    : u8,
-
-      pub fn bytesPerEntry(self : * const @This()) u5 {
-         return @intCast(std.math.divCeil(u8, self.depth, 8) catch unreachable);
-      }
-
-      pub fn bytes(self : * const @This()) u24 {
-         return @as(u24, self.length) * @as(u24, self.bytesPerEntry());
-      }
-   };
-
-   pub const ImageSpecification = struct {
-      x_offset    : u16,
-      y_offset    : u16,
-      width       : u16,
-      height      : u16,
-      pixel_depth : PixelDepth,
-      descriptor  : u8,
-
-      pub const PixelDepth = enum(u8) {
-         grayscale8  = 8,
-         bgr888      = 24,
-         bgra8888    = 32,
-      };
-
-      pub fn bytesPerPixel(self : * const @This()) u5 {
-         return @intCast(std.math.divCeil(u8, @intFromEnum(self.pixel_depth), 8) catch unreachable);
-      }
-
-      pub fn pixels(self : * const @This()) u32 {
-         return @as(u32, self.width) * @as(u32, self.height);
-      }
-
-      pub fn bytes(self : * const @This()) u37 {
-         return @as(u37, self.pixels()) * @as(u37, self.bytesPerPixel());
-      }
-   };
-
-   pub fn parse(reader : * _BufferedReader.Reader) anyerror!@This() {
-      const image_id_length            = try reader.readInt(u8,   TARGA_ENDIANESS);
-      const color_map_type_tag         = try reader.readInt(u8,   TARGA_ENDIANESS);
-      const image_type_tag             = try reader.readInt(u8,   TARGA_ENDIANESS);
-      const color_map_spec_start       = try reader.readInt(u16,  TARGA_ENDIANESS);
-      const color_map_spec_length      = try reader.readInt(u16,  TARGA_ENDIANESS);
-      const color_map_spec_depth       = try reader.readInt(u8,   TARGA_ENDIANESS);
-      const image_spec_x_offset        = try reader.readInt(u16,  TARGA_ENDIANESS);
-      const image_spec_y_offset        = try reader.readInt(u16,  TARGA_ENDIANESS);
-      const image_spec_width           = try reader.readInt(u16,  TARGA_ENDIANESS);
-      const image_spec_height          = try reader.readInt(u16,  TARGA_ENDIANESS);
-      const image_spec_pixel_depth_tag = try reader.readInt(u8,   TARGA_ENDIANESS);
-      const image_spec_descriptor      = try reader.readInt(u8,   TARGA_ENDIANESS);
-
-      const color_map_type          = std.meta.intToEnum(@This().ColorMapType, color_map_type_tag)                            catch return error.UnsupportedColorMapType;
-      const image_type              = std.meta.intToEnum(@This().ImageType, image_type_tag)                                   catch return error.UnsupportedImageType;
-      const image_spec_pixel_depth  = std.meta.intToEnum(@This().ImageSpecification.PixelDepth, image_spec_pixel_depth_tag)   catch return error.UnsupportedPixelFormat;
-
-      const header = @This(){
-         .image_id_length  = image_id_length,
-         .color_map_type   = color_map_type,
-         .image_type       = image_type,
-         .color_map_spec   = .{
-            .start         = color_map_spec_start,
-            .length        = color_map_spec_length,
-            .depth         = color_map_spec_depth,
-         },
-         .image_spec       = .{
-            .x_offset      = image_spec_x_offset,
-            .y_offset      = image_spec_y_offset,
-            .width         = image_spec_width,
-            .height        = image_spec_height,
-            .pixel_depth   = image_spec_pixel_depth,
-            .descriptor    = image_spec_descriptor,
-         },
-      };
-
-      return header;
-   }
-};
 
