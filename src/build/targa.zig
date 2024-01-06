@@ -359,10 +359,14 @@ fn _convertOffsetColorspace(allocator : std.mem.Allocator, pixels_raw : [] const
    const pixels_final = try allocator.alloc(u8, header.image_spec.pixels() * BYTES_PER_PIXEL_RGBA8888);
    errdefer allocator.free(pixels_final);
 
-   switch (header.image_spec.pixel_depth) {
-      .bgr888     => _convertOffsetColorspaceBgr888(pixels_raw, pixels_final, header),
-      .bgra8888   => _convertOffsetColorspaceBgra8888(pixels_raw, pixels_final, header),
-   }
+   const pfn_convert : * const fn ([] const u8, [] u8, * const TargaHeader) void = blk: {
+      switch (header.image_spec.pixel_depth) {
+         .bgr888     => break :blk _convertOffsetColorspaceBgr888,
+         .bgra8888   => break :blk _convertOffsetColorspaceBgra8888,
+      }
+   };
+   
+   pfn_convert(pixels_raw, pixels_final, header);
 
    return pixels_final;
 }
