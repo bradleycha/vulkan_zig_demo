@@ -394,10 +394,6 @@ fn _convertOffsetColorspaceGeneric(
    buffer_dst                    : [] u8,
    header                        : * const TargaHeader,
 ) void {
-   // We do this funky type-casting stuff so we can use vector extensions to
-   // hopefully speed up pixel conversion, since this could be a serious bottleneck
-   // for very large images.  Every small performance gain here is worth it.
-
    // Pixel count of 0 is checked previously, no need for safety checks
    const pixels         = header.image_spec.pixels();
    const pixels_mul     = pixels * BYTES_PER_PIXEL_RGBA8888;
