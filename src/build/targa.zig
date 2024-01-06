@@ -269,23 +269,57 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
 }
 
 fn _readPixelDataAlloc(allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, header : * const TargaHeader) anyerror![] const u8 {
-   // TODO: Support color-mapped and monochrome images.
-   if (header.color_map_type != .none) {
-      return error.ColorMapUnsupported;
-   }
-   if (header.image_type == .monochrome or header.image_type == .monochrome_compressed) {
-      return error.MonochromeUnsupported;
-   }
-   try reader.skipBytes(header.color_map_spec.bytes(), .{.buf_size = 1});
-
    const pixels = try allocator.alloc(u8, header.image_spec.bytes());
    errdefer allocator.free(pixels);
-   switch (header.image_type.isCompressed()) {
-      true  => try _readPixelDataCompressed(reader, pixels, header),
-      false => try _readPixelDataUncompressed(reader, pixels),
-   }
+
+   const pfn_read_pixel_data : * const fn(* _BufferedReader.Reader, [] u8, * const TargaHeader) anyerror!void = blk: {
+      switch (header.image_type) {
+         .none
+            => unreachable,   // checked previously
+
+         .colormapped, .colormapped_compressed
+            => break :blk _readPixelDataColorMapped,
+
+         .monochrome, .monochrome_compressed
+            => break :blk _readPixelDataMonochrome,
+
+         .truecolor, .truecolor_compressed
+            => break :blk _readPixelDataTruecolor,
+      }
+   };
+
+   try pfn_read_pixel_data(reader, pixels, header);
 
    return pixels;
+}
+
+fn _readPixelDataColorMapped(reader : * _BufferedReader.Reader, buffer : [] u8, header : * const TargaHeader) anyerror!void {
+   // TODO: Implement
+   _ = reader;
+   _ = buffer;
+   _ = header;
+   return error.ColorMappingNotImplemented;
+}
+
+fn _readPixelDataMonochrome(reader : * _BufferedReader.Reader, buffer : [] u8, header : * const TargaHeader) anyerror!void {
+   // TODO: Implement
+   _ = reader;
+   _ = buffer;
+   _ = header;
+   return error.MonochromeNotImplemented;
+}
+
+fn _readPixelDataTruecolor(reader : * _BufferedReader.Reader, buffer : [] u8, header : * const TargaHeader) anyerror!void {
+   // Since our I/O is already buffered, we don't need additional buffering on
+   // top.  This is why our buffer size is 1.
+   try reader.skipBytes(header.color_map_spec.bytes(), .{.buf_size = 1});
+
+   switch (header.image_type.isCompressed()) {
+      true  => try _readPixelDataCompressed(reader, buffer, header),
+      false => try _readPixelDataUncompressed(reader, buffer),
+   }
+   
+   return;
 }
 
 fn _readPixelDataCompressed(reader : * _BufferedReader.Reader, buffer : [] u8, header : * const TargaHeader) anyerror!void {
