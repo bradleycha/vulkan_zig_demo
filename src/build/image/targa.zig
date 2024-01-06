@@ -7,7 +7,7 @@ const _BufferedWriter   = std.io.BufferedWriter(BUFFERED_IO_SIZE, std.fs.File.Wr
 const TARGA_ENDIANESS            = std.builtin.Endian.Little;
 const BYTES_PER_PIXEL_RGBA8888   = 4;
 
-pub fn parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, output : * _BufferedWriter.Writer) anyerror!void {
+pub fn parseTargaToZigSource(allocator : std.mem.Allocator, input : * _BufferedReader.Reader, output : * _BufferedWriter.Writer) anyerror!void {
    const header = try TargaHeader.parse(input);
 
    // We don't want to allow images with no data included as this will break our
@@ -21,11 +21,11 @@ pub fn parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, 
    // buffering on top of that.
    try input.skipBytes(header.image_id_length, .{.buf_size = 1});
 
-   const pixels_raw = try _readPixelDataAlloc(b.allocator, input, &header); 
-   defer b.allocator.free(pixels_raw);
+   const pixels_raw = try _readPixelDataAlloc(allocator, input, &header); 
+   defer allocator.free(pixels_raw);
 
-   const pixels_final = try _convertOffsetColorspace(b.allocator, pixels_raw, &header);
-   defer b.allocator.free(pixels_final);
+   const pixels_final = try _convertOffsetColorspace(allocator, pixels_raw, &header);
+   defer allocator.free(pixels_final);
 
    try _writeDecodedImageToZigSource(output, pixels_final, header.image_spec.width, header.image_spec.height);
 

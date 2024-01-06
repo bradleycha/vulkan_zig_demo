@@ -96,13 +96,13 @@ pub const ImageParseStep = struct {
       var input_reader  = input_reader_buffer.reader();
       var output_writer = output_writer_buffer.writer();
 
-      const pfn_parse_image : * const fn(* std.Build, * _BufferedReader.Reader, * _BufferedWriter.Writer) anyerror!void = blk: {
+      const pfn_parse_image : * const fn(std.mem.Allocator, * _BufferedReader.Reader, * _BufferedWriter.Writer) anyerror!void = blk: {
          switch (self.format) {
             .targa   => break :blk targa.parseTargaToZigSource,
          }
       };
 
-      try pfn_parse_image(b, &input_reader, &output_writer);
+      try pfn_parse_image(b.allocator, &input_reader, &output_writer);
 
       try output_writer_buffer.flush();
 
