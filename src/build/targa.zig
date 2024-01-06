@@ -248,17 +248,8 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
 
    // We don't want to allow images with no data included as this will break our
    // asset loader at runtime.
-   if (header.image_type == .none or header.image_spec.width == 0 or header.image_spec.height == 0) {
+   if (header.image_type == .none or header.image_spec.pixels() == 0) {
       return error.NoDataPresent;
-   }
-
-   // TODO: Color map and monochrome support, we can get away without it for now
-   // since we're not living in 1984 anymore, but this should be supported.
-   if (header.color_map_type != .none) {
-      return error.ColorMapUnsupported;
-   }
-   if (header.image_type == .monochrome or header.image_type == .monochrome_compressed) {
-      return error.MonochromeUnsupported;
    }
 
    // We don't care about the image identity stuff, skip over it.  We use a
@@ -266,17 +257,9 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
    // buffering on top of that.
    try input.skipBytes(header.image_id_length, .{.buf_size = 1});
 
-   // TODO: This shouldn't be here.  For now it is because we're not allowing
-   // color-mapped images but for the future we should parse this, not skip it.
-   try input.skipBytes(header.color_map_spec.bytes(), .{.buf_size = 1});
-
-   // Read in the raw pixel data, decompressing if needed
-   const pixels_raw = try b.allocator.alloc(u8, header.image_spec.bytes());
+   // Read in the raw pixel data
+   const pixels_raw = try _readPixelDataAlloc(b.allocator, input, &header); 
    defer b.allocator.free(pixels_raw);
-   switch (header.image_type.isCompressed()) {
-      true  => try _readPixelDataCompressed(input, pixels_raw, &header),
-      false => try _readPixelDataUncompressed(input, pixels_raw),
-   }
 
    // Convert from the current pixel format to RGBA8888 and apply image offsets.
    const pixels_final = try b.allocator.alloc(u8, header.image_spec.pixels() * BYTES_PER_PIXEL_RGBA8888);
@@ -290,6 +273,26 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
    try _writeDecodedImageToZigSource(output, pixels_final, header.image_spec.width, header.image_spec.height);
 
    return;
+}
+
+fn _readPixelDataAlloc(allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, header : * const TargaHeader) anyerror![] const u8 {
+   // TODO: Support color-mapped and monochrome images.
+   if (header.color_map_type != .none) {
+      return error.ColorMapUnsupported;
+   }
+   if (header.image_type == .monochrome or header.image_type == .monochrome_compressed) {
+      return error.MonochromeUnsupported;
+   }
+   try reader.skipBytes(header.color_map_spec.bytes(), .{.buf_size = 1});
+
+   const pixels = try allocator.alloc(u8, header.image_spec.bytes());
+   errdefer allocator.free(pixels);
+   switch (header.image_type.isCompressed()) {
+      true  => try _readPixelDataCompressed(reader, pixels, header),
+      false => try _readPixelDataUncompressed(reader, pixels),
+   }
+
+   return pixels;
 }
 
 fn _readPixelDataCompressed(reader : * _BufferedReader.Reader, buffer : [] u8, header : * const TargaHeader) anyerror!void {
