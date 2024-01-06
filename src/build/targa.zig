@@ -1,6 +1,5 @@
 const std = @import("std");
 
-const MAX_PIXEL_BUFFER_ALIGN     = @alignOf(@Vector(4, u8));
 const TARGA_ENDIANESS            = std.builtin.Endian.Little;
 const BYTES_PER_PIXEL_RGBA8888   = 4;
 
@@ -272,7 +271,7 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
    try input.skipBytes(header.color_map_spec.bytes(), .{.buf_size = 1});
 
    // Read in the raw pixel data, decompressing if needed
-   const pixels_raw = try b.allocator.alignedAlloc(u8, MAX_PIXEL_BUFFER_ALIGN, header.image_spec.bytes());
+   const pixels_raw = try b.allocator.alloc(u8, header.image_spec.bytes());
    defer b.allocator.free(pixels_raw);
    switch (header.image_type.isCompressed()) {
       true  => try _readPixelDataCompressed(input, pixels_raw, &header),
@@ -280,12 +279,14 @@ fn _parseTargaToZigSource(b : * std.Build, input : * _BufferedReader.Reader, out
    }
 
    // Convert from the current pixel format to RGBA8888 and apply image offsets.
-   const pixels_final = try b.allocator.alignedAlloc(u8, MAX_PIXEL_BUFFER_ALIGN, header.image_spec.pixels() * BYTES_PER_PIXEL_RGBA8888);
+   const pixels_final = try b.allocator.alloc(u8, header.image_spec.pixels() * BYTES_PER_PIXEL_RGBA8888);
    defer b.allocator.free(pixels_final);
    switch (header.image_spec.pixel_depth) {
+      .bgr888     => _convertOffsetColorspaceBgr888(pixels_raw, pixels_final, &header),
       .bgra8888   => _convertOffsetColorspaceBgra8888(pixels_raw, pixels_final, &header),
    }
 
+   // Finally, generate zig source code which embeds the decoded image data.
    try _writeDecodedImageToZigSource(output, pixels_final, header.image_spec.width, header.image_spec.height);
 
    return;
@@ -358,7 +359,17 @@ fn _readPixelDataUncompressed(reader : * _BufferedReader.Reader, buffer : [] u8)
    return;
 }
 
-fn _convertOffsetColorspaceBgra8888(buffer_src : [] const align(MAX_PIXEL_BUFFER_ALIGN) u8, buffer_dst : [] align(MAX_PIXEL_BUFFER_ALIGN) u8, header : * const TargaHeader) void {
+fn _convertOffsetColorspaceBgr888(buffer_src : [] const u8, buffer_dst : [] u8, header : * const TargaHeader) void {
+   return _convertOffsetColorspaceGeneric(
+      3,
+      _convertPixelFromBgr888,
+      buffer_src,
+      buffer_dst,
+      header,
+   );
+}
+
+fn _convertOffsetColorspaceBgra8888(buffer_src : [] const u8, buffer_dst : [] u8, header : * const TargaHeader) void {
    return _convertOffsetColorspaceGeneric(
       4,
       _convertPixelFromBgra8888,
@@ -372,34 +383,29 @@ fn _convertPixelFromBgra8888(pixel : @Vector(4, u8)) @Vector(BYTES_PER_PIXEL_RGB
    return .{pixel[2], pixel[1], pixel[0], pixel[3]};
 }
 
+fn _convertPixelFromBgr888(pixel : @Vector(3, u8)) @Vector(BYTES_PER_PIXEL_RGBA8888, u8) {
+   return .{pixel[2], pixel[1], pixel[0], std.math.maxInt(u8)};
+}
+
 fn _convertOffsetColorspaceGeneric(
    comptime VEC_COMPONENTS_SRC   : comptime_int,
    comptime PFN_CONVERT          : * const fn (@Vector(VEC_COMPONENTS_SRC, u8)) @Vector(BYTES_PER_PIXEL_RGBA8888, u8),
-   buffer_src                    : [] const align(@alignOf(@Vector(VEC_COMPONENTS_SRC, u8))) u8,
-   buffer_dst                    : [] align(@alignOf(@Vector(BYTES_PER_PIXEL_RGBA8888, u8))) u8,
+   buffer_src                    : [] const u8,
+   buffer_dst                    : [] u8,
    header                        : * const TargaHeader,
 ) void {
    // We do this funky type-casting stuff so we can use vector extensions to
    // hopefully speed up pixel conversion, since this could be a serious bottleneck
    // for very large images.  Every small performance gain here is worth it.
 
-   const VEC_SRC = @Vector(VEC_COMPONENTS_SRC, u8);
-   const VEC_DST = @Vector(BYTES_PER_PIXEL_RGBA8888, u8);
-
-   // @sizeOf(...) will align the vector lengths, so we instead use the component
-   // counts for calculating pointer lengths to prevent this from ruining our life.
-   const buffer_src_vec_ptr   = @as([*] const VEC_SRC, @ptrCast(buffer_src.ptr));
-   const buffer_dst_vec_ptr   = @as([*] VEC_DST, @ptrCast(buffer_dst.ptr));
-   const buffer_src_vec       = buffer_src_vec_ptr[0..buffer_src.len / VEC_COMPONENTS_SRC];
-   const buffer_dst_vec       = buffer_dst_vec_ptr[0..buffer_dst.len / BYTES_PER_PIXEL_RGBA8888];
-
    // Pixel count of 0 is checked previously, no need for safety checks
    const pixels         = header.image_spec.pixels();
+   const pixels_mul     = pixels * BYTES_PER_PIXEL_RGBA8888;
    const x_offset_mod   = @mod(header.image_spec.x_offset, header.image_spec.width);
    const y_offset_mod   = @mod(header.image_spec.y_offset, header.image_spec.height);
 
    var index_src : usize = 0;
-   var index_dst : usize = (y_offset_mod * header.image_spec.height) + x_offset_mod;
+   var index_dst : usize = ((y_offset_mod * header.image_spec.height) + x_offset_mod) * BYTES_PER_PIXEL_RGBA8888;
    for (0..pixels) |_| {
       // We can do this instead of @mod(...) in the loop since the above code
       // ensures we will always be at most a factor of 1 out of range.  This
@@ -407,22 +413,25 @@ fn _convertOffsetColorspaceGeneric(
       // Hopefully the compiler will use conditional move instructions here.
       // I don't think there's a builtin to do this more explicitly.
       const subtract = blk: {
-         switch (index_dst >= pixels) {
-            true  => break :blk pixels,
+         switch (index_dst >= pixels_mul) {
+            true  => break :blk pixels_mul,
             false => break :blk 0,
          }
       };
 
       index_dst -= subtract;
 
-      const src = buffer_src_vec[index_src];
+      // Before you think you can just @ptrCast(...) the array to an array of
+      // vectors, it doesn't work because the vector length will be rounded
+      // to the nearest hardware-supported vector length which will destroy
+      // offsets and calculations.
+      const src_slice = buffer_src[index_src..][0..VEC_COMPONENTS_SRC];
+      const dst_slice = buffer_dst[index_dst..][0..BYTES_PER_PIXEL_RGBA8888];
 
-      const transformed = PFN_CONVERT(src);
+      dst_slice.* = PFN_CONVERT(src_slice.*);
 
-      buffer_dst_vec[index_dst] = transformed;
-
-      index_src += 1;
-      index_dst += 1;
+      index_src += VEC_COMPONENTS_SRC;
+      index_dst += BYTES_PER_PIXEL_RGBA8888;
    }
 
    return;
@@ -501,6 +510,7 @@ const TargaHeader = struct {
 
       pub const PixelDepth = enum(u8) {
          // TODO: Support more pixel formats
+         bgr888   = 24,
          bgra8888 = 32,
       };
 
