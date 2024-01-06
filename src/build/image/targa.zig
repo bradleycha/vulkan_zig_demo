@@ -26,7 +26,7 @@ pub fn parseTarga(allocator : std.mem.Allocator, input : * _BufferedReader.Reade
    defer allocator.free(pixels_raw);
 
    const pixels_final = try _convertOffsetColorspace(allocator, pixels_raw, &header);
-   defer allocator.free(pixels_final);
+   errdefer allocator.free(pixels_final);
 
    return .{
       .data    = pixels_final,
