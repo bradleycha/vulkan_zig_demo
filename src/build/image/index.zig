@@ -5,6 +5,17 @@ const BUFFERED_IO_SIZE  = 4096;
 const _BufferedReader   = std.io.BufferedReader(BUFFERED_IO_SIZE, std.fs.File.Reader);
 const _BufferedWriter   = std.io.BufferedWriter(BUFFERED_IO_SIZE, std.fs.File.Writer);
 
+pub const BuildImageSource = struct {
+   data     : [] const u8,
+   format   : Format,
+   width    : u32,
+   height   : u32,
+
+   pub const Format = enum {
+      rgba8888,
+   };
+};
+
 pub const ImageParseStep = struct {
    step        : std.Build.Step,
    input_file  : std.Build.LazyPath,
@@ -96,13 +107,16 @@ pub const ImageParseStep = struct {
       var input_reader  = input_reader_buffer.reader();
       var output_writer = output_writer_buffer.writer();
 
-      const pfn_parse_image : * const fn(std.mem.Allocator, * _BufferedReader.Reader, * _BufferedWriter.Writer) anyerror!void = blk: {
+      const pfn_parse_image : * const fn(std.mem.Allocator, * _BufferedReader.Reader) anyerror!BuildImageSource = blk: {
          switch (self.format) {
-            .targa   => break :blk targa.parseTargaToZigSource,
+            .targa   => break :blk targa.parseTarga,
          }
       };
 
-      try pfn_parse_image(b.allocator, &input_reader, &output_writer);
+      const image_source = try pfn_parse_image(b.allocator, &input_reader);
+      defer b.allocator.free(image_source.data);
+
+      try _writeImageToZigSource(&output_writer, &image_source);
 
       try output_writer_buffer.flush();
 
@@ -110,6 +124,27 @@ pub const ImageParseStep = struct {
 
       self.output_file.path = output_path;
       try man.writeManifest();
+      return;
+   }
+
+   fn _writeImageToZigSource(writer : * _BufferedWriter.Writer, image_source : * const BuildImageSource) anyerror!void {
+      const INDENT = "   ";
+
+      try writer.writeAll(INDENT ++ ".data = &.{");
+
+      for (image_source.data) |byte| {
+         try writer.print("{},", .{byte});
+      }
+
+      const format_string = @tagName(image_source.format);
+
+      try writer.print(
+         INDENT ++ "}},\n" ++
+         INDENT ++ ".format = .{s},\n" ++
+         INDENT ++ ".width = {},\n" ++
+         INDENT ++ ".height = {},\n"
+      , .{format_string, image_source.width, image_source.height});
+
       return;
    }
 };
@@ -261,7 +296,7 @@ pub const ImageBundle = struct {
          else => return err,
       }
 
-      try output_writer.print("\n}};\n\n", .{});
+      try output_writer.print("}};\n\n", .{});
 
       return;
    }

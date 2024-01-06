@@ -1,4 +1,5 @@
-const std = @import("std");
+const std   = @import("std");
+const root  = @import("index.zig");
 
 const BUFFERED_IO_SIZE  = 4096;
 const _BufferedReader   = std.io.BufferedReader(BUFFERED_IO_SIZE, std.fs.File.Reader);
@@ -7,7 +8,7 @@ const _BufferedWriter   = std.io.BufferedWriter(BUFFERED_IO_SIZE, std.fs.File.Wr
 const TARGA_ENDIANESS            = std.builtin.Endian.Little;
 const BYTES_PER_PIXEL_RGBA8888   = 4;
 
-pub fn parseTargaToZigSource(allocator : std.mem.Allocator, input : * _BufferedReader.Reader, output : * _BufferedWriter.Writer) anyerror!void {
+pub fn parseTarga(allocator : std.mem.Allocator, input : * _BufferedReader.Reader) anyerror!root.BuildImageSource {
    const header = try TargaHeader.parse(input);
 
    // We don't want to allow images with no data included as this will break our
@@ -27,9 +28,12 @@ pub fn parseTargaToZigSource(allocator : std.mem.Allocator, input : * _BufferedR
    const pixels_final = try _convertOffsetColorspace(allocator, pixels_raw, &header);
    defer allocator.free(pixels_final);
 
-   try _writeDecodedImageToZigSource(output, pixels_final, header.image_spec.width, header.image_spec.height);
-
-   return;
+   return .{
+      .data    = pixels_final,
+      .format  = .rgba8888,
+      .width   = @as(u32, header.image_spec.width),
+      .height  = @as(u32, header.image_spec.height),
+   };
 }
 
 const TargaHeader = struct {
