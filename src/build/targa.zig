@@ -372,6 +372,10 @@ fn _convertOffsetColorspaceBgr888(buffer_src : [] const u8, buffer_dst : [] u8, 
    );
 }
 
+fn _convertPixelFromBgr888(pixel : @Vector(3, u8)) @Vector(BYTES_PER_PIXEL_RGBA8888, u8) {
+   return .{pixel[2], pixel[1], pixel[0], std.math.maxInt(u8)};
+}
+
 fn _convertOffsetColorspaceBgra8888(buffer_src : [] const u8, buffer_dst : [] u8, header : * const TargaHeader) void {
    return _convertOffsetColorspaceGeneric(
       4,
@@ -384,10 +388,6 @@ fn _convertOffsetColorspaceBgra8888(buffer_src : [] const u8, buffer_dst : [] u8
 
 fn _convertPixelFromBgra8888(pixel : @Vector(4, u8)) @Vector(BYTES_PER_PIXEL_RGBA8888, u8) {
    return .{pixel[2], pixel[1], pixel[0], pixel[3]};
-}
-
-fn _convertPixelFromBgr888(pixel : @Vector(3, u8)) @Vector(BYTES_PER_PIXEL_RGBA8888, u8) {
-   return .{pixel[2], pixel[1], pixel[0], std.math.maxInt(u8)};
 }
 
 fn _convertOffsetColorspaceGeneric(
