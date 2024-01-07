@@ -99,7 +99,7 @@ pub const ImageParseStep = struct {
 
       const output_file = try std.fs.createFileAbsolute(output_path, .{});
       defer output_file.close();
-      errdefer b.cache_root.handle.deleteFile(output_path) catch @panic("failed to delete output file on error cleanup");
+      errdefer std.fs.deleteFileAbsolute(output_path) catch @panic("failed to delete output file on error cleanup");
 
       var input_reader_buffer    = _BufferedReader{.unbuffered_reader = input_file.reader()};
       var output_writer_buffer   = _BufferedWriter{.unbuffered_writer = output_file.writer()};
@@ -139,7 +139,7 @@ pub const ImageParseStep = struct {
       const format_string = @tagName(image_source.format);
 
       try writer.print(
-         INDENT ++ "}},\n" ++
+         "}},\n" ++
          INDENT ++ ".format = .{s},\n" ++
          INDENT ++ ".width = {},\n" ++
          INDENT ++ ".height = {},\n"
@@ -263,8 +263,8 @@ pub const ImageBundle = struct {
 
       try output_writer.writeAll("const graphics = @import(\"" ++ MODULE_NAME_GRAPHICS ++ "\");\n\n");
 
-      for (image_entries) |targa_entry| {
-         try _concatenateAndNamespaceParsedImage(b, &output_writer, &targa_entry);
+      for (image_entries) |*image_entry| {
+         try _concatenateAndNamespaceParsedImage(b, &output_writer, image_entry);
       }
 
       try output_writer_buffer.flush();
@@ -296,7 +296,7 @@ pub const ImageBundle = struct {
          else => return err,
       }
 
-      try output_writer.print("}};\n\n", .{});
+      try output_writer.writeAll("};\n\n");
 
       return;
    }
