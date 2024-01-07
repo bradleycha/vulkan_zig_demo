@@ -3,7 +3,6 @@ const root  = @import("index.zig");
 
 const BUFFERED_IO_SIZE  = 4096;
 const _BufferedReader   = std.io.BufferedReader(BUFFERED_IO_SIZE, std.fs.File.Reader);
-const _BufferedWriter   = std.io.BufferedWriter(BUFFERED_IO_SIZE, std.fs.File.Writer);
 
 const TARGA_ENDIANESS            = std.builtin.Endian.Little;
 const BYTES_PER_PIXEL_RGBA8888   = 4;
@@ -358,25 +357,6 @@ fn _convertOffsetColorspaceGeneric(
       index_src += VEC_COMPONENTS_SRC;
       index_dst += BYTES_PER_PIXEL_RGBA8888;
    }
-
-   return;
-}
-
-fn _writeDecodedImageToZigSource(writer : * _BufferedWriter.Writer, data : [] const u8, width : u32, height : u32) anyerror!void {
-   const INDENT = "   ";
-
-   try writer.writeAll(INDENT ++ ".data = &.{");
-
-   for (data) |byte| {
-      try writer.print("{},", .{byte});
-   }
-
-   try writer.print(
-      "}},\n" ++
-      INDENT ++ ".format = .rgba8888,\n" ++
-      INDENT ++ ".width = {},\n" ++
-      INDENT ++ ".height = {},"
-   , .{width, height});
 
    return;
 }

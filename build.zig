@@ -34,6 +34,30 @@ const TEXTURE_IDENTIFIER = struct {
    pub const tile    = "tile";
 };
 
+const MESH_OBJ_PATH = struct {
+   pub const test_triangle = "res/meshes/test_triangle.obj";
+   pub const test_octagon  = "res/meshes/test_octagon.obj";
+   pub const test_cube     = "res/meshes/test_cube.obj";
+   pub const test_pyramid  = "res/meshes/test_pyramid.obj";
+   pub const test_plane    = "res/meshes/test_plane.obj";
+};
+
+const MESH_MTL_PATH = struct {
+   pub const test_triangle = "res/meshes/test_triangle.mtl";
+   pub const test_octagon  = "res/meshes/test_octagon.mtl";
+   pub const test_cube     = "res/meshes/test_cube.mtl";
+   pub const test_pyramid  = "res/meshes/test_pyramid.mtl";
+   pub const test_plane    = "res/meshes/test_plane.mtl";
+};
+
+const MESH_IDENTIFIER = struct {
+   pub const test_triangle = "test_triangle";
+   pub const test_octagon  = "test_octagon";
+   pub const test_cube     = "test_cube";
+   pub const test_pyramid  = "test_pyramid";
+   pub const test_plane    = "test_plane";
+};
+
 const MODULE_NAME = struct {
    pub const options    = "options";
    pub const cimports   = "cimports";
@@ -44,6 +68,7 @@ const MODULE_NAME = struct {
    pub const graphics   = "graphics";
    pub const shaders    = "shaders";
    pub const textures   = "textures";
+   pub const meshes     = "meshes";
    pub const resources  = "resources";
 };
 
@@ -246,17 +271,57 @@ pub fn build(b : * std.Build) void {
       .identifier = TEXTURE_IDENTIFIER.tile,
    });
 
-   const module_shaders = shader_bundle.createModule(module_graphics);
+   const mesh_test_triangle = bd.mesh.MeshParseStep.create(b, .{.wavefront = .{
+      .path_obj   = .{.path = MESH_OBJ_PATH.test_triangle},
+      .path_mtl   = .{.path = MESH_MTL_PATH.test_triangle},
+   }});
+   const mesh_test_octagon = bd.mesh.MeshParseStep.create(b, .{.wavefront = .{
+      .path_obj   = .{.path = MESH_OBJ_PATH.test_octagon},
+      .path_mtl   = .{.path = MESH_MTL_PATH.test_octagon},
+   }});
+   const mesh_test_cube = bd.mesh.MeshParseStep.create(b, .{.wavefront = .{
+      .path_obj   = .{.path = MESH_OBJ_PATH.test_cube},
+      .path_mtl   = .{.path = MESH_MTL_PATH.test_cube},
+   }});
+   const mesh_test_pyramid = bd.mesh.MeshParseStep.create(b, .{.wavefront = .{
+      .path_obj   = .{.path = MESH_OBJ_PATH.test_pyramid},
+      .path_mtl   = .{.path = MESH_MTL_PATH.test_pyramid},
+   }});
+   const mesh_test_plane = bd.mesh.MeshParseStep.create(b, .{.wavefront = .{
+      .path_obj   = .{.path = MESH_OBJ_PATH.test_plane},
+      .path_mtl   = .{.path = MESH_MTL_PATH.test_plane},
+   }});
 
-   const module_textures = image_bundle.createModule(module_graphics);
+   const mesh_bundle = bd.mesh.MeshBundle.create(b);
+
+   mesh_bundle.addMesh(.{
+      .parse_step = mesh_test_triangle,
+      .identifier = MESH_IDENTIFIER.test_triangle,
+   });
+   mesh_bundle.addMesh(.{
+      .parse_step = mesh_test_octagon,
+      .identifier = MESH_IDENTIFIER.test_octagon,
+   });
+   mesh_bundle.addMesh(.{
+      .parse_step = mesh_test_cube,
+      .identifier = MESH_IDENTIFIER.test_cube,
+   });
+   mesh_bundle.addMesh(.{
+      .parse_step = mesh_test_pyramid,
+      .identifier = MESH_IDENTIFIER.test_pyramid,
+   });
+   mesh_bundle.addMesh(.{
+      .parse_step = mesh_test_plane,
+      .identifier = MESH_IDENTIFIER.test_plane,
+   });
+
+   const module_shaders    = shader_bundle.createModule(module_graphics);
+   const module_textures   = image_bundle.createModule(module_graphics);
+   const module_meshes     = mesh_bundle.createModule(module_graphics);
 
    const module_resources = b.addModule(MODULE_NAME.resources, .{
       .source_file   = .{.path = MODULE_ROOT_SOURCE_PATH.resources},
       .dependencies  = &.{
-         .{
-            .name    = MODULE_NAME.options,
-            .module  = module_options,
-         },
          .{
             .name    = MODULE_NAME.shaders,
             .module  = module_shaders,
@@ -266,16 +331,8 @@ pub fn build(b : * std.Build) void {
             .module  = module_textures,
          },
          .{
-            .name    = MODULE_NAME.graphics,
-            .module  = module_graphics,
-         },
-         .{
-            .name    = MODULE_NAME.structures,
-            .module  = module_structures,
-         },
-         .{
-            .name    = MODULE_NAME.math,
-            .module  = module_math,
+            .name    = MODULE_NAME.meshes,
+            .module  = module_meshes,
          },
       },
    });
