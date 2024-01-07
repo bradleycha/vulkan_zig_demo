@@ -221,7 +221,7 @@ pub fn main() MainError!void {
       }},
       .scale = .{.xyz = .{
          .x = 5.0,
-         .y = 0.0,
+         .y = 5.0,
          .z = 5.0,
       }},
    });
@@ -247,9 +247,9 @@ pub fn main() MainError!void {
          .roll    = 0.0,
       }},
       .scale = .{.xyz = .{
-         .x = 0.65,
-         .y = 0.65,
-         .z = 0.65,
+         .x = 1.0,
+         .y = 1.0,
+         .z = 1.0,
       }},
    };
 
@@ -265,9 +265,9 @@ pub fn main() MainError!void {
          .roll    = 0.0,
       }},
       .scale = .{.xyz = .{
-         .x = 0.30,
-         .y = 0.30,
-         .z = 0.30,
+         .x = 0.70,
+         .y = 0.70,
+         .z = 0.70,
       }},
    };
 
