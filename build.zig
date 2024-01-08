@@ -34,20 +34,12 @@ const TEXTURE_IDENTIFIER = struct {
    pub const tile    = "tile";
 };
 
-const MESH_OBJ_PATH = struct {
-   pub const test_triangle = "res/meshes/test_triangle.obj";
-   pub const test_octagon  = "res/meshes/test_octagon.obj";
-   pub const test_cube     = "res/meshes/test_cube.obj";
-   pub const test_pyramid  = "res/meshes/test_pyramid.obj";
-   pub const test_plane    = "res/meshes/test_plane.obj";
-};
-
-const MESH_MTL_PATH = struct {
-   pub const test_triangle = "res/meshes/test_triangle.mtl";
-   pub const test_octagon  = "res/meshes/test_octagon.mtl";
-   pub const test_cube     = "res/meshes/test_cube.mtl";
-   pub const test_pyramid  = "res/meshes/test_pyramid.mtl";
-   pub const test_plane    = "res/meshes/test_plane.mtl";
+const MESH_PATH = struct {
+   pub const test_triangle = "res/meshes/test_triangle.ply";
+   pub const test_octagon  = "res/meshes/test_octagon.ply";
+   pub const test_cube     = "res/meshes/test_cube.ply";
+   pub const test_pyramid  = "res/meshes/test_pyramid.ply";
+   pub const test_plane    = "res/meshes/test_plane.ply";
 };
 
 const MESH_IDENTIFIER = struct {
@@ -271,25 +263,20 @@ pub fn build(b : * std.Build) void {
       .identifier = TEXTURE_IDENTIFIER.tile,
    });
 
-   const mesh_test_triangle = bd.mesh.MeshParseStep.create(b, .{.wavefront = .{
-      .path_obj   = .{.path = MESH_OBJ_PATH.test_triangle},
-      .path_mtl   = .{.path = MESH_MTL_PATH.test_triangle},
+   const mesh_test_triangle = bd.mesh.MeshParseStep.create(b, .{.ply = .{
+      .path = .{.path = MESH_PATH.test_triangle},
    }});
-   const mesh_test_octagon = bd.mesh.MeshParseStep.create(b, .{.wavefront = .{
-      .path_obj   = .{.path = MESH_OBJ_PATH.test_octagon},
-      .path_mtl   = .{.path = MESH_MTL_PATH.test_octagon},
+   const mesh_test_octagon = bd.mesh.MeshParseStep.create(b, .{.ply = .{
+      .path = .{.path = MESH_PATH.test_octagon},
    }});
-   const mesh_test_cube = bd.mesh.MeshParseStep.create(b, .{.wavefront = .{
-      .path_obj   = .{.path = MESH_OBJ_PATH.test_cube},
-      .path_mtl   = .{.path = MESH_MTL_PATH.test_cube},
+   const mesh_test_cube = bd.mesh.MeshParseStep.create(b, .{.ply = .{
+      .path = .{.path = MESH_PATH.test_cube},
    }});
-   const mesh_test_pyramid = bd.mesh.MeshParseStep.create(b, .{.wavefront = .{
-      .path_obj   = .{.path = MESH_OBJ_PATH.test_pyramid},
-      .path_mtl   = .{.path = MESH_MTL_PATH.test_pyramid},
+   const mesh_test_pyramid = bd.mesh.MeshParseStep.create(b, .{.ply = .{
+      .path = .{.path = MESH_PATH.test_pyramid},
    }});
-   const mesh_test_plane = bd.mesh.MeshParseStep.create(b, .{.wavefront = .{
-      .path_obj   = .{.path = MESH_OBJ_PATH.test_plane},
-      .path_mtl   = .{.path = MESH_MTL_PATH.test_plane},
+   const mesh_test_plane = bd.mesh.MeshParseStep.create(b, .{.ply = .{
+      .path = .{.path = MESH_PATH.test_plane},
    }});
 
    const mesh_bundle = bd.mesh.MeshBundle.create(b);

@@ -1,5 +1,5 @@
-const std         = @import("std");
-const wavefront   = @import("wavefront.zig");
+const std = @import("std");
+const ply = @import("ply.zig");
 
 const BUFFERED_IO_SIZE  = 4096;
 const _BufferedReader   = std.io.BufferedReader(BUFFERED_IO_SIZE, std.fs.File.Reader);
@@ -25,16 +25,15 @@ pub const MeshParseStep = struct {
    output_file : std.Build.GeneratedFile,
 
    pub const MeshInputTag = enum {
-      wavefront,
+      ply,
    };
 
    pub const MeshInput = union(MeshInputTag) {
-      wavefront   : WavefrontInput,
+      ply : PlyInput,
    };
 
-   pub const WavefrontInput = struct {
-      path_obj : std.Build.LazyPath,
-      path_mtl : std.Build.LazyPath,
+   pub const PlyInput = struct {
+      path : std.Build.LazyPath,
    };
 
    pub fn create(owner : * std.Build, input : MeshInput) * @This() {
@@ -42,11 +41,9 @@ pub const MeshParseStep = struct {
 
       const step_name = blk: {
          switch (input) {
-            .wavefront => |*model| {
-               const name_obj = model.path_obj.getDisplayName();
-               const name_mtl = model.path_mtl.getDisplayName();
-
-               break :blk owner.fmt("meshparsestep wavefront {s} + {s}", .{name_obj, name_mtl});
+            .ply => |*model| {
+               const name = model.path.getDisplayName();
+               break :blk owner.fmt("meshparsestep ply {s}", .{name});
             },
          }
       };
@@ -63,9 +60,8 @@ pub const MeshParseStep = struct {
       };
 
       switch (input) {
-         .wavefront => |*model| {
-            model.path_obj.addStepDependencies(&self.step);
-            model.path_mtl.addStepDependencies(&self.step);
+         .ply => |*model| {
+            model.path.addStepDependencies(&self.step);
          },
       }
 
@@ -80,27 +76,25 @@ pub const MeshParseStep = struct {
       const self = @fieldParentPtr(@This(), "step", step);
       
       switch (self.input) {
-         .wavefront => |*model| {
-            try _makeWavefront(step, prog_node, model);
+         .ply => |*model| {
+            try _makePly(step, prog_node, model);
          },
       }
 
       return;
    }
 
-   fn _makeWavefront(step : * std.Build.Step, prog_node : * std.Progress.Node, input : * const WavefrontInput) anyerror!void {
+   fn _makePly(step : * std.Build.Step, prog_node : * std.Progress.Node, input : * const PlyInput) anyerror!void {
       const b     = step.owner;
       const self  = @fieldParentPtr(@This(), "step", step);
 
-      const input_path_obj = input.path_obj.getPath(b);
-      const input_path_mtl = input.path_mtl.getPath(b);
+      const input_path = input.path.getPath(b);
 
       var man = b.cache.obtain();
       defer man.deinit();
 
       man.hash.add(@as(u32, 0x97000c7e));
-      _ = try man.addFile(input_path_obj, null);
-      _ = try man.addFile(input_path_mtl, null);
+      _ = try man.addFile(input_path, null);
 
       const cache_hit   = try step.cacheHit(&man);
       const digest      = man.final();
@@ -115,7 +109,7 @@ pub const MeshParseStep = struct {
       });
       defer b.allocator.free(output_dir);
 
-      const basename = std.fs.path.stem(input_path_obj);
+      const basename = std.fs.path.stem(input_path);
 
       const output_path = try std.fs.path.join(b.allocator, &.{
          output_dir, b.fmt("{s}.zig", .{basename}),
@@ -127,11 +121,8 @@ pub const MeshParseStep = struct {
          return;
       }
 
-      const input_file_obj = try std.fs.openFileAbsolute(input_path_obj, .{});
-      defer input_file_obj.close();
-
-      const input_file_mtl = try std.fs.openFileAbsolute(input_path_mtl, .{});
-      defer input_file_mtl.close();
+      const input_file = try std.fs.openFileAbsolute(input_path, .{});
+      defer input_file.close();
 
       try b.cache_root.handle.makePath(cache_dir);
       errdefer b.cache_root.handle.deleteTree(cache_dir) catch @panic("failed to delete cache dir on error cleanup");
@@ -140,15 +131,13 @@ pub const MeshParseStep = struct {
       defer output_file.close();
       errdefer std.fs.deleteFileAbsolute(output_path) catch @panic("failed to delete output file on error cleanup");
 
-      var input_reader_buffer_obj   = _BufferedReader{.unbuffered_reader = input_file_obj.reader()};
-      var input_reader_buffer_mtl   = _BufferedReader{.unbuffered_reader = input_file_mtl.reader()};
-      var output_writer_buffer      = _BufferedWriter{.unbuffered_writer = output_file.writer()};
+      var input_reader_buffer    = _BufferedReader{.unbuffered_reader = input_file.reader()};
+      var output_writer_buffer   = _BufferedWriter{.unbuffered_writer = output_file.writer()};
 
-      var input_reader_obj = input_reader_buffer_obj.reader();
-      var input_reader_mtl = input_reader_buffer_mtl.reader();
-      var output_writer    = output_writer_buffer.writer();
+      var input_reader  = input_reader_buffer.reader();
+      var output_writer = output_writer_buffer.writer();
 
-      const mesh = try wavefront.parseWavefront(b.allocator, &input_reader_obj, &input_reader_mtl);
+      const mesh = try ply.parsePly(b.allocator, &input_reader);
       defer b.allocator.free(mesh.indices);
       defer b.allocator.free(mesh.vertices);
 
