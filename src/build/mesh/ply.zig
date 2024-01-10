@@ -21,10 +21,56 @@ fn _readLine(reader : * _BufferedReader.Reader, buf : [] u8) anyerror![] const u
    return reader.readUntilDelimiter(buf, NEWLINE);
 }
 
+const PlyTypeTag = enum {
+   char,
+   uchar,
+   short,
+   ushort,
+   int,
+   uint,
+   float,
+   double,
+   list,
+
+   pub fn toZigType(comptime self : @This()) type {
+      switch (self) {
+         .char    => return i8,
+         .uchar   => return u8,
+         .short   => return i16,
+         .ushort  => return u16,
+         .int     => return i32,
+         .uint    => return u32,
+         .float   => return f32,
+         .double  => return f64,
+         .list    => @compileError("list type can't be directly converted to a zig type"),
+      }
+
+      unreachable;
+   }
+};
+
+const PlyType = union(PlyTypeTag) {
+   char     : void,
+   uchar    : void,
+   short    : void,
+   ushort   : void,
+   int      : void,
+   uint     : void,
+   float    : void,
+   double   : void,
+   list     : @This().List,
+
+   pub const List = struct {
+      count    : PlyTypeTag,  // can't be list
+      element  : PlyTypeTag,  // can't be list
+   };
+};
+
 const PlyHeader = struct {
    format         : Format,
    count_vertices : root.BuildMesh.IndexElement,
    count_faces    : u32,
+   face_list_type : PlyType,
 
    pub const Format = enum {
       binary_little_endian,
@@ -73,6 +119,7 @@ const PlyHeaderParseState = struct {
    current_property_index  : usize                          = 0,
    count_vertices          : ? root.BuildMesh.IndexElement  = null,
    count_faces             : ? u32                          = null,
+   face_list_type          : ? PlyType                      = null,
 
    pub const Element = enum {
       none,
@@ -95,10 +142,13 @@ const PlyHeaderParseState = struct {
          return error.ZeroFacesPresent;
       }
 
+      const face_list_type = self.face_list_type orelse return error.NoFacePropertySpecified;
+
       return PlyHeader{
          .format           = format,
          .count_vertices   = count_vertices,
          .count_faces      = count_faces,
+         .face_list_type   = face_list_type,
       };
    }
 };
@@ -250,35 +300,6 @@ fn _parseHeaderProperty(state : * PlyHeaderParseState, tokens : * std.mem.TokenI
    return should_continue;
 }
 
-const PlyTypeTag = enum {
-   char,
-   uchar,
-   short,
-   ushort,
-   int,
-   uint,
-   float,
-   double,
-   list,
-};
-
-const PlyType = union(PlyTypeTag) {
-   char     : void,
-   uchar    : void,
-   short    : void,
-   ushort   : void,
-   int      : void,
-   uint     : void,
-   float    : void,
-   double   : void,
-   list     : @This().List,
-
-   pub const List = struct {
-      count    : PlyTypeTag,  // can't be list
-      element  : PlyTypeTag,  // can't be list
-   };
-};
-
 fn _parseTokensToType(tokens : * std.mem.TokenIterator(u8, .any)) anyerror!PlyType {
    const base_token = tokens.next() orelse return error.MissingTypeSpecifier;
 
@@ -319,15 +340,28 @@ fn _parseHeaderPropertyVertex(state : * PlyHeaderParseState, tokens : * std.mem.
 }
 
 fn _parseHeaderPropertyFace(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any), ty : PlyType) anyerror!bool {
-   // TODO: Implement
-   _ = state;
-   _ = tokens;
-   _ = ty;
+   const property_token = tokens.next() orelse return error.MissingPropertyIdentifier;
+
+   const property_map = std.ComptimeStringMap(void, &.{
+      .{"vertex_index",    {}},
+      .{"vertex_indices",  {}},
+   });
+
+   _ = property_map.get(property_token) orelse return error.InvalidPropertyIdentifier;
+
+   if (ty != .list) {
+      return error.InvalidPropertyTypeForIdentifier;
+   }
+
+   if (state.face_list_type != null) {
+      return error.DuplicateFacePropertyVertexIndicesIdentifier;
+   }
+
+   state.face_list_type = ty;
    return true;
 }
 
 fn _parseHeaderPropertyUnknown(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any), ty : PlyType) anyerror!bool {
-   // TODO: Implement
    _ = state;
    _ = tokens;
    _ = ty;
