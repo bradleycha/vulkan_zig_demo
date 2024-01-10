@@ -66,17 +66,38 @@ const PlyType = union(PlyTypeTag) {
    };
 };
 
-const PlyHeader = struct {
-   format         : Format,
-   count_vertices : root.BuildMesh.IndexElement,
-   count_faces    : u32,
-   face_list_type : PlyType,
+const PlyFormat = enum {
+   binary_little_endian,
+   binary_big_endian,
+   ascii,
+};
 
-   pub const Format = enum {
-      binary_little_endian,
-      binary_big_endian,
-      ascii,
-   };
+const PlyVertexPropertyTag = enum {
+   position_x,
+   position_y,
+   position_z,
+   texture_mapping_u,
+   texture_mapping_v,
+   color_r,
+   color_g,
+   color_b,
+   color_a,
+};
+
+const PlyVertexProperty = struct {
+   ty    : PlyType,
+   tag   : PlyVertexPropertyTag,
+};
+
+const MAX_VERTEX_PROPERTIES = @typeInfo(PlyVertexPropertyTag).Enum.fields.len;
+
+const PlyHeader = struct {
+   format                     : PlyFormat,
+   count_vertices             : root.BuildMesh.IndexElement,
+   count_faces                : u32,
+   face_list_type             : PlyType,
+   vertex_properties_buffer   : [MAX_VERTEX_PROPERTIES] PlyVertexProperty,
+   vertex_properties_count    : usize,
 
    pub fn parse(reader : * _BufferedReader.Reader) anyerror!@This() {
       var line_read_buffer : [LINE_READ_BUFFER_LENGTH] u8 = undefined;
@@ -114,12 +135,14 @@ fn _headerCheckMagic(reader : * _BufferedReader.Reader, buffer : [] u8) anyerror
 }
 
 const PlyHeaderParseState = struct {
-   format                  : ? PlyHeader.Format             = null,
-   current_element         : Element                        = .none,
-   current_property_index  : usize                          = 0,
-   count_vertices          : ? root.BuildMesh.IndexElement  = null,
-   count_faces             : ? u32                          = null,
-   face_list_type          : ? PlyType                      = null,
+   format                     : ? PlyFormat                                = null,
+   current_element            : Element                                    = .none,
+   current_property_index     : usize                                      = 0,
+   count_vertices             : ? root.BuildMesh.IndexElement              = null,
+   count_faces                : ? u32                                      = null,
+   face_list_type             : ? PlyType                                  = null,
+   vertex_properties_buffer   : [MAX_VERTEX_PROPERTIES] PlyVertexProperty  = undefined,
+   vertex_properties_count    : usize                                      = 0,
 
    pub const Element = enum {
       none,
@@ -144,11 +167,20 @@ const PlyHeaderParseState = struct {
 
       const face_list_type = self.face_list_type orelse return error.NoFacePropertySpecified;
 
+      const vertex_properties_buffer   = self.vertex_properties_buffer;
+      const vertex_properties_count    = self.vertex_properties_count;
+
+      if (vertex_properties_count == 0) {
+         return error.ZeroVertexPropertiesPresent;
+      }
+
       return PlyHeader{
-         .format           = format,
-         .count_vertices   = count_vertices,
-         .count_faces      = count_faces,
-         .face_list_type   = face_list_type,
+         .format                    = format,
+         .count_vertices            = count_vertices,
+         .count_faces               = count_faces,
+         .face_list_type            = face_list_type,
+         .vertex_properties_buffer  = vertex_properties_buffer,
+         .vertex_properties_count   = vertex_properties_count,
       };
    }
 };
@@ -177,7 +209,7 @@ fn _parseHeaderFormat(state : * PlyHeaderParseState, tokens : * std.mem.TokenIte
 
    const format_token = tokens.next() orelse return error.MissingFormatSpecifierType;
 
-   const format_token_map = std.ComptimeStringMap(PlyHeader.Format, &.{
+   const format_token_map = std.ComptimeStringMap(PlyFormat, &.{
       .{"binary_little_endian",  .binary_little_endian},
       .{"binary_big_endian",     .binary_big_endian},
       .{"ascii",                 .ascii},
@@ -332,25 +364,61 @@ fn _parseTokensToType(tokens : * std.mem.TokenIterator(u8, .any)) anyerror!PlyTy
 }
 
 fn _parseHeaderPropertyVertex(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any), ty : PlyType) anyerror!bool {
-   // TODO: Implement
-   _ = state;
-   _ = tokens;
-   _ = ty;
+   const property_token = tokens.next() orelse return error.MissingVertexPropertyIdentifier;
+
+   if (tokens.next() != null) {
+      return error.UnexpectedTokensAfterVertexPropertyIdentifier;
+   }
+
+   const property_map = std.ComptimeStringMap(PlyVertexPropertyTag, &.{
+      .{"x",      .position_x},
+      .{"y",      .position_y},
+      .{"z",      .position_z},
+      .{"u",      .texture_mapping_u},
+      .{"v",      .texture_mapping_v},
+      .{"s",      .texture_mapping_u},
+      .{"t",      .texture_mapping_v},
+      .{"red",    .color_r},
+      .{"green",  .color_g},
+      .{"blue",   .color_b},
+      .{"alpha",  .color_a},
+   });
+
+   const property = property_map.get(property_token) orelse return error.InvalidVertexPropertyIdentifier;
+
+   // Ensures we never duplicate properties, which by extension also acts as a
+   // safety check to prevent buffer overruns.
+   for (state.vertex_properties_buffer[0..state.vertex_properties_count]) |property_existing| {
+      if (property_existing.tag == property) {
+         return error.DuplicateVertexPropertyIdentifier;      
+      }
+   }
+
+   state.vertex_properties_buffer[state.vertex_properties_count] = .{
+      .ty   = ty,
+      .tag  = property,
+   };
+   state.vertex_properties_count += 1;
+
    return true;
 }
 
 fn _parseHeaderPropertyFace(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any), ty : PlyType) anyerror!bool {
-   const property_token = tokens.next() orelse return error.MissingPropertyIdentifier;
+   const property_token = tokens.next() orelse return error.MissingFacePropertyIdentifier;
+
+   if (tokens.next() != null) {
+      return error.UnexpectedTokensAfterFacePropertyIdentifier;
+   }
 
    const property_map = std.ComptimeStringMap(void, &.{
       .{"vertex_index",    {}},
       .{"vertex_indices",  {}},
    });
 
-   _ = property_map.get(property_token) orelse return error.InvalidPropertyIdentifier;
+   _ = property_map.get(property_token) orelse return error.InvalidFacePropertyIdentifier;
 
    if (ty != .list) {
-      return error.InvalidPropertyTypeForIdentifier;
+      return error.InvalidFacePropertyTypeForIdentifier;
    }
 
    if (state.face_list_type != null) {
