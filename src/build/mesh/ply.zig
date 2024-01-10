@@ -505,21 +505,95 @@ fn _readPlyMeshVertex(reader : * _BufferedReader.Reader, header : * const PlyHea
 
 
 fn _readPlyMeshVertexBinary(reader : * _BufferedReader.Reader, header : * const PlyHeader, endianess : std.builtin.Endian, vertex_out : * root.BuildMesh.Vertex) anyerror!void {
-   // TODO: Implement
-   _ = reader;
-   _ = header;
-   _ = endianess;
-   _ = vertex_out;
-   return error.VertexReadingBinaryNotImplemented;
+   for (header.vertex_properties_buffer[0..header.vertex_properties_count]) |*property| {
+      try _readPlyMeshVertexPropertyBinary(reader, property, endianess, vertex_out);
+   }
+   
+   return;
+}
+
+fn _readPlyMeshVertexPropertyBinary(reader : * _BufferedReader.Reader, property : * const PlyVertexProperty, endianess : std.builtin.Endian, vertex_out : * root.BuildMesh.Vertex) anyerror!void {
+   switch (@as(PlyTypeTag, property.ty)) {
+      .list => unreachable,
+      inline else => |tag| {
+         const ty = PlyTypeTag.toZigType(tag);
+         try _readPlyMeshVertexPropertyTypedBinary(ty, reader, property.tag, endianess, vertex_out);
+      }
+   }
+
+   return;
+}
+
+fn _readPlyMeshVertexPropertyTypedBinary(comptime T : type, reader : * _BufferedReader.Reader, property_tag : PlyVertexPropertyTag, endianess : std.builtin.Endian, vertex_out : * root.BuildMesh.Vertex) anyerror!void {
+   const value = blk: {
+      switch (T) {
+         f32 => {
+            const bits = try reader.readInt(u32, endianess);
+            break :blk @as(f32, @bitCast(bits));
+         },
+         f64 => {
+            const bits = try reader.readInt(u64, endianess);
+            break :blk @as(f64, @bitCast(bits));
+         },
+         else => {
+            break :blk try reader.readInt(T, endianess);
+         },
+      }
+   };
+   
+   return _storeParsedVertexProperty(T, value, property_tag, vertex_out);
 }
 
 fn _readPlyMeshVertexAscii(reader : * _BufferedReader.Reader, header : * const PlyHeader, line_read_buffer : [] u8, vertex_out : * root.BuildMesh.Vertex) anyerror!void {
+   const line = try _readLine(reader, line_read_buffer);
+
+   var tokens = std.mem.tokenizeAny(u8, line, &std.ascii.whitespace);
+
+   for (header.vertex_properties_buffer[0..header.vertex_properties_count]) |*property| {
+      const token = tokens.next() orelse return error.MalformedVertex;
+      try _readPlyMeshVertexPropertyAscii(property, token, vertex_out);
+   }
+
+   if (tokens.next() != null) {
+      return error.UnexpectedDataAfterVertex;
+   }
+
+   return;
+}
+
+fn _readPlyMeshVertexPropertyAscii(property : * const PlyVertexProperty, token : [] const u8, vertex_out : * root.BuildMesh.Vertex) anyerror!void {
+   switch (@as(PlyTypeTag, property.ty)) {
+      .list => unreachable,
+      inline else => |tag| {
+         const ty = PlyTypeTag.toZigType(tag);
+         try _readPlyMeshVertexPropertyTypedAscii(ty, property.tag, token, vertex_out);
+      }
+   }
+
+   return;
+}
+
+fn _readPlyMeshVertexPropertyTypedAscii(comptime T : type, property_tag : PlyVertexPropertyTag, token : [] const u8, vertex_out : * root.BuildMesh.Vertex) anyerror!void {
+   const value = blk: {
+      switch (T) {
+         f32, f64 => {
+            break :blk try std.fmt.parseFloat(T, token);
+         },
+         else => {
+            break :blk try std.fmt.parseInt(T, token, 10);
+         },
+      }
+   };
+   
+   return _storeParsedVertexProperty(T, value, property_tag, vertex_out);
+}
+
+fn _storeParsedVertexProperty(comptime T : type, value : T, property_tag : PlyVertexPropertyTag, vertex_out : * root.BuildMesh.Vertex) anyerror!void {
    // TODO: Implement
-   _ = reader;
-   _ = header;
-   _ = line_read_buffer;
+   _ = value;
+   _ = property_tag;
    _ = vertex_out;
-   return error.VertexReadingAsciiNotImplemented;
+   return error.ParsedVertexPropertyStorageNotImplemented;
 }
 
 fn _readPlyMeshIndices(allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, header : * const PlyHeader, line_read_buffer : [] u8, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
