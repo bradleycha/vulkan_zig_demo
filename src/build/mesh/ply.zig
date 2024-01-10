@@ -32,87 +32,168 @@ const PlyHeader = struct {
 
    pub fn parse(reader : * _BufferedReader.Reader) anyerror!@This() {
       var line_read_buffer : [LINE_READ_BUFFER_LENGTH] u8 = undefined;
+      var parse_state = PlyHeaderParseState{};
 
       try _headerCheckMagic(reader, &line_read_buffer);
 
-      const format = try _headerParseFormat(reader, &line_read_buffer);
+      while (true) {
+         const line = try _readLine(reader, &line_read_buffer);
 
-      try _headerCheckComment(reader, &line_read_buffer);
+         var line_tokens = std.mem.tokenizeAny(u8, line, &std.ascii.whitespace);
+         const continue_parsing = try _parseHeaderTokens(&parse_state, &line_tokens);
 
-      // TODO: Rest
-      _ = format;
-      return error.PlyHeaderParsingNotImplemented;
+         if (continue_parsing == false) {
+            break;
+         }
+      }
+
+      const self = try parse_state.unwrap();
+
+      return self;
    }
 };
 
 fn _headerCheckMagic(reader : * _BufferedReader.Reader, buffer : [] u8) anyerror!void {
-   const MAGIC = "ply";
+   const MAGIC  = "ply";
 
-   const magic_read = try _readLine(reader, buffer);
+   const line_magic = try _readLine(reader, buffer);
 
-   if (std.mem.eql(u8, MAGIC, magic_read) == false) {
-      return error.InvalidFiletype;
+   if (std.mem.eql(u8, line_magic, MAGIC) == false) {
+      return error.InvalidFileType;
    }
 
    return;
 }
 
-fn _headerParseFormat(reader : * _BufferedReader.Reader, buffer : [] u8) anyerror!PlyHeader.Format {
-   const FORMAT_PREFIX                 = "format";
-   const FORMAT_BINARY_LITTLE_ENDIAN   = "binary_little_endian";
-   const FORMAT_BINARY_BIG_ENDIAN      = "binary_big_endian";
-   const FORMAT_ASCII                  = "ascii";
-   const FORMAT_VERSION_MAJOR          = 1;
+const PlyHeaderParseState = struct {
+   format   : ? PlyHeader.Format = null,
 
-   const format_line  = try _readLine(reader, buffer);
-   var format_tokens  = std.mem.tokenizeAny(u8, format_line, &std.ascii.whitespace);
+   pub fn unwrap(self : * const @This()) anyerror!PlyHeader {
+      const format = self.format orelse return error.NoFormatSpecified;
 
-   const format_token_prefix  = format_tokens.next() orelse return error.MalformedFormat;
-   const format_token_type    = format_tokens.next() orelse return error.MalformedFormat;
-   const format_token_version = format_tokens.next() orelse return error.MalformedFormat;
+      return PlyHeader{
+         .format  = format,
+      };
+   }
+};
 
-   if (format_tokens.next() != null) {
-      return error.MalformedFormat;
+fn _matchStatementToParser(
+   comptime F     : type,
+   comptime map   : [] const struct{statement : [] const u8, parser : ? * const F},
+   statement      : [] const u8,
+) anyerror!? * const F {
+   if (@typeInfo(F) != .Fn) {
+      @compileError(std.fmt.comptimePrint("expected function type for parser, found \'{s}\'", .{@typeName(F)}));
    }
 
-   if (std.mem.eql(u8, FORMAT_PREFIX, format_token_prefix) == false) {
-      return error.MalformedFormat;
+   const MapFunction = ? * const F;
+   const MapElement  = struct{[] const u8, MapFunction};
+
+   // We need to convert our map to a tuple type, so we need this smut.
+   const map_tuple : [map.len] MapElement = comptime blk: {
+      var map_tuple_buffer : [map.len] MapElement = undefined;
+
+      for (&map_tuple_buffer, map) |*mapping_dest, mapping| {
+         mapping_dest.* = .{mapping.statement, mapping.parser};
+      }
+
+      break :blk map_tuple_buffer;
+   };
+
+   const string_map = std.ComptimeStringMap(MapFunction, &map_tuple);
+
+   return string_map.get(statement) orelse return error.InvalidStatement;
+}
+
+fn _parseHeaderTokens(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+   // Return without error because this could just be an empty line.
+   const statement = tokens.next() orelse return true;
+
+   const parser_found = try _matchStatementToParser(fn (* PlyHeaderParseState, * std.mem.TokenIterator(u8, .any)) anyerror!bool, &.{
+      .{.statement   = "format",       .parser = _parseHeaderFormat},
+      .{.statement   = "comment",      .parser = _parseHeaderComment},
+      .{.statement   = "element",      .parser = _parseHeaderElement},
+      .{.statement   = "property",     .parser = _parseHeaderProperty},
+      .{.statement   = "end_header",   .parser = _parseHeaderEnd},
+   }, statement);
+
+   const parser = parser_found orelse unreachable;
+
+   return parser(state, tokens);
+}
+
+fn _parseHeaderFormat(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+   if (state.format != null) {
+      return error.DuplicateFormatSpecifiers;
    }
 
-   const format_type_map = std.ComptimeStringMap(PlyHeader.Format, &.{
-      .{FORMAT_BINARY_LITTLE_ENDIAN,   .binary_little_endian},
-      .{FORMAT_BINARY_BIG_ENDIAN,      .binary_big_endian},
-      .{FORMAT_ASCII,                  .ascii},
+   const format_token = tokens.next() orelse return error.MissingFormatSpecifierType;
+
+   const format_token_map = std.ComptimeStringMap(PlyHeader.Format, &.{
+      .{"binary_little_endian",  .binary_little_endian},
+      .{"binary_big_endian",     .binary_big_endian},
+      .{"ascii",                 .ascii},
    });
 
-   const format_type = format_type_map.get(format_token_type) orelse return error.UnknownFormatType;
+   const format = format_token_map.get(format_token) orelse return error.InvalidFormatSpecifierType;
 
-   var format_version_tokens = std.mem.tokenizeScalar(u8, format_token_version, '.');
+   const version_token = tokens.next() orelse return error.IncompleteFormatSpecifier;
 
-   // We only care to make sure the major version is 1
-   const format_token_version_major = format_version_tokens.next() orelse return error.MalformedFormatVersion;
-   const format_version_major       = try std.fmt.parseInt(u8, format_token_version_major, 10);
-
-   if (format_version_major != FORMAT_VERSION_MAJOR) {
-      return error.UnsupportedFormatVersion;
+   if (tokens.next() != null) {
+      return error.UnexpectedTokensAfterFormatVersion;
    }
 
-   return format_type;
+   var tokens_version = std.mem.tokenizeScalar(u8, version_token, '.');
+
+   const version_major_token  = tokens_version.next() orelse return error.MissingFormatSpecifierMajorVersion;
+   const version_minor_token  = tokens_version.next() orelse return error.MissingFormatSpecifierMinorVersion;
+
+   if (tokens_version.next() != null) {
+      return error.UnexpectedTokensAfterFormatVersion;
+   }
+
+   const version_major = std.fmt.parseInt(u8, version_major_token, 10) catch return error.InvalidFormatSpecifierMajorVersion;
+   const version_minor = std.fmt.parseInt(u8, version_minor_token, 10) catch return error.InvalidFormatSpecifierMinorVersion;
+
+   if (version_major != 1) {
+      return error.UnsupportedFormatSpecifierMajorVersion;
+   }
+
+   if (version_minor != 0) {
+      return error.UnsupportedFormatSpecifierMinorVersion;
+   }
+
+   state.format = format;
+   return true;
 }
 
-fn _headerCheckComment(reader : * _BufferedReader.Reader, buffer : [] u8) anyerror!void {
-   const COMMENT = "comment";
+fn _parseHeaderComment(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+   _ = state;
+   _ = tokens;
+   return true;
+}
 
-   const line = try _readLine(reader, buffer);
+fn _parseHeaderElement(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+   // TODO: Implement
+   _ = state;
+   _ = tokens;
+   return true;
+}
 
-   var line_tokens = std.mem.tokenizeAny(u8, line, &std.ascii.whitespace);
+fn _parseHeaderProperty(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+   // TODO: Implement
+   _ = state;
+   _ = tokens;
+   return true;
+}
 
-   const comment_token = line_tokens.next() orelse return error.MalformedComment;
+fn _parseHeaderEnd(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+   _ = state;
 
-   if (std.mem.eql(u8, COMMENT, comment_token) == false) {
-      return error.MalformedComment;
+   if (tokens.next() != null) {
+      return error.UnexpectedTokensAfterStatement;
    }
 
-   return;
+   return false;
 }
 
