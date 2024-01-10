@@ -22,7 +22,9 @@ fn _readLine(reader : * _BufferedReader.Reader, buf : [] u8) anyerror![] const u
 }
 
 const PlyHeader = struct {
-   format   : Format,
+   format         : Format,
+   count_vertices : root.BuildMesh.IndexElement,
+   count_faces    : u32,
 
    pub const Format = enum {
       binary_little_endian,
@@ -66,13 +68,36 @@ fn _headerCheckMagic(reader : * _BufferedReader.Reader, buffer : [] u8) anyerror
 }
 
 const PlyHeaderParseState = struct {
-   format   : ? PlyHeader.Format = null,
+   format            : ? PlyHeader.Format             = null,
+   current_element   : Element                        = .none,
+   count_vertices    : ? root.BuildMesh.IndexElement  = null,
+   count_faces       : ? u32                          = null,
+
+   pub const Element = enum {
+      none,
+      unknown,
+      vertices,
+      faces,
+   };
 
    pub fn unwrap(self : * const @This()) anyerror!PlyHeader {
       const format = self.format orelse return error.NoFormatSpecified;
 
+
+      const count_vertices = self.count_vertices orelse return error.NoVertexCountSpecified;
+      if (count_vertices == 0) {
+         return error.ZeroVerticesPresent;
+      }
+
+      const count_faces = self.count_faces orelse return error.NoFaceCountSpecified;
+      if (count_faces == 0) {
+         return error.ZeroFacesPresent;
+      }
+
       return PlyHeader{
-         .format  = format,
+         .format           = format,
+         .count_vertices   = count_vertices,
+         .count_faces      = count_faces,
       };
    }
 };
@@ -146,13 +171,89 @@ fn _parseHeaderComment(state : * PlyHeaderParseState, tokens : * std.mem.TokenIt
 }
 
 fn _parseHeaderElement(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+   const element_token = tokens.next() orelse return error.MissingElementType;
+
+   const element_map = std.ComptimeStringMap(* const fn (* PlyHeaderParseState, * std.mem.TokenIterator(u8, .any)) anyerror!bool, &.{
+      .{"vertex", _parseHeaderElementVertex},
+      .{"face",   _parseHeaderElementFace},
+   });
+
+   const parser = element_map.get(element_token) orelse _parseHeaderElementUnknown;
+
+   return parser(state, tokens);
+}
+
+fn _parseHeaderElementVertex(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+   if (state.count_vertices != null) {
+      return error.DuplicateVertexElementDefinition;
+   }
+
+   const count = try _parseHeaderElementCountGeneric(root.BuildMesh.IndexElement, tokens);
+
+   state.current_element   = .vertices;
+   state.count_vertices    = count;
+   return true;
+}
+
+fn _parseHeaderElementFace(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+   if (state.count_faces != null) {
+      return error.DuplicateFaceElementDefinition;
+   }
+
+   const count = try _parseHeaderElementCountGeneric(u32, tokens);
+
+   state.current_element   = .faces;
+   state.count_faces       = count;
+   return true;
+}
+
+fn _parseHeaderElementUnknown(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+   _ = try _parseHeaderElementCountGeneric(u32, tokens);
+
+   state.current_element = .unknown;
+   return true;
+}
+
+fn _parseHeaderElementCountGeneric(comptime T : type, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!T {
+   const count_token = tokens.next() orelse return error.MissingElementCount;
+
+   if (tokens.next() != null) {
+      return error.UnexpectedTokensAfterElementCount;
+   }
+
+   const count = std.fmt.parseInt(T, count_token, 10) catch return error.InvalidElementCount;
+
+   return count;
+}
+
+fn _parseHeaderProperty(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+   const parser : * const fn (* PlyHeaderParseState, * std.mem.TokenIterator(u8, .any)) anyerror!bool = blk: {
+      switch (state.current_element) {
+         .none       => return error.PropertyDefinitionBeforeElements,
+         .vertices   => break :blk _parseHeaderPropertyVertex,
+         .faces      => break :blk _parseHeaderPropertyFace,
+         .unknown    => break :blk _parseHeaderPropertyUnknown,
+      }
+   };
+   
+   return parser(state, tokens);
+}
+
+fn _parseHeaderPropertyVertex(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
    // TODO: Implement
    _ = state;
    _ = tokens;
    return true;
 }
 
-fn _parseHeaderProperty(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+fn _parseHeaderPropertyFace(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+   // TODO: Implement
+   _ = state;
+   _ = tokens;
+   return true;
+}
+
+fn _parseHeaderPropertyUnknown(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
    // TODO: Implement
    _ = state;
    _ = tokens;
@@ -163,7 +264,7 @@ fn _parseHeaderEnd(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterat
    _ = state;
 
    if (tokens.next() != null) {
-      return error.UnexpectedTokensAfterStatement;
+      return error.UnexpectedTokensAfterEndHeaderStatement;
    }
 
    return false;
