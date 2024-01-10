@@ -7,10 +7,26 @@ const _BufferedReader   = std.io.BufferedReader(BUFFERED_IO_SIZE, std.fs.File.Re
 pub fn parsePly(allocator : std.mem.Allocator, input : * _BufferedReader.Reader) anyerror!root.BuildMesh {
    const header = try PlyHeader.parse(input);
 
-   // TODO: Implement rest
-   _ = allocator;
-   _ = header;
-   return error.NotImplemented;
+   const buffer_vertices = try allocator.alloc(root.BuildMesh.Vertex, header.count_vertices);
+   errdefer allocator.free(buffer_vertices);
+
+   // We know the amount of vertices from the header, but unfortunately for the
+   // indices the header only tells us the number of triangle fans, but not the
+   // amount of indices in each triangle fan.  Thus, we need dynamically-sized
+   // arrays for our index buffer.  I attempt to mitigate this by initializing
+   // with capacity to hold all the indices if all the faces are a single triangle.
+
+   var arraylist_indices = try std.ArrayListUnmanaged(root.BuildMesh.IndexElement).initCapacity(allocator, header.count_faces * 3);
+   errdefer arraylist_indices.deinit(allocator);
+
+   try _readPlyMesh(allocator, input, &header, buffer_vertices, &arraylist_indices);
+
+   const buffer_indices = try arraylist_indices.toOwnedSlice(allocator);
+
+   return .{
+      .vertices   = buffer_vertices,
+      .indices    = buffer_indices,
+   };
 }
 
 const LINE_READ_BUFFER_LENGTH = 1024;
@@ -444,5 +460,28 @@ fn _parseHeaderEnd(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterat
    }
 
    return false;
+}
+
+fn _readPlyMesh(allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, header : * const PlyHeader, buffer_vertices : [] root.BuildMesh.Vertex, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
+   try _readPlyMeshVertices(reader, header, buffer_vertices);
+   try _readPlyMeshIndices(allocator, reader, header, arraylist_indices);
+   return;
+}
+
+fn _readPlyMeshVertices(reader : * _BufferedReader.Reader, header : * const PlyHeader, buffer_vertices : [] root.BuildMesh.Vertex) anyerror!void {
+   // TODO: Implement
+   _ = reader;
+   _ = header;
+   _ = buffer_vertices;
+   return error.VertexReadingNotImplemented;
+}
+
+fn _readPlyMeshIndices(allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, header : * const PlyHeader, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
+   // TODO: Implement
+   _ = allocator;
+   _ = reader;
+   _ = header;
+   _ = arraylist_indices;
+   return error.IndexReadingNotImplemented;
 }
 
