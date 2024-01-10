@@ -77,47 +77,19 @@ const PlyHeaderParseState = struct {
    }
 };
 
-fn _matchStatementToParser(
-   comptime F     : type,
-   comptime map   : [] const struct{statement : [] const u8, parser : ? * const F},
-   statement      : [] const u8,
-) anyerror!? * const F {
-   if (@typeInfo(F) != .Fn) {
-      @compileError(std.fmt.comptimePrint("expected function type for parser, found \'{s}\'", .{@typeName(F)}));
-   }
-
-   const MapFunction = ? * const F;
-   const MapElement  = struct{[] const u8, MapFunction};
-
-   // We need to convert our map to a tuple type, so we need this smut.
-   const map_tuple : [map.len] MapElement = comptime blk: {
-      var map_tuple_buffer : [map.len] MapElement = undefined;
-
-      for (&map_tuple_buffer, map) |*mapping_dest, mapping| {
-         mapping_dest.* = .{mapping.statement, mapping.parser};
-      }
-
-      break :blk map_tuple_buffer;
-   };
-
-   const string_map = std.ComptimeStringMap(MapFunction, &map_tuple);
-
-   return string_map.get(statement) orelse return error.InvalidStatement;
-}
-
 fn _parseHeaderTokens(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
    // Return without error because this could just be an empty line.
    const statement = tokens.next() orelse return true;
 
-   const parser_found = try _matchStatementToParser(fn (* PlyHeaderParseState, * std.mem.TokenIterator(u8, .any)) anyerror!bool, &.{
-      .{.statement   = "format",       .parser = _parseHeaderFormat},
-      .{.statement   = "comment",      .parser = _parseHeaderComment},
-      .{.statement   = "element",      .parser = _parseHeaderElement},
-      .{.statement   = "property",     .parser = _parseHeaderProperty},
-      .{.statement   = "end_header",   .parser = _parseHeaderEnd},
-   }, statement);
+   const parser_map = std.ComptimeStringMap(* const fn (* PlyHeaderParseState, * std.mem.TokenIterator(u8, .any)) anyerror!bool, &.{
+      .{"format",       _parseHeaderFormat},
+      .{"comment",      _parseHeaderComment},
+      .{"element",      _parseHeaderElement},
+      .{"property",     _parseHeaderProperty},
+      .{"end_header",   _parseHeaderEnd},
+   });
 
-   const parser = parser_found orelse unreachable;
+   const parser = parser_map.get(statement) orelse return error.InvalidHeaderStatement;
 
    return parser(state, tokens);
 }
