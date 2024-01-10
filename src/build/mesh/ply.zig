@@ -68,10 +68,11 @@ fn _headerCheckMagic(reader : * _BufferedReader.Reader, buffer : [] u8) anyerror
 }
 
 const PlyHeaderParseState = struct {
-   format            : ? PlyHeader.Format             = null,
-   current_element   : Element                        = .none,
-   count_vertices    : ? root.BuildMesh.IndexElement  = null,
-   count_faces       : ? u32                          = null,
+   format                  : ? PlyHeader.Format             = null,
+   current_element         : Element                        = .none,
+   current_property_index  : usize                          = 0,
+   count_vertices          : ? root.BuildMesh.IndexElement  = null,
+   count_faces             : ? u32                          = null,
 
    pub const Element = enum {
       none,
@@ -180,7 +181,11 @@ fn _parseHeaderElement(state : * PlyHeaderParseState, tokens : * std.mem.TokenIt
 
    const parser = element_map.get(element_token) orelse _parseHeaderElementUnknown;
 
-   return parser(state, tokens);
+   const should_continue = parser(state, tokens);
+
+   state.current_property_index = 0;
+   
+   return should_continue;
 }
 
 fn _parseHeaderElementVertex(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
@@ -227,7 +232,7 @@ fn _parseHeaderElementCountGeneric(comptime T : type, tokens : * std.mem.TokenIt
 }
 
 fn _parseHeaderProperty(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
-   const parser : * const fn (* PlyHeaderParseState, * std.mem.TokenIterator(u8, .any)) anyerror!bool = blk: {
+   const parser : * const fn (* PlyHeaderParseState, * std.mem.TokenIterator(u8, .any), PlyType) anyerror!bool = blk: {
       switch (state.current_element) {
          .none       => return error.PropertyDefinitionBeforeElements,
          .vertices   => break :blk _parseHeaderPropertyVertex,
@@ -235,28 +240,97 @@ fn _parseHeaderProperty(state : * PlyHeaderParseState, tokens : * std.mem.TokenI
          .unknown    => break :blk _parseHeaderPropertyUnknown,
       }
    };
+
+   const ty = try _parseTokensToType(tokens);
    
-   return parser(state, tokens);
+   const should_continue = parser(state, tokens, ty);
+
+   state.current_property_index += 1;
+
+   return should_continue;
 }
 
-fn _parseHeaderPropertyVertex(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+const PlyTypeTag = enum {
+   char,
+   uchar,
+   short,
+   ushort,
+   int,
+   uint,
+   float,
+   double,
+   list,
+};
+
+const PlyType = union(PlyTypeTag) {
+   char     : void,
+   uchar    : void,
+   short    : void,
+   ushort   : void,
+   int      : void,
+   uint     : void,
+   float    : void,
+   double   : void,
+   list     : @This().List,
+
+   pub const List = struct {
+      count    : PlyTypeTag,  // can't be list
+      element  : PlyTypeTag,  // can't be list
+   };
+};
+
+fn _parseTokensToType(tokens : * std.mem.TokenIterator(u8, .any)) anyerror!PlyType {
+   const base_token = tokens.next() orelse return error.MissingTypeSpecifier;
+
+   const map_type_tag = std.ComptimeStringMap(PlyTypeTag, &.{
+      .{"char",   .char},
+      .{"uchar",  .uchar},
+      .{"short",  .short},
+      .{"ushort", .ushort},
+      .{"int",    .int},
+      .{"uint",   .uint},
+      .{"float",  .float},
+      .{"double", .double},
+      .{"list",   .list},
+   });
+
+   const base = map_type_tag.get(base_token) orelse return error.InvalidTypeSpecifier;
+
+   switch (base) {
+      .list => {},
+      inline else => |tag| return tag,
+   }
+
+   const count_token    = tokens.next() orelse return error.MissingListCountTypeSpecifier;
+   const element_token  = tokens.next() orelse return error.MissingListElementTypeSpecifier;
+
+   const count    = map_type_tag.get(count_token)     orelse return error.InvalidListCountTypeSpecifier;
+   const element  = map_type_tag.get(element_token)   orelse return error.InvalidListElementTypeSpecifier;
+
+   return .{.list = .{.count = count, .element = element}};
+}
+
+fn _parseHeaderPropertyVertex(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any), ty : PlyType) anyerror!bool {
    // TODO: Implement
    _ = state;
    _ = tokens;
+   _ = ty;
    return true;
 }
 
-fn _parseHeaderPropertyFace(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+fn _parseHeaderPropertyFace(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any), ty : PlyType) anyerror!bool {
    // TODO: Implement
    _ = state;
    _ = tokens;
+   _ = ty;
    return true;
 }
 
-fn _parseHeaderPropertyUnknown(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
+fn _parseHeaderPropertyUnknown(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any), ty : PlyType) anyerror!bool {
    // TODO: Implement
    _ = state;
    _ = tokens;
+   _ = ty;
    return true;
 }
 
