@@ -114,6 +114,7 @@ const PlyHeader = struct {
    face_list_type             : PlyType,
    vertex_properties_buffer   : [MAX_VERTEX_PROPERTIES] PlyVertexProperty,
    vertex_properties_count    : usize,
+   vertices_first             : bool,
 
    pub fn parse(reader : * _BufferedReader.Reader) anyerror!@This() {
       var line_read_buffer : [LINE_READ_BUFFER_LENGTH] u8 = undefined;
@@ -159,10 +160,10 @@ const PlyHeaderParseState = struct {
    face_list_type             : ? PlyType                                  = null,
    vertex_properties_buffer   : [MAX_VERTEX_PROPERTIES] PlyVertexProperty  = undefined,
    vertex_properties_count    : usize                                      = 0,
+   vertices_first             : bool                                       = undefined,
 
    pub const Element = enum {
       none,
-      unknown,
       vertices,
       faces,
    };
@@ -190,6 +191,8 @@ const PlyHeaderParseState = struct {
          return error.ZeroVertexPropertiesPresent;
       }
 
+      const vertices_first = self.vertices_first;
+
       return PlyHeader{
          .format                    = format,
          .count_vertices            = count_vertices,
@@ -197,6 +200,7 @@ const PlyHeaderParseState = struct {
          .face_list_type            = face_list_type,
          .vertex_properties_buffer  = vertex_properties_buffer,
          .vertex_properties_count   = vertex_properties_count,
+         .vertices_first            = vertices_first,
       };
    }
 };
@@ -277,7 +281,7 @@ fn _parseHeaderElement(state : * PlyHeaderParseState, tokens : * std.mem.TokenIt
       .{"face",   _parseHeaderElementFace},
    });
 
-   const parser = element_map.get(element_token) orelse _parseHeaderElementUnknown;
+   const parser = element_map.get(element_token) orelse return error.InvalidElementType;
 
    const should_continue = parser(state, tokens);
 
@@ -293,6 +297,11 @@ fn _parseHeaderElementVertex(state : * PlyHeaderParseState, tokens : * std.mem.T
 
    const count = try _parseHeaderElementCountGeneric(root.BuildMesh.IndexElement, tokens);
 
+   if (state.current_element == .none) {
+      @setCold(true);
+      state.vertices_first = true;
+   }
+
    state.current_element   = .vertices;
    state.count_vertices    = count;
    return true;
@@ -305,15 +314,13 @@ fn _parseHeaderElementFace(state : * PlyHeaderParseState, tokens : * std.mem.Tok
 
    const count = try _parseHeaderElementCountGeneric(u32, tokens);
 
+   if (state.current_element == .none) {
+      @setCold(true);
+      state.vertices_first = false;
+   }
+
    state.current_element   = .faces;
    state.count_faces       = count;
-   return true;
-}
-
-fn _parseHeaderElementUnknown(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
-   _ = try _parseHeaderElementCountGeneric(u32, tokens);
-
-   state.current_element = .unknown;
    return true;
 }
 
@@ -335,7 +342,6 @@ fn _parseHeaderProperty(state : * PlyHeaderParseState, tokens : * std.mem.TokenI
          .none       => return error.PropertyDefinitionBeforeElements,
          .vertices   => break :blk _parseHeaderPropertyVertex,
          .faces      => break :blk _parseHeaderPropertyFace,
-         .unknown    => break :blk _parseHeaderPropertyUnknown,
       }
    };
 
@@ -445,13 +451,6 @@ fn _parseHeaderPropertyFace(state : * PlyHeaderParseState, tokens : * std.mem.To
    return true;
 }
 
-fn _parseHeaderPropertyUnknown(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any), ty : PlyType) anyerror!bool {
-   _ = state;
-   _ = tokens;
-   _ = ty;
-   return true;
-}
-
 fn _parseHeaderEnd(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterator(u8, .any)) anyerror!bool {
    _ = state;
 
@@ -463,17 +462,63 @@ fn _parseHeaderEnd(state : * PlyHeaderParseState, tokens : * std.mem.TokenIterat
 }
 
 fn _readPlyMesh(allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, header : * const PlyHeader, buffer_vertices : [] root.BuildMesh.Vertex, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
-   try _readPlyMeshVertices(reader, header, buffer_vertices);
-   try _readPlyMeshIndices(allocator, reader, header, arraylist_indices);
+   switch (header.vertices_first) {
+      true => {
+         try _readPlyMeshVertices(reader, header, buffer_vertices);
+         try _readPlyMeshIndices(allocator, reader, header, arraylist_indices);
+      },
+      false => {
+         try _readPlyMeshIndices(allocator, reader, header, arraylist_indices);
+         try _readPlyMeshVertices(reader, header, buffer_vertices);
+      },
+   }
+
    return;
 }
 
 fn _readPlyMeshVertices(reader : * _BufferedReader.Reader, header : * const PlyHeader, buffer_vertices : [] root.BuildMesh.Vertex) anyerror!void {
+   for (buffer_vertices) |*vertex_out| {
+      // Pre-initialize with defaults because the given vertex format could be
+      // missing required fields.
+      vertex_out.* = .{
+         .color      = .{1.0, 1.0, 1.0, 1.0},
+         .sample     = .{0.0, 0.0},
+         .position   = .{0.0, 0.0, 0.0},
+         .normal     = .{0.0, 1.0, 0.0},
+      };
+
+      try _readPlyMeshVertex(reader, header, vertex_out);
+   }
+
+   return;
+}
+
+fn _readPlyMeshVertex(reader : * _BufferedReader.Reader, header : * const PlyHeader, vertex_out : * root.BuildMesh.Vertex) anyerror!void {
+   switch (header.format) {
+      .binary_little_endian   => try _readPlyMeshVertexBinary(reader, header, .Little, vertex_out),
+      .binary_big_endian      => try _readPlyMeshVertexBinary(reader, header, .Big, vertex_out),
+      .ascii                  => try _readPlyMeshVertexAscii(reader, header, vertex_out),
+   }
+
+   return;
+}
+
+
+fn _readPlyMeshVertexBinary(reader : * _BufferedReader.Reader, header : * const PlyHeader, endianess : std.builtin.Endian, vertex_out : * root.BuildMesh.Vertex) anyerror!void {
    // TODO: Implement
    _ = reader;
    _ = header;
-   _ = buffer_vertices;
-   return error.VertexReadingNotImplemented;
+   _ = endianess;
+   _ = vertex_out;
+   return error.VertexReadingBinaryNotImplemented;
+}
+
+fn _readPlyMeshVertexAscii(reader : * _BufferedReader.Reader, header : * const PlyHeader, vertex_out : * root.BuildMesh.Vertex) anyerror!void {
+   // TODO: Implement
+   _ = reader;
+   _ = header;
+   _ = vertex_out;
+   return error.VertexReadingAsciiNotImplemented;
 }
 
 fn _readPlyMeshIndices(allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, header : * const PlyHeader, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
