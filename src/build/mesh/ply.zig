@@ -449,6 +449,11 @@ fn _parseHeaderPropertyFace(state : * PlyHeaderParseState, tokens : * std.mem.To
       return error.InvalidFacePropertyTypeForIdentifier;
    }
 
+   switch (ty.list.count) {
+      .float, .double, .char, .short, .int => return error.InvalidFacePropertyListCountType,
+      else => {},
+   }
+
    if (state.face_list_type != null) {
       return error.DuplicateFacePropertyVertexIndicesIdentifier;
    }
@@ -721,12 +726,84 @@ fn _storeParsedVertexColorA(comptime T : type, value : T, vertex_out : * root.Bu
 }
 
 fn _readPlyMeshIndices(allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, header : * const PlyHeader, line_read_buffer : [] u8, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
+   switch (header.format) {
+      .binary_little_endian   => try _readPlyMeshIndicesBinary(allocator, reader, header, .Little, arraylist_indices),
+      .binary_big_endian      => try _readPlyMeshIndicesBinary(allocator, reader, header, .Big, arraylist_indices),
+      .ascii                  => try _readPlyMeshIndicesAscii(allocator, reader, header, line_read_buffer, arraylist_indices),
+   }
+
+   return;
+}
+
+fn _readPlyMeshIndicesBinary(allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, header : * const PlyHeader, endianess : std.builtin.Endian, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
+   const ply_ty_count   = header.face_list_type.list.count;
+   const ply_ty_element = header.face_list_type.list.element;
+
+   switch (ply_ty_count) {
+      .float, .double, .char, .short, .int, .list => unreachable,
+      inline else => |tag_count| {
+         switch (ply_ty_element) {
+            .list => unreachable,
+            inline else => |tag_element| {
+               const ty_count    = PlyTypeTag.toZigType(tag_count);
+               const ty_element  = PlyTypeTag.toZigType(tag_element);
+
+               try _readPlyMeshIndicesBinaryTyped(ty_count, ty_element, allocator, reader, header.count_faces, endianess, arraylist_indices);
+            },
+         }
+      },
+   }
+
+   return;
+}
+
+fn _readPlyMeshIndicesBinaryTyped(comptime T_COUNT : type, comptime T_ELEMENT : type, allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, count_faces : usize, endianess : std.builtin.Endian, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
    // TODO: Implement
+   _ = T_COUNT;
+   _ = T_ELEMENT;
    _ = allocator;
    _ = reader;
-   _ = header;
-   _ = line_read_buffer;
+   _ = count_faces;
+   _ = endianess;
    _ = arraylist_indices;
-   return error.IndexReadingNotImplemented;
+   return error.ReadMeshIndicesBinaryNotImplemented;
+}
+
+fn _readPlyMeshIndicesAscii(allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, header : * const PlyHeader, line_read_buffer : [] u8, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
+   const line = try _readLine(reader, line_read_buffer);
+   
+   var tokens = std.mem.tokenizeAny(u8, line, &std.ascii.whitespace);
+
+   const ply_ty_count   = header.face_list_type.list.count;
+   const ply_ty_element = header.face_list_type.list.element;
+
+   switch (ply_ty_count) {
+      .float, .double, .char, .short, .int, .list => unreachable,
+      inline else => |tag_count| {
+         switch (ply_ty_element) {
+            .list => unreachable,
+            inline else => |tag_element| {
+               const ty_count    = PlyTypeTag.toZigType(tag_count);
+               const ty_element  = PlyTypeTag.toZigType(tag_element);
+
+               try _readPlyMeshIndicesAsciiTyped(ty_count, ty_element, allocator, reader, header.count_faces, &tokens, arraylist_indices);
+            },
+         }
+      },
+   }
+
+   return;
+}
+
+fn _readPlyMeshIndicesAsciiTyped(comptime T_COUNT : type, comptime T_ELEMENT : type, allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, count_faces : usize, tokens : * std.mem.TokenIterator(u8, .any), arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
+   // TODO: Implement
+   _ = T_COUNT;
+   _ = T_ELEMENT;
+   _ = allocator;
+   _ = reader;
+   _ = count_faces;
+   _ = tokens;
+   _ = arraylist_indices;
+   return error.ReadMeshIndicesAsciiNotImplemented;
 }
 
