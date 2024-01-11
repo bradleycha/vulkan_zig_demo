@@ -914,6 +914,8 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
    c.vkCmdSetScissor(vk_command_buffer, 0, 1, &vk_scissor);
 
    var vk_descriptor_set_texture_sampler_previous = @as(c.VkDescriptorSet, @ptrCast(@alignCast(c.VK_NULL_HANDLE)));
+   var vk_buffer_draw_offset_vertex_previous = @as(u64, std.math.maxInt(u64));
+   var vk_buffer_draw_offset_index_previous = @as(u64, std.math.maxInt(u64));
    for (models) |model| {
       const load_item_mesh    = asset_loader.get(model.mesh);
       const load_item_texture = asset_loader.getMut(model.texture_sampler._texture);
@@ -944,9 +946,19 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
 
       c.vkCmdPushConstants(vk_command_buffer, vk_pipeline_layout, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(types.PushConstants), model.push_constants);
 
-      c.vkCmdBindVertexBuffers(vk_command_buffer, 0, 1, &vk_buffer_draw, &vk_buffer_draw_offset_vertex);
+      // Same optimization idea as above, helps with repeat calls to draw the same object
+      if (vk_buffer_draw_offset_vertex != vk_buffer_draw_offset_vertex_previous) {
+         vk_buffer_draw_offset_vertex_previous = vk_buffer_draw_offset_vertex;
 
-      c.vkCmdBindIndexBuffer(vk_command_buffer, vk_buffer_draw, vk_buffer_draw_offset_index, c.VK_INDEX_TYPE_UINT16);
+         c.vkCmdBindVertexBuffers(vk_command_buffer, 0, 1, &vk_buffer_draw, &vk_buffer_draw_offset_vertex);
+      }
+
+      // Same as above but for index buffer
+      if (vk_buffer_draw_offset_index != vk_buffer_draw_offset_index_previous) {
+         vk_buffer_draw_offset_index_previous = vk_buffer_draw_offset_index;
+
+         c.vkCmdBindIndexBuffer(vk_command_buffer, vk_buffer_draw, vk_buffer_draw_offset_index, c.VK_INDEX_TYPE_UINT16);
+      }
 
       c.vkCmdDrawIndexed(vk_command_buffer, mesh.indices, 1, 0, 0, 0);
    }
