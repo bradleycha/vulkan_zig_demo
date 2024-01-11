@@ -594,12 +594,130 @@ fn _readPlyMeshVertexPropertyTypedAscii(comptime T : type, property_tag : PlyVer
    return _storeParsedVertexProperty(T, value, property_tag, vertex_out);
 }
 
-fn _storeParsedVertexProperty(comptime T : type, value : T, property_tag : PlyVertexPropertyTag, vertex_out : * root.BuildMesh.Vertex) anyerror!void {
-   // TODO: Implement
-   _ = value;
-   _ = property_tag;
-   _ = vertex_out;
-   return error.ParsedVertexPropertyStorageNotImplemented;
+fn _storeParsedVertexProperty(comptime T : type, value : T, property_tag : PlyVertexPropertyTag, vertex_out : * root.BuildMesh.Vertex) void {
+   switch (property_tag) {
+      .position_x          => _storeParsedVertexPositionX(T, value, vertex_out),
+      .position_y          => _storeParsedVertexPositionY(T, value, vertex_out),
+      .position_z          => _storeParsedVertexPositionZ(T, value, vertex_out),
+      .normal_x            => _storeParsedVertexNormalX(T, value, vertex_out),
+      .normal_y            => _storeParsedVertexNormalY(T, value, vertex_out),
+      .normal_z            => _storeParsedVertexNormalZ(T, value, vertex_out),
+      .texture_mapping_u   => _storeParsedVertexTextureMappingU(T, value, vertex_out),
+      .texture_mapping_v   => _storeParsedVertexTextureMappingV(T, value, vertex_out),
+      .color_r             => _storeParsedVertexColorR(T, value, vertex_out),
+      .color_g             => _storeParsedVertexColorG(T, value, vertex_out),
+      .color_b             => _storeParsedVertexColorB(T, value, vertex_out),
+      .color_a             => _storeParsedVertexColorA(T, value, vertex_out),
+   }
+
+   return;
+}
+
+fn _convertType(comptime T : type, comptime U : type, value : T) U {
+   const info_t = @typeInfo(T);
+   const info_u = @typeInfo(U);
+
+   if (info_t == .Int and info_u == .Int) {
+      return @as(U, @intCast(value));
+   }
+
+   if (info_t == .Float and info_u == .Float) {
+      return @as(U, @floatCast(value));
+   }
+
+   if (info_t == .Int and info_u == .Float) {
+      return @as(U, @floatFromInt(value));
+   }
+
+   if (info_t == .Float and info_u == .Int) {
+      return @as(U, @intFromFloat(value));
+   }
+
+   @compileError("invalid type conversion");
+}
+
+fn _storeParsedVertexPositionX(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
+   const value_converted = _convertType(T, f32, value);
+
+   vertex_out.position[0] = value_converted;
+   return;
+}
+
+fn _storeParsedVertexPositionY(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
+   const value_converted = _convertType(T, f32, value);
+
+   vertex_out.position[1] = value_converted;
+   return;
+}
+
+fn _storeParsedVertexPositionZ(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
+   const value_converted = _convertType(T, f32, value);
+
+   vertex_out.position[2] = value_converted;
+   return;
+}
+
+fn _storeParsedVertexNormalX(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
+   const value_converted = _convertType(T, f32, value);
+
+   vertex_out.normal[0] = value_converted;
+   return;
+}
+
+fn _storeParsedVertexNormalY(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
+   const value_converted = _convertType(T, f32, value);
+
+   vertex_out.normal[1] = value_converted;
+   return;
+}
+
+fn _storeParsedVertexNormalZ(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
+   const value_converted = _convertType(T, f32, value);
+
+   vertex_out.normal[2] = value_converted;
+   return;
+}
+
+fn _storeParsedVertexTextureMappingU(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
+   const value_converted = _convertType(T, f32, value);
+
+   vertex_out.sample[0] = value_converted;
+   return;
+}
+
+fn _storeParsedVertexTextureMappingV(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
+   const value_converted = _convertType(T, f32, value);
+
+   vertex_out.sample[1] = value_converted;
+   return;
+}
+
+fn _storeParsedVertexColorR(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
+   const value_converted = _convertType(T, f32, value);
+
+   vertex_out.color[0] = value_converted;
+   return;
+}
+
+fn _storeParsedVertexColorG(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
+   const value_converted = _convertType(T, f32, value);
+
+   vertex_out.color[1] = value_converted;
+   return;
+}
+
+fn _storeParsedVertexColorB(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
+   const value_converted = _convertType(T, f32, value);
+
+   vertex_out.color[2] = value_converted;
+   return;
+}
+
+fn _storeParsedVertexColorA(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
+   const value_converted = _convertType(T, f32, value);
+
+   vertex_out.color[3] = value_converted;
+   return;
 }
 
 fn _readPlyMeshIndices(allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, header : * const PlyHeader, line_read_buffer : [] u8, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
