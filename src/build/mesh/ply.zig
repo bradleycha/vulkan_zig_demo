@@ -664,14 +664,14 @@ fn _storeParsedVertexPositionX(comptime T : type, value : T, vertex_out : * root
 fn _storeParsedVertexPositionY(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
    const value_converted = _convertType(T, f32, value);
 
-   vertex_out.position[1] = value_converted;
+   vertex_out.position[2] = value_converted;
    return;
 }
 
 fn _storeParsedVertexPositionZ(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
    const value_converted = _convertType(T, f32, value);
 
-   vertex_out.position[2] = value_converted;
+   vertex_out.position[1] = value_converted;
    return;
 }
 
@@ -685,14 +685,14 @@ fn _storeParsedVertexNormalX(comptime T : type, value : T, vertex_out : * root.B
 fn _storeParsedVertexNormalY(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
    const value_converted = _convertType(T, f32, value);
 
-   vertex_out.normal[1] = value_converted;
+   vertex_out.normal[2] = value_converted;
    return;
 }
 
 fn _storeParsedVertexNormalZ(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
    const value_converted = _convertType(T, f32, value);
 
-   vertex_out.normal[2] = value_converted;
+   vertex_out.normal[1] = value_converted;
    return;
 }
 
