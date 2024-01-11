@@ -454,6 +454,11 @@ fn _parseHeaderPropertyFace(state : * PlyHeaderParseState, tokens : * std.mem.To
       else => {},
    }
 
+   switch (ty.list.count) {
+      .float, .double, .char, .short, .int => return error.InvalidFacePropertyListElementType,
+      else => {},
+   }
+
    if (state.face_list_type != null) {
       return error.DuplicateFacePropertyVertexIndicesIdentifier;
    }
@@ -535,22 +540,39 @@ fn _readPlyMeshVertexPropertyBinary(reader : * _BufferedReader.Reader, property 
    return;
 }
 
+fn _readValueBinary(comptime T : type, reader : * _BufferedReader.Reader, endianess : std.builtin.Endian) anyerror!T {
+   switch (T) {
+      f32 => {
+         const bits = try reader.readInt(u32, endianess);
+         return @as(f32, @bitCast(bits));
+      },
+      f64 => {
+         const bits = try reader.readInt(u64, endianess);
+         return @as(f64, @bitCast(bits));
+      },
+      else => {
+         return try reader.readInt(T, endianess);
+      },
+   }
+
+   unreachable;
+}
+
+fn _readValueAscii(comptime T : type, token : [] const u8) anyerror!T {
+   switch (T) {
+      f32, f64 => {
+         return try std.fmt.parseFloat(T, token);
+      },
+      else => {
+         return try std.fmt.parseInt(T, token, 10);
+      },
+   }
+
+   unreachable;
+}
+
 fn _readPlyMeshVertexPropertyTypedBinary(comptime T : type, reader : * _BufferedReader.Reader, property_tag : PlyVertexPropertyTag, endianess : std.builtin.Endian, vertex_out : * root.BuildMesh.Vertex) anyerror!void {
-   const value = blk: {
-      switch (T) {
-         f32 => {
-            const bits = try reader.readInt(u32, endianess);
-            break :blk @as(f32, @bitCast(bits));
-         },
-         f64 => {
-            const bits = try reader.readInt(u64, endianess);
-            break :blk @as(f64, @bitCast(bits));
-         },
-         else => {
-            break :blk try reader.readInt(T, endianess);
-         },
-      }
-   };
+   const value = try _readValueBinary(T, reader, endianess);
    
    return _storeParsedVertexProperty(T, value, property_tag, vertex_out);
 }
@@ -585,16 +607,7 @@ fn _readPlyMeshVertexPropertyAscii(property : * const PlyVertexProperty, token :
 }
 
 fn _readPlyMeshVertexPropertyTypedAscii(comptime T : type, property_tag : PlyVertexPropertyTag, token : [] const u8, vertex_out : * root.BuildMesh.Vertex) anyerror!void {
-   const value = blk: {
-      switch (T) {
-         f32, f64 => {
-            break :blk try std.fmt.parseFloat(T, token);
-         },
-         else => {
-            break :blk try std.fmt.parseInt(T, token, 10);
-         },
-      }
-   };
+   const value = try _readValueAscii(T, token);
    
    return _storeParsedVertexProperty(T, value, property_tag, vertex_out);
 }
@@ -743,12 +756,12 @@ fn _readPlyMeshIndicesBinary(allocator : std.mem.Allocator, reader : * _Buffered
       .float, .double, .char, .short, .int, .list => unreachable,
       inline else => |tag_count| {
          switch (ply_ty_element) {
-            .list => unreachable,
+            .float, .double, .char, .short, .int, .list => unreachable,
             inline else => |tag_element| {
                const ty_count    = PlyTypeTag.toZigType(tag_count);
                const ty_element  = PlyTypeTag.toZigType(tag_element);
 
-               try _readPlyMeshIndicesBinaryTyped(ty_count, ty_element, allocator, reader, header.count_faces, endianess, arraylist_indices);
+               try _readPlyMeshIndicesBinaryTyped(ty_count, ty_element, allocator, reader, header.count_vertices, header.count_faces, endianess, arraylist_indices);
             },
          }
       },
@@ -757,16 +770,45 @@ fn _readPlyMeshIndicesBinary(allocator : std.mem.Allocator, reader : * _Buffered
    return;
 }
 
-fn _readPlyMeshIndicesBinaryTyped(comptime T_COUNT : type, comptime T_ELEMENT : type, allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, count_faces : usize, endianess : std.builtin.Endian, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
-   // TODO: Implement
-   _ = T_COUNT;
-   _ = T_ELEMENT;
-   _ = allocator;
-   _ = reader;
-   _ = count_faces;
-   _ = endianess;
-   _ = arraylist_indices;
-   return error.ReadMeshIndicesBinaryNotImplemented;
+fn _readPlyMeshIndicesBinaryTyped(comptime T_COUNT : type, comptime T_ELEMENT : type, allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, count_vertices : usize, count_faces : usize, endianess : std.builtin.Endian, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
+   for (0..count_faces) |_| {
+      try _readPlyFaceIndicesBinary(T_COUNT, T_ELEMENT, allocator, reader, count_vertices, endianess, arraylist_indices);
+   }
+
+   return;
+}
+
+fn _readPlyFaceIndicesBinary(comptime T_COUNT : type, comptime T_ELEMENT : type, allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, count_vertices : usize, endianess : std.builtin.Endian, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
+   const count = try _readValueBinary(T_COUNT, reader, endianess);
+
+   // count +1 to account for primitive restart sentinel
+   const length_old = arraylist_indices.items.len;
+   try arraylist_indices.resize(allocator, length_old + count + 1);
+   errdefer arraylist_indices.shrinkAndFree(allocator, length_old);
+
+   const buffer_indices = arraylist_indices.items[length_old..][0..count + 1];
+
+   for (buffer_indices[0..count]) |*index_out| {
+      try _readPlyFaceIndexBinary(T_ELEMENT, reader, count_vertices, endianess, index_out);
+   }
+
+   buffer_indices[count] = std.math.maxInt(root.BuildMesh.IndexElement);
+
+   return;
+}
+
+fn _readPlyFaceIndexBinary(comptime T_ELEMENT : type, reader : * _BufferedReader.Reader, count_vertices : usize, endianess : std.builtin.Endian, index_out : * root.BuildMesh.IndexElement) anyerror!void {
+   const index_unbounded = try _readValueBinary(T_ELEMENT, reader, endianess);
+
+   const index = std.math.cast(root.BuildMesh.IndexElement, index_unbounded) orelse return error.OutOfRangeFaceVertexIndex;
+
+   if (index >= count_vertices) {
+      return error.InvalidFaceVertexIndex;
+   }
+
+   index_out.* = index;
+
+   return;
 }
 
 fn _readPlyMeshIndicesAscii(allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, header : * const PlyHeader, line_read_buffer : [] u8, arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
@@ -781,12 +823,12 @@ fn _readPlyMeshIndicesAscii(allocator : std.mem.Allocator, reader : * _BufferedR
       .float, .double, .char, .short, .int, .list => unreachable,
       inline else => |tag_count| {
          switch (ply_ty_element) {
-            .list => unreachable,
+            .float, .double, .char, .short, .int, .list => unreachable,
             inline else => |tag_element| {
                const ty_count    = PlyTypeTag.toZigType(tag_count);
                const ty_element  = PlyTypeTag.toZigType(tag_element);
 
-               try _readPlyMeshIndicesAsciiTyped(ty_count, ty_element, allocator, reader, header.count_faces, &tokens, arraylist_indices);
+               try _readPlyMeshIndicesAsciiTyped(ty_count, ty_element, allocator, header.count_vertices, header.count_faces, &tokens, arraylist_indices);
             },
          }
       },
@@ -795,15 +837,53 @@ fn _readPlyMeshIndicesAscii(allocator : std.mem.Allocator, reader : * _BufferedR
    return;
 }
 
-fn _readPlyMeshIndicesAsciiTyped(comptime T_COUNT : type, comptime T_ELEMENT : type, allocator : std.mem.Allocator, reader : * _BufferedReader.Reader, count_faces : usize, tokens : * std.mem.TokenIterator(u8, .any), arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
-   // TODO: Implement
-   _ = T_COUNT;
-   _ = T_ELEMENT;
-   _ = allocator;
-   _ = reader;
-   _ = count_faces;
-   _ = tokens;
-   _ = arraylist_indices;
-   return error.ReadMeshIndicesAsciiNotImplemented;
+fn _readPlyMeshIndicesAsciiTyped(comptime T_COUNT : type, comptime T_ELEMENT : type, allocator : std.mem.Allocator, count_vertices : usize, count_faces : usize, tokens : * std.mem.TokenIterator(u8, .any), arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
+   for (0..count_faces) |_| {
+      try _readPlyFaceIndicesAscii(T_COUNT, T_ELEMENT, allocator, count_vertices, tokens, arraylist_indices);
+   }
+
+   return;
+}
+
+fn _readPlyFaceIndicesAscii(comptime T_COUNT : type, comptime T_ELEMENT : type, allocator : std.mem.Allocator, count_vertices : usize, tokens : * std.mem.TokenIterator(u8, .any), arraylist_indices : * std.ArrayListUnmanaged(root.BuildMesh.IndexElement)) anyerror!void {
+   // Could be an empty line
+   const token_count = tokens.next() orelse return;
+
+   const count = try _readValueAscii(T_COUNT, token_count);
+
+   // count +1 to account for primitive restart sentinel
+   const length_old = arraylist_indices.items.len;
+   try arraylist_indices.resize(allocator, length_old + count + 1);
+   errdefer arraylist_indices.shrinkAndFree(allocator, length_old);
+
+   const buffer_indices = arraylist_indices.items[length_old..][0..count + 1];
+
+   for (buffer_indices[0..count]) |*index_out| {
+      try _readPlyFaceIndexAscii(T_ELEMENT, tokens, count_vertices, index_out);
+   }
+
+   if (tokens.next() != null) {
+      return error.UnexpectedDataAfterFaceIndices;
+   }
+
+   buffer_indices[count] = std.math.maxInt(root.BuildMesh.IndexElement);
+
+   return;
+}
+
+fn _readPlyFaceIndexAscii(comptime T_ELEMENT : type, tokens : * std.mem.TokenIterator(u8, .any), count_vertices : usize, index_out : * root.BuildMesh.IndexElement) anyerror!void {
+   const token_index = tokens.next() orelse return error.MissingFaceVertexIndex;
+
+   const index_unbounded = try _readValueAscii(T_ELEMENT, token_index);
+
+   const index = std.math.cast(root.BuildMesh.IndexElement, index_unbounded) orelse return error.OutOfRangeFaceVertexIndex;
+
+   if (index >= count_vertices) {
+      return error.InvalidFaceVertexIndex;
+   }
+
+   index_out.* = index;
+
+   return;
 }
 
