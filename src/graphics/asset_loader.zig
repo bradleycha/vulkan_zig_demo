@@ -38,9 +38,8 @@ pub const LoadItem = struct {
 };
 
 pub const Mesh = struct {
-   push_constants : vulkan.types.PushConstants,
-   allocation     : vulkan.MemoryHeap.Allocation,
-   indices        : u32,
+   allocation  : vulkan.MemoryHeap.Allocation,
+   indices     : u32,
 
    fn destroy(self : @This(), allocator : std.mem.Allocator, memory_heap_draw : * vulkan.MemoryHeapDraw) void {
       memory_heap_draw.memory_heap.free(allocator, self.allocation);
@@ -341,8 +340,7 @@ pub const LoadItems = struct {
    samplers : [] const @This().Sampler,
 
    pub const Mesh = struct {
-      push_constants : ? vulkan.types.PushConstants,
-      data           : * const vulkan.types.Mesh,
+      data  : * const vulkan.types.Mesh,
    };
 
    pub const Texture = struct {
@@ -519,9 +517,8 @@ pub fn load(self : * AssetLoader, allocator : std.mem.Allocator, load_buffers : 
       load_item.* = .{
          .status  = .pending,
          .variant = .{.mesh = .{
-            .push_constants   = mesh.push_constants orelse undefined,
-            .allocation       = allocation_draw,
-            .indices          = @intCast(mesh.data.indices.len),
+            .allocation = allocation_draw,
+            .indices    = @intCast(mesh.data.indices.len),
          }},
       };
 

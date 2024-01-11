@@ -137,16 +137,13 @@ pub fn main() MainError!void {
    while (renderer.loadAssets(&asset_load_buffers_array.getBuffers(), &.{
       .meshes = &.{
          .{
-            .push_constants   = null,
-            .data             = &resources.meshes.TEST_PLANE,
+            .data = &resources.meshes.TEST_PLANE,
          },
          .{
-            .push_constants   = null,
-            .data             = &resources.meshes.TEST_PYRAMID,
+            .data = &resources.meshes.TEST_PYRAMID,
          },
          .{
-            .push_constants   = null,
-            .data             = &resources.meshes.TEST_CUBE,
+            .data = &resources.meshes.TEST_CUBE,
          },
       },
      .textures = &.{
@@ -200,9 +197,13 @@ pub fn main() MainError!void {
    });
    defer renderer.destroyTextureSampler(texture_sampler_rock);
 
-   const mesh_matrix_test_plane     = renderer.meshTransformMatrixMut(mesh_handle_test_plane);
-   const mesh_matrix_test_pyramid   = renderer.meshTransformMatrixMut(mesh_handle_test_pyramid);
-   const mesh_matrix_test_cube      = renderer.meshTransformMatrixMut(mesh_handle_test_cube);
+   var mesh_push_constants_test_plane     : graphics.types.PushConstants = undefined;
+   var mesh_push_constants_test_pyramid   : graphics.types.PushConstants = undefined;
+   var mesh_push_constants_test_cube      : graphics.types.PushConstants = undefined;
+
+   const mesh_matrix_test_plane     = &mesh_push_constants_test_plane.transform_mesh;
+   const mesh_matrix_test_pyramid   = &mesh_push_constants_test_pyramid.transform_mesh;
+   const mesh_matrix_test_cube      = &mesh_push_constants_test_cube.transform_mesh;
 
    std.log.info("initialization complete, entering main loop", .{});
 
@@ -334,14 +335,17 @@ pub fn main() MainError!void {
       const frame_rendered = renderer.drawFrame(&.{
          .{
             .mesh             = mesh_handle_test_plane,
+            .push_constants   = &mesh_push_constants_test_plane,
             .texture_sampler  = &texture_sampler_grass,
          },
          .{
             .mesh             = mesh_handle_test_pyramid,
+            .push_constants   = &mesh_push_constants_test_pyramid,
             .texture_sampler  = &texture_sampler_rock,
          },
          .{
             .mesh             = mesh_handle_test_cube,
+            .push_constants   = &mesh_push_constants_test_cube,
             .texture_sampler  = &texture_sampler_tile,
          },
       }) catch |err| blk: {

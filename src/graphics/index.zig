@@ -459,20 +459,6 @@ pub const Renderer = struct {
       return self._asset_loader.getMut(handle);
    }
 
-   pub fn meshTransformMatrix(self : * const @This(), mesh_handle : AssetLoader.Handle) * const math.Matrix4(f32) {
-      const load_item = self.getAsset(mesh_handle);
-      const mesh = &load_item.variant.mesh;
-
-      return &mesh.push_constants.transform_mesh;
-   }
-
-   pub fn meshTransformMatrixMut(self : * @This(), mesh_handle : AssetLoader.Handle) * math.Matrix4(f32) {
-      const load_item = self.getAssetMut(mesh_handle);
-      const mesh = &load_item.variant.mesh;
-
-      return &mesh.push_constants.transform_mesh;
-   }
-
    pub fn uniforms(self : * const @This()) * const types.UniformBufferObjects {
       const uniform_buffers_int_ptr = @intFromPtr(self._vulkan_memory_heap_transfer.mapping) + self._vulkan_uniform_allocation_transfer.offset;
       const uniform_buffers_ptr = @as(* const types.UniformBufferObjects, @ptrFromInt(uniform_buffers_int_ptr));
@@ -498,6 +484,7 @@ pub const Renderer = struct {
 
    pub const Model = struct {
       mesh              : AssetLoader.Handle,
+      push_constants    : * const vulkan.types.PushConstants,
       texture_sampler   : * const TextureSampler,
    };
 
@@ -955,7 +942,7 @@ fn _recordRenderPass(allocator : std.mem.Allocator, models : [] const Renderer.M
          c.vkCmdBindDescriptorSets(vk_command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, vk_pipeline_layout, 0, @intCast(vk_descriptor_sets.len), &vk_descriptor_sets, 0, undefined);
       }
 
-      c.vkCmdPushConstants(vk_command_buffer, vk_pipeline_layout, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(types.PushConstants), &mesh.push_constants);
+      c.vkCmdPushConstants(vk_command_buffer, vk_pipeline_layout, c.VK_SHADER_STAGE_VERTEX_BIT, 0, @sizeOf(types.PushConstants), model.push_constants);
 
       c.vkCmdBindVertexBuffers(vk_command_buffer, 0, 1, &vk_buffer_draw, &vk_buffer_draw_offset_vertex);
 
