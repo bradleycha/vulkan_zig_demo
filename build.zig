@@ -20,18 +20,21 @@ const TEXTURE_PATH = struct {
    pub const grass   = "res/textures/grass.tga";
    pub const rock    = "res/textures/rock.tga";
    pub const tile    = "res/textures/tile.tga";
+   pub const tree    = "res/textures/tree.tga";
 };
 
 const TEXTURE_FORMAT = struct {
    pub const grass   = .targa;
    pub const rock    = .targa;
    pub const tile    = .targa;
+   pub const tree    = .targa;
 };
 
 const TEXTURE_IDENTIFIER = struct {
    pub const grass   = "grass";
    pub const rock    = "rock";
    pub const tile    = "tile";
+   pub const tree    = "tree";
 };
 
 const MESH_PATH = struct {
@@ -40,6 +43,7 @@ const MESH_PATH = struct {
    pub const test_cube     = "res/meshes/test_cube.ply";
    pub const test_pyramid  = "res/meshes/test_pyramid.ply";
    pub const test_plane    = "res/meshes/test_plane.ply";
+   pub const tree          = "res/meshes/tree.ply";
 };
 
 const MESH_IDENTIFIER = struct {
@@ -48,6 +52,7 @@ const MESH_IDENTIFIER = struct {
    pub const test_cube     = "test_cube";
    pub const test_pyramid  = "test_pyramid";
    pub const test_plane    = "test_plane";
+   pub const tree          = "tree";
 };
 
 const MODULE_NAME = struct {
@@ -247,6 +252,10 @@ pub fn build(b : * std.Build) void {
       .path    = .{.path = TEXTURE_PATH.tile},
       .format  = TEXTURE_FORMAT.tile,
    });
+   const texture_tree   = bd.image.ImageParseStep.create(b, &.{
+      .path    = .{.path = TEXTURE_PATH.tree},
+      .format  = TEXTURE_FORMAT.tree,
+   });
 
    const image_bundle = bd.image.ImageBundle.create(b);
 
@@ -261,6 +270,10 @@ pub fn build(b : * std.Build) void {
    image_bundle.addImage(.{
       .parse_step = texture_tile,
       .identifier = TEXTURE_IDENTIFIER.tile,
+   });
+   image_bundle.addImage(.{
+      .parse_step = texture_tree,
+      .identifier = TEXTURE_IDENTIFIER.tree,
    });
 
    const mesh_test_triangle = bd.mesh.MeshParseStep.create(b, .{.ply = .{
@@ -277,6 +290,9 @@ pub fn build(b : * std.Build) void {
    }});
    const mesh_test_plane = bd.mesh.MeshParseStep.create(b, .{.ply = .{
       .path = .{.path = MESH_PATH.test_plane},
+   }});
+   const mesh_tree = bd.mesh.MeshParseStep.create(b, .{.ply = .{
+      .path = .{.path = MESH_PATH.tree},
    }});
 
    const mesh_bundle = bd.mesh.MeshBundle.create(b);
@@ -300,6 +316,10 @@ pub fn build(b : * std.Build) void {
    mesh_bundle.addMesh(.{
       .parse_step = mesh_test_plane,
       .identifier = MESH_IDENTIFIER.test_plane,
+   });
+   mesh_bundle.addMesh(.{
+      .parse_step = mesh_tree,
+      .identifier = MESH_IDENTIFIER.tree,
    });
 
    const module_shaders    = shader_bundle.createModule(module_graphics);

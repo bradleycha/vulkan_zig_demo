@@ -129,8 +129,8 @@ pub fn main() MainError!void {
    std.log.info("loading resources", .{});
 
    var asset_load_buffers_array : graphics.AssetLoader.LoadBuffersArrayStatic(&.{
-      .meshes     = 3,
-      .textures   = 3,
+      .meshes     = 4,
+      .textures   = 4,
       .samplers   = 1,
    }) = undefined;
 
@@ -145,6 +145,9 @@ pub fn main() MainError!void {
          .{
             .data = &resources.meshes.TEST_CUBE,
          },
+         .{
+            .data = &resources.meshes.TREE,
+         },
       },
      .textures = &.{
          .{
@@ -155,6 +158,9 @@ pub fn main() MainError!void {
          },
          .{
             .data = &resources.textures.ROCK,
+         },
+         .{
+            .data = &resources.textures.TREE,
          },
       },
      .samplers = &.{
@@ -174,10 +180,12 @@ pub fn main() MainError!void {
    const mesh_handle_test_plane     = asset_load_buffers_array.handles[0];
    const mesh_handle_test_pyramid   = asset_load_buffers_array.handles[1];
    const mesh_handle_test_cube      = asset_load_buffers_array.handles[2];
-   const texture_handle_tile        = asset_load_buffers_array.handles[3];
-   const texture_handle_grass       = asset_load_buffers_array.handles[4];
-   const texture_handle_rock        = asset_load_buffers_array.handles[5];
-   const sampler_handle_default     = asset_load_buffers_array.handles[6];
+   const mesh_handle_tree           = asset_load_buffers_array.handles[3];
+   const texture_handle_tile        = asset_load_buffers_array.handles[4];
+   const texture_handle_grass       = asset_load_buffers_array.handles[5];
+   const texture_handle_rock        = asset_load_buffers_array.handles[6];
+   const texture_handle_tree        = asset_load_buffers_array.handles[7];
+   const sampler_handle_default     = asset_load_buffers_array.handles[8];
 
    const texture_sampler_tile = try renderer.createTextureSampler(&.{
       .texture = texture_handle_tile,
@@ -197,13 +205,21 @@ pub fn main() MainError!void {
    });
    defer renderer.destroyTextureSampler(texture_sampler_rock);
 
+   const texture_sampler_tree = try renderer.createTextureSampler(&.{
+      .texture = texture_handle_tree,
+      .sampler = sampler_handle_default,
+   });
+   defer renderer.destroyTextureSampler(texture_sampler_tree);
+
    var mesh_push_constants_test_plane     : graphics.types.PushConstants = undefined;
    var mesh_push_constants_test_pyramid   : graphics.types.PushConstants = undefined;
    var mesh_push_constants_test_cube      : graphics.types.PushConstants = undefined;
+   var mesh_push_constants_tree           : graphics.types.PushConstants = undefined;
 
    const mesh_matrix_test_plane     = &mesh_push_constants_test_plane.transform_mesh;
    const mesh_matrix_test_pyramid   = &mesh_push_constants_test_pyramid.transform_mesh;
    const mesh_matrix_test_cube      = &mesh_push_constants_test_cube.transform_mesh;
+   const mesh_matrix_tree           = &mesh_push_constants_tree.transform_mesh;
 
    std.log.info("initialization complete, entering main loop", .{});
 
@@ -224,6 +240,24 @@ pub fn main() MainError!void {
          .x = 5.0,
          .y = 5.0,
          .z = 5.0,
+      }},
+   });
+
+   mesh_matrix_tree.* = math.Transform(f32).toMatrix(&.{
+      .translation = .{.xyz = .{
+         .x =  1.25,
+         .y = -0.75,
+         .z =  1.25,
+      }},
+      .rotation = .{.angles = .{
+         .pitch   = 0.0,
+         .yaw     = 0.0,
+         .roll    = 0.0,
+      }},
+      .scale = .{.xyz = .{
+         .x = 1.0,
+         .y = 1.0,
+         .z = 1.0,
       }},
    });
 
@@ -347,6 +381,11 @@ pub fn main() MainError!void {
             .mesh             = mesh_handle_test_cube,
             .push_constants   = &mesh_push_constants_test_cube,
             .texture_sampler  = &texture_sampler_tile,
+         },
+         .{
+            .mesh             = mesh_handle_tree,
+            .push_constants   = &mesh_push_constants_tree,
+            .texture_sampler  = &texture_sampler_tree,
          },
       }) catch |err| blk: {
          std.log.warn("failed to draw frame: {}", .{err});
