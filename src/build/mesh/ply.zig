@@ -710,31 +710,44 @@ fn _storeParsedVertexTextureMappingV(comptime T : type, value : T, vertex_out : 
    return;
 }
 
+fn _colorNormalizeFactor(comptime T : type) f32 {
+   switch (T) {
+      f32, f64 => return 1.0,
+      else => return 1.0 / @as(f32, @floatFromInt(std.math.maxInt(T) - 1)),
+   }
+
+   unreachable;
+}
+
 fn _storeParsedVertexColorR(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
    const value_converted = _convertType(T, f32, value);
+   const normalize = _colorNormalizeFactor(T);
 
-   vertex_out.color[0] = value_converted;
+   vertex_out.color[0] = value_converted * normalize;
    return;
 }
 
 fn _storeParsedVertexColorG(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
    const value_converted = _convertType(T, f32, value);
+   const normalize = _colorNormalizeFactor(T);
 
-   vertex_out.color[1] = value_converted;
+   vertex_out.color[1] = value_converted * normalize;
    return;
 }
 
 fn _storeParsedVertexColorB(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
    const value_converted = _convertType(T, f32, value);
+   const normalize = _colorNormalizeFactor(T);
 
-   vertex_out.color[2] = value_converted;
+   vertex_out.color[2] = value_converted * normalize;
    return;
 }
 
 fn _storeParsedVertexColorA(comptime T : type, value : T, vertex_out : * root.BuildMesh.Vertex) void {
    const value_converted = _convertType(T, f32, value);
+   const normalize = _colorNormalizeFactor(T);
 
-   vertex_out.color[3] = value_converted;
+   vertex_out.color[3] = value_converted * normalize;
    return;
 }
 
