@@ -1,6 +1,8 @@
 # Vulkan Zig Demo
 Vulkan graphics programming example in Zig with minimal dependencies and as much programmed from scratch as I could tolerate.
 
+![alt text](https://github.com/bradleycha/vulkan_zig_demo/raw/master/demonstration.gif)
+
 ### Supported platforms
  - Linux with either X11 or Wayland desktops
 
